@@ -361,6 +361,18 @@ into the page, counters decrement, and a Reset appears when the queue empties.
 It runs entirely on local state — the marketing page demonstrates the review
 loop instead of describing it.
 
+**It is rendered at the app's real type scale**, not shrunk to fit: 26px folder
+title, 18px section titles, 15px body, 14px sidebar. An earlier version squeezed
+the same content into 11–14px and the result read as a *diagram of* a product
+rather than the product. If the shot needs to be smaller, the card gets smaller
+— the type does not.
+
+`components/marketing/browser-chrome.tsx` frames it. Real traffic-light colours,
+navigation affordances and a centred address pill, because three flat grey
+circles read as a placeholder and the window frame is the first thing anyone
+looks at. It is entirely decorative and `aria-hidden`, so a screen reader is
+never offered a browser toolbar that does nothing.
+
 ### The compatibility wall
 
 Which chips have a real brand mark is resolved **on the server**

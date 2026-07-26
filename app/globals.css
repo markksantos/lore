@@ -44,6 +44,11 @@
   --lore-button-primary-fg: #ffffff;
   --lore-button-primary-hover: #2b2b28;
 
+  /* Browser-chrome greys for the product shot. Cooler and slightly darker than
+     the app's own surfaces so the window frame reads as OS, not as content. */
+  --lore-chrome: #eeeeec;
+  --lore-chrome-field: #ffffff;
+
   /* Brand action colour — primary CTAs, accept buttons, focus rings. Held
      constant across both themes so the blue reads identically in light and
      dark, exactly as Creed does it. */
@@ -124,6 +129,9 @@
   --lore-text-tertiary: #6b6b65;
   --lore-button-primary-fg: #0e0e0d;
   --lore-button-primary-hover: #cfcfc8;
+
+  --lore-chrome: #26262a;
+  --lore-chrome-field: #35353a;
 
   /* The action blue is deliberately NOT re-tinted for dark — holding it
      constant is what makes the brand colour read as the same colour. */
@@ -459,6 +467,27 @@
   background: transparent;
   color: var(--lore-text-tertiary);
   border: 1px dashed var(--lore-border-strong);
+}
+
+.pal-bullets {
+  list-style: none;
+  padding-left: 0;
+}
+
+.pal-bullets > li {
+  position: relative;
+  padding-left: 1.35em;
+}
+
+.pal-bullets > li::before {
+  content: "";
+  position: absolute;
+  left: 0.1em;
+  top: 0.66em;
+  width: 0.42em;
+  height: 0.42em;
+  border-radius: 0.14em;
+  background: var(--plate, var(--lore-text-tertiary));
 }
 
 .lore-tag {

@@ -22,8 +22,8 @@ export function Landing({ scene, logos }: { scene: Scene; logos: string[] }) {
       {/* The product shot bridges the hero and the first content section:
           pulled up so its top overlaps the faded sky and its body extends into
           the page, like a hero shot crossing the seam. */}
-      <div className="relative z-20 -mt-[28vh] px-4 md:-mt-[32vh] md:px-10 lg:px-12">
-        <div className="mx-auto max-w-5xl">
+      <div className="relative z-20 -mt-[26vh] px-4 md:-mt-[30vh] md:px-8 lg:px-10">
+        <div className="mx-auto max-w-6xl">
           <HeroSimulator />
         </div>
       </div>
