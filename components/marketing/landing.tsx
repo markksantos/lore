@@ -5,12 +5,15 @@ import { useState } from "react";
 import { ArrowRight, FolderOpen, Plug, ShieldCheck, ChevronDown } from "lucide-react";
 import { SceneryImage } from "@/components/marketing/scenery-image";
 import { MarketingFooter, MarketingHeader } from "@/components/marketing/site-chrome";
-import { VaultDemo } from "@/components/marketing/vault-demo";
+import { HeroSimulator } from "@/components/marketing/hero-simulator";
+import { LinkDemo, ReadDemo, ProposeDemo, HealthDemo } from "@/components/marketing/demos";
+import { StackWall } from "@/components/marketing/stack-wall";
+import { Reveal } from "@/components/marketing/motion-bits";
 import { paletteVars } from "@/lib/palette";
 import type { Scene } from "@/lib/scenery";
 import { cn } from "@/lib/utils";
 
-export function Landing({ scene }: { scene: Scene }) {
+export function Landing({ scene, logos }: { scene: Scene; logos: string[] }) {
   return (
     <>
       <MarketingHeader />
@@ -21,13 +24,14 @@ export function Landing({ scene }: { scene: Scene }) {
           the page, like a hero shot crossing the seam. */}
       <div className="relative z-20 -mt-[28vh] px-4 md:-mt-[32vh] md:px-10 lg:px-12">
         <div className="mx-auto max-w-5xl">
-          <VaultDemo />
+          <HeroSimulator />
         </div>
       </div>
 
       <Problem />
       <HowItWorks />
       <Trust />
+      <Stack logos={logos} />
       <Steps />
       <Faq />
       <Finale scene={scene} />
@@ -109,7 +113,7 @@ function Problem() {
       title="You already wrote it down. Your agents still ask."
       lede="Everything an agent needs to stop guessing is sitting in a folder on your disk. It just has no way in — and no way to give anything back."
     >
-      <div className="mt-12 grid gap-4 sm:grid-cols-3">
+      <Reveal className="mt-12 grid gap-4 sm:grid-cols-3">
         <Stat
           slot={0}
           value="150"
@@ -131,7 +135,7 @@ function Problem() {
           label="on anything going stale"
           body="Nothing tells you the pricing page you wrote in March stopped being true in May. The agent quotes it anyway, with total confidence."
         />
-      </div>
+      </Reveal>
     </Section>
   );
 }
@@ -141,18 +145,21 @@ function HowItWorks() {
     {
       icon: FolderOpen,
       slot: 3,
+      demo: <LinkDemo />,
       title: "Point it at the folder you already have",
       body: "No import, no migration, no new format. Lore reads the markdown where it sits — your headings, your frontmatter, your [[wikilinks]], your folder names. It infers the structure you already chose instead of imposing one. Delete Lore tomorrow and the wiki is byte-for-byte what it was.",
     },
     {
       icon: Plug,
       slot: 0,
+      demo: <ReadDemo />,
       title: "Every agent gets a map of the whole wiki",
       body: "Lore writes one AGENTS.md at your vault root — every page, folder, tag, and a one-line summary — and serves the same map over MCP with search and read. An agent skims the map, opens the two pages that matter, and answers. It never has to read your whole wiki or grep blind.",
     },
     {
       icon: ShieldCheck,
       slot: 6,
+      demo: <ProposeDemo />,
       title: "Agents propose. You accept.",
       body: "There is no write tool. When an agent learns something durable it files a proposal, and the diff appears inside the page it would change, with a reason and a risk tier, right where you are already reading. The wiki changes when you say so — because the edit that hurts is never the obviously wrong one, it's the plausible one you'd have missed.",
     },
@@ -170,28 +177,33 @@ function HowItWorks() {
         {items.map((item, i) => {
           const Icon = item.icon;
           return (
-            <div key={item.title} style={paletteVars(item.slot)} className="frame">
-              <div className="flex flex-col gap-4 px-6 py-7 sm:flex-row sm:gap-8 sm:px-8 sm:py-8">
-                <div className="flex shrink-0 items-start gap-3.5 sm:w-44">
-                  <span
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white"
-                    style={{ background: "var(--plate)" }}
-                  >
-                    <Icon size={17} />
-                  </span>
-                  <span
-                    className="t-meta pt-2.5 text-[var(--lore-text-tertiary)]"
-                    style={{ fontFamily: "var(--font-mono), monospace" }}
-                  >
-                    0{i + 1}
-                  </span>
-                </div>
-                <div className="max-w-2xl">
-                  <h3 className="t-step pal-title">{item.title}</h3>
-                  <p className="t-body mt-2.5 text-[var(--lore-text-secondary)]">{item.body}</p>
+            <Reveal key={item.title} delay={i * 0.06}>
+              <div style={paletteVars(item.slot)} className="frame">
+                <div className="grid min-w-0 gap-6 px-6 py-7 sm:px-8 sm:py-8 lg:grid-cols-[1fr_22rem] lg:items-center lg:gap-10">
+                  <div>
+                    <div className="flex items-center gap-3">
+                      <span
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white"
+                        style={{ background: "var(--plate)" }}
+                      >
+                        <Icon size={17} />
+                      </span>
+                      <span
+                        className="t-meta text-[var(--lore-text-tertiary)]"
+                        style={{ fontFamily: "var(--font-mono), monospace" }}
+                      >
+                        0{i + 1}
+                      </span>
+                    </div>
+                    <h3 className="t-step pal-title mt-4">{item.title}</h3>
+                    <p className="t-body mt-2.5 max-w-xl text-[var(--lore-text-secondary)]">
+                      {item.body}
+                    </p>
+                  </div>
+                  <div className="min-w-0 lg:justify-self-end lg:pl-2">{item.demo}</div>
                 </div>
               </div>
-            </div>
+            </Reveal>
           );
         })}
       </div>
@@ -206,7 +218,9 @@ function Trust() {
       title="It tells you where the wiki has rotted."
       lede="Orphaned pages, links pointing at notes you never wrote, and anything past its review window — scored, so you can watch the number move."
     >
-      <div className="mt-11 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-11 grid min-w-0 gap-8 lg:grid-cols-[22rem_1fr] lg:items-center">
+        <Reveal><HealthDemo /></Reveal>
+        <div className="grid gap-4 sm:grid-cols-2">
         {[
           {
             slot: 0,
@@ -234,10 +248,36 @@ function Trust() {
               <h3 className="pal-title text-[14.5px] font-semibold">{card.head}</h3>
               <p className="t-body mt-1.5 text-[var(--lore-text-secondary)]">{card.body}</p>
             </div>
-          </div>
-        ))}
+            </div>
+          ))}
+        </div>
       </div>
     </Section>
+  );
+}
+
+/** The compatibility wall — its own section, between health and the steps. */
+function Stack({ logos }: { logos: string[] }) {
+  return (
+    <section className="border-y border-[var(--lore-border)] bg-[var(--lore-background)] py-16 md:py-20">
+      <div className="mx-auto max-w-5xl px-6 md:px-8">
+        <Reveal>
+          <p className="t-meta font-medium uppercase tracking-[0.1em] text-[var(--lore-accent)]">
+            Works with
+          </p>
+          <h2 className="t-section mt-3 max-w-3xl text-[var(--lore-text-primary)]">
+            Anything that speaks MCP.
+          </h2>
+          <p className="t-lede mt-4 max-w-2xl text-[var(--lore-text-secondary)]">
+            Five tools over MCP, or a plain <code>AGENTS.md</code> for agents that only read
+            files. Both point at the same folder.
+          </p>
+        </Reveal>
+      </div>
+      <div className="mt-10">
+        <StackWall logos={logos} />
+      </div>
+    </section>
   );
 }
 

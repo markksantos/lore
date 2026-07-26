@@ -330,7 +330,58 @@ silent blank band.
 
 ---
 
-## 9. MCP server
+## 9. Motion
+
+Four primitives in `lib/anim.ts` drive everything that moves. Nothing on the
+page animates outside them, so the whole site shares one easing curve
+(`EASE = [0.22, 1, 0.36, 1]`).
+
+| Primitive | Job |
+| --- | --- |
+| `useInView` | Optimistic IntersectionObserver — reports `true` first |
+| `useLoopSequence` | A looping step machine; `durations[i]` holds step `i` |
+| `useTyped` | Character-by-character typing, clears on each loop |
+| `useCountUp` | rAF count to a target, eased out |
+
+Two rules they all obey:
+
+- **Optimistic in-view.** `useInView` starts `true` and only pauses once the
+  element has actually scrolled away. A demo frozen on frame zero because an
+  IntersectionObserver callback never fired reads as a broken page — far worse
+  than one that plays off-screen.
+- **A resting frame, not frame zero.** Every looping demo declares a `restStep`
+  — the frame that best explains the idea as a still. Under
+  `prefers-reduced-motion` it parks there and never advances.
+
+### The hero simulator
+
+`components/marketing/hero-simulator.tsx` is a working replica, not a picture.
+Folders switch, tabs switch, proposals accept and reject, accepted lines merge
+into the page, counters decrement, and a Reset appears when the queue empties.
+It runs entirely on local state — the marketing page demonstrates the review
+loop instead of describing it.
+
+### The compatibility wall
+
+Which chips have a real brand mark is resolved **on the server**
+(`lib/agents.ts` reads `public/assets/agents/`) and passed down. Letting each
+chip probe with an `<img>` and fall back on error costs a 404 per tool per page
+load and fills the console with failures that look like bugs.
+
+Tools without an SVG render a palette-tinted monogram. That is deliberate: a
+hand-drawn near-miss of someone's brand mark reads as broken, not as shorthand.
+Drop a real SVG into `public/assets/agents/<slug>.svg` and the chip picks it up
+with no code change.
+
+### Layout note
+
+Grid and flex items default to `min-width: auto`, so a single `nowrap` element
+inside a demo card can prop an entire section open past the viewport — this
+happened, and cost 27px of horizontal overflow at 375px. Demo cards therefore
+carry `min-w-0 overflow-hidden`, and every grid that holds one carries
+`min-w-0`.
+
+## 10. MCP server
 
 `mcp/server.mjs` — stdio JSON-RPC 2.0, zero dependencies. The protocol surface
 needed is four methods (`initialize`, `tools/list`, `tools/call`, `ping`), so a
@@ -356,7 +407,7 @@ Without that sentence, models reliably report the wiki as updated.
 
 ---
 
-## 10. Known limitations
+## 11. Known limitations
 
 Stated plainly rather than discovered later:
 
