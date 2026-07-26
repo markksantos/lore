@@ -76,7 +76,7 @@ export function MarketingHeader() {
               "ml-1.5 inline-flex h-8 items-center rounded-lg px-3.5 text-[13.5px] font-medium transition-colors",
               scrolled
                 ? "bg-[var(--lore-text-primary)] text-[var(--lore-button-primary-fg)] hover:bg-[var(--lore-button-primary-hover)]"
-                : "bg-white text-[#1c3a2b] hover:bg-[#f4f6f4]",
+                : "bg-white text-[#12356f] hover:bg-[#eef2fb]",
             )}
           >
             Open Lore

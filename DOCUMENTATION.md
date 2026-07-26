@@ -131,6 +131,7 @@ markdown — a suggestion the user has to verify is worse than no suggestion.
 | Method | Route | Body / query | Returns |
 | --- | --- | --- | --- |
 | `GET` | `/api/pages` | `?refresh=1` to force a rescan | full `VaultIndex` |
+| `GET` | `/api/folder` | `?path=` (empty = vault root) | `{ folder, sections, incoming, totals }` |
 | `GET` | `/api/page` | `?path=` | `{ page, frontmatter, raw, backlinks, outgoing }` |
 | `PUT` | `/api/page` | `{ path, content }` | `{ ok, savedAt }` |
 | `POST` | `/api/page` | `{ path, content }` | `{ ok, path }` — 409 if it exists |
@@ -154,6 +155,16 @@ markdown — a suggestion the user has to verify is worse than no suggestion.
 | `GET` | `/api/proposals` | — | `{ proposals: [...with diff stats] }` |
 | `POST` | `/api/proposals` | `{ path, kind, content, reason, agent, risk }` | `{ proposal }` |
 | `POST` | `/api/proposals` | `{ action: "accept" \| "reject", id }` | `{ proposal }` |
+| `POST` | `/api/proposals` | `{ action, ids: [...] }` | `{ resolved, failures }` — the bulk form |
+
+`/api/folder` returns every page in a folder *with its full source* in one
+request, because the folder is the unit the user reads. Fetching bodies lazily
+while they scroll would make the document assemble itself in front of them.
+
+Bulk resolve runs sequentially, not in parallel: two accepts touching the same
+file concurrently would both pass the conflict check and then race on the write.
+Failures are collected rather than thrown, so one conflicting proposal doesn't
+block the other nine.
 
 ---
 
@@ -247,8 +258,32 @@ Adapted from Creed (MIT). Tokens live in `app/globals.css` under `--lore-*`.
 hairline borders — light mode on warm near-white (`#f9f9f8`), dark on near-black
 (`#0e0e0d`) with foreground pulled off pure white so long reading stays easy.
 
-**Accent** is `#2f6f4f` (light) / `#4f9b74` (dark) — a green chosen to sit apart
-from Creed's blue while staying legible on both canvases.
+**Action colour** is `#2563eb`, held constant across both themes — primary CTAs,
+accept buttons, focus rings. Holding it fixed is what makes it read as *the*
+brand colour rather than a theme variable.
+
+**Plates** carry the product's colour identity. Eight slots (`--pal-1` … `--pal-8`)
+— Creed's five plate hues plus three from the same family — assigned by stable
+index in `lib/palette.ts`. Every folder and every page owns one, so a wiki reads
+as a set of coloured objects rather than a grey file list.
+
+Each slot has three values, because one colour cannot do all three jobs:
+
+| Var | Job |
+| --- | --- |
+| `--pal-N` | saturated fill: solid panels, module frames, section rules, dots |
+| `--pal-N-tint` | pale wash behind coloured type |
+| `--pal-N-ink` | darker companion that stays legible *on* that tint |
+
+Components set them as inline custom properties (`--plate`, `--plate-tint`,
+`--plate-ink`) rather than class names, so one stylesheet rule serves all eight
+slots and Tailwind never sees a dynamically-built class it would purge.
+
+Folders take their slot by **position** (adjacent folders in the sidebar are
+never the same colour); pages take theirs by **position within the folder**, for
+the same reason. An earlier version hashed the page id, and two adjacent sections
+promptly collided on the same colour — which is precisely what the colour exists
+to prevent.
 
 **Scenery fades** are the signature. Sky art is never cropped hard against the
 page; it melts through a multi-stop eased gradient:
@@ -314,7 +349,7 @@ Without that sentence, models reliably report the wiki as updated.
 
 Stated plainly rather than discovered later:
 
-- **The vault UI is desktop-only.** The sidebar is a fixed 16.5rem with no mobile
+- **The vault UI is desktop-only.** The sidebar is a fixed 15.5rem with no mobile
   drawer. Lore runs on the machine that holds the wiki, so a phone layout would
   be scaffolding for a scenario that doesn't exist. The landing page *is* fully
   responsive and verified free of horizontal overflow at 375/414/768px.
@@ -327,3 +362,9 @@ Stated plainly rather than discovered later:
   as one big remove followed by one big add.
 - **Health scans the whole vault on every request.** Fine to a few thousand pages;
   it would need incremental indexing beyond that.
+- **A folder document loads every page in that folder at once.** That is the
+  right unit for a personal wiki, but a single folder holding many hundreds of
+  pages would want virtualising.
+- **The palette repeats after eight.** A folder with more than eight pages reuses
+  colours further down the document. Adjacent sections still differ, which is
+  what the colour is for.

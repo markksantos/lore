@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lore — colour options</title>
+<style>
+  :root{
+    --bg:#f9f9f8; --surface:#fff; --raised:#f3f3f1;
+    --border:#e6e6e2; --border-strong:#d6d6d0;
+    --text:#1f1f1a; --text-2:#636360; --text-3:#9a9a96;
+    --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  body.dark{
+    --bg:#0e0e0d; --surface:#161615; --raised:#1f1f1d;
+    --border:#262624; --border-strong:#34342f;
+    --text:#e7e7e2; --text-2:#9c9c95; --text-3:#6b6b65;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    transition:background .2s,color .2s;
+  }
+
+  /* ---------------- chrome ---------------- */
+  .bar{
+    position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:14px;
+    padding:12px 28px;background:color-mix(in srgb,var(--bg) 88%,transparent);
+    backdrop-filter:blur(12px);border-bottom:1px solid var(--border);
+  }
+  .bar b{font-size:15px;letter-spacing:-.02em}
+  .bar .sp{flex:1}
+  .bar a,.bar button{
+    font:inherit;font-size:13px;color:var(--text-2);text-decoration:none;cursor:pointer;
+    background:none;border:1px solid var(--border);border-radius:8px;padding:5px 11px;
+  }
+  .bar a:hover,.bar button:hover{color:var(--text);background:var(--raised)}
+
+  .opt{padding:60px 28px 76px;border-bottom:1px solid var(--border)}
+  .wrap{max-width:1080px;margin:0 auto}
+  .tag{
+    display:inline-block;font-size:11px;font-weight:700;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--text-3);margin-bottom:10px;
+  }
+  h2{font-size:32px;letter-spacing:-.035em;font-weight:600;line-height:1.1}
+  .sub{color:var(--text-2);font-size:15px;line-height:1.6;margin-top:8px;max-width:60ch}
+  .grp{margin-top:38px}
+  .grp-h{
+    font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+    color:var(--text-3);margin-bottom:14px;
+  }
+
+  /* ---------------- stat panels ---------------- */
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .stat{border-radius:16px;padding:22px 20px 18px}
+  .stat .n{font-size:36px;font-weight:700;letter-spacing:-.04em;line-height:1}
+  .stat .n small{font-size:15px;font-weight:600;opacity:.72;margin-left:2px}
+  .stat .l{font-size:13px;font-weight:600;margin-top:12px;line-height:1.35}
+  .stat .d{font-size:12px;line-height:1.5;margin-top:5px;opacity:.8}
+
+  /* solid treatment (A + B) */
+  .solid .stat{color:#fff}
+  .solid .stat.c1{background:var(--c1)} .solid .stat.c2{background:var(--c2)} .solid .stat.c3{background:var(--c3)}
+  /* tint treatment (C) */
+  .tint .stat{border:1px solid var(--border)}
+  .tint .stat.c1{background:var(--t1)} .tint .stat.c2{background:var(--t2)} .tint .stat.c3{background:var(--t3)}
+  .tint .stat.c1 .n{color:var(--c1)} .tint .stat.c2 .n{color:var(--c2)} .tint .stat.c3 .n{color:var(--c3)}
+  .tint .stat .l{color:var(--text)} .tint .stat .d{color:var(--text-2)}
+
+  /* ---------------- framed modules ---------------- */
+  .mods{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .mod{border-radius:18px;overflow:hidden}
+  .solid .mod{padding:10px}
+  .solid .mod.c4{background:var(--c4)} .solid .mod.c5{background:var(--c5)}
+  .tint .mod{padding:10px}
+  .tint .mod.c4{background:var(--t4)} .tint .mod.c5{background:var(--t5)}
+  .mod-in{background:var(--surface);border-radius:11px;padding:18px 18px 20px}
+  .mod-in h3{font-size:16px;font-weight:600;letter-spacing:-.02em}
+  .mod-in p{font-size:13.5px;line-height:1.6;color:var(--text-2);margin-top:7px}
+  .chip{
+    display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;
+    border-radius:7px;padding:3px 8px;margin-bottom:11px;
+  }
+  .solid .mod.c4 .chip{background:var(--c4);color:#fff}
+  .solid .mod.c5 .chip{background:var(--c5);color:#fff}
+  .tint .mod.c4 .chip{background:var(--t4);color:var(--c4)}
+  .tint .mod.c5 .chip{background:var(--t5);color:var(--c5)}
+
+  /* ---------------- app mock ---------------- */
+  .app{
+    border:1px solid var(--border);border-radius:16px;overflow:hidden;
+    background:var(--surface);box-shadow:0 24px 60px -38px rgba(15,23,42,.45);
+  }
+  .app-top{
+    display:flex;align-items:center;gap:7px;padding:9px 14px;
+    background:var(--raised);border-bottom:1px solid var(--border);
+  }
+  .dot{width:9px;height:9px;border-radius:99px;background:var(--border-strong)}
+  .app-top span{margin-left:8px;font-size:11px;color:var(--text-3)}
+  .app-body{display:flex;min-height:430px}
+  .side{width:196px;flex:none;border-right:1px solid var(--border);padding:14px 12px}
+  .nav{font-size:13px;color:var(--text-2);padding:6px 8px;border-radius:8px;display:flex;gap:8px;align-items:center}
+  .nav.on{background:var(--raised);color:var(--text);font-weight:500}
+  .side-h{
+    font-size:10px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+    color:var(--text-3);margin:18px 0 7px 8px;
+  }
+  .fld{
+    display:flex;align-items:center;gap:9px;font-size:13px;color:var(--text-2);
+    padding:6px 8px;border-radius:8px;
+  }
+  .fld.on{background:var(--raised);color:var(--text);font-weight:500}
+  .fld i{width:8px;height:8px;border-radius:99px;flex:none}
+  .fld .cnt{margin-left:auto;font-size:11px;color:var(--text-3)}
+
+  .main{flex:1;padding:20px 26px 26px;min-width:0}
+  .main h4{font-size:21px;font-weight:600;letter-spacing:-.03em}
+  .saved{font-size:11.5px;color:var(--text-3);margin-top:3px}
+  .propbar{
+    display:flex;align-items:center;gap:12px;margin-top:14px;padding:9px 8px 9px 14px;
+    border:1px solid var(--border);border-radius:12px;font-size:12.5px;
+  }
+  .propbar .plus{color:#16a34a;font-weight:600;font-family:var(--mono)}
+  .propbar .minus{color:#dc2626;font-weight:600;font-family:var(--mono)}
+  .propbar .txt{color:var(--text-2)}
+  .propbar .sp{flex:1}
+  .ghost{font-size:12.5px;color:var(--text-2);padding:5px 9px;border-radius:8px}
+  .primary{
+    font-size:12.5px;font-weight:600;color:#fff;background:var(--c1);
+    padding:5px 12px;border-radius:8px;
+  }
+
+  .sec{margin-top:22px;padding-left:14px;position:relative}
+  .sec::before{
+    content:"";position:absolute;left:0;top:2px;bottom:0;width:3px;border-radius:99px;
+  }
+  .sec.s1::before{background:var(--c1)} .sec.s2::before{background:var(--c2)}
+  .sec.s3::before{background:var(--c3)} .sec.s4::before{background:var(--c4)}
+  .sec-t{font-size:15px;font-weight:600;letter-spacing:-.015em;display:flex;align-items:center;gap:8px}
+  .sec.s1 .sec-t{color:var(--c1)} .sec.s2 .sec-t{color:var(--c2)}
+  .sec.s3 .sec-t{color:var(--c3)} .sec.s4 .sec-t{color:var(--c4)}
+  .sec-t em{
+    font-style:normal;font-size:10.5px;font-weight:600;padding:1.5px 6px;border-radius:6px;
+  }
+  .sec.s1 .sec-t em{background:var(--t1);color:var(--c1)}
+  .sec.s2 .sec-t em{background:var(--t2);color:var(--c2)}
+  .sec.s3 .sec-t em{background:var(--t3);color:var(--c3)}
+  .sec p{font-size:13.5px;line-height:1.7;color:var(--text-2);margin-top:6px}
+
+  .inline{
+    margin-top:10px;border:1px solid var(--border);border-radius:11px;overflow:hidden;
+  }
+  .inline-h{
+    display:flex;align-items:center;gap:9px;padding:7px 11px;font-size:11.5px;
+    background:var(--raised);border-bottom:1px solid var(--border);
+  }
+  .inline-h b{font-size:12px;font-weight:600}
+  .risk{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+        padding:1.5px 6px;border-radius:99px;border:1px solid currentColor;color:#b45309}
+  .inline-h .sp{flex:1}
+  .diff{font-family:var(--mono);font-size:11.5px;line-height:1.75;padding:7px 11px;background:var(--bg)}
+  .diff .a{background:rgba(22,163,74,.13);color:#15803d;display:block;padding:0 4px;border-radius:3px}
+  .diff .k{color:var(--text-3);display:block;padding:0 4px}
+  body.dark .diff .a{background:rgba(34,197,94,.13);color:#4ade80}
+
+  .legend{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+  .sw{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--text-2);
+      border:1px solid var(--border);border-radius:99px;padding:4px 11px 4px 5px}
+  .sw i{width:16px;height:16px;border-radius:5px;display:block}
+  .sw code{font-family:var(--mono);font-size:10.5px;color:var(--text-3)}
+
+  /* ============ OPTION A — own hues, saturated ============ */
+  #a{--c1:#6d5efc;--c2:#ff7a5c;--c3:#f2568f;--c4:#12b3a3;--c5:#f5a524;
+     --t1:#ece9ff;--t2:#ffeae4;--t3:#ffe6ef;--t4:#dcf7f4;--t5:#fff1d6}
+  body.dark #a{--t1:rgba(109,94,252,.2);--t2:rgba(255,122,92,.2);--t3:rgba(242,86,143,.2);
+     --t4:rgba(18,179,163,.2);--t5:rgba(245,165,36,.2)}
+  /* ============ OPTION B — Creed's exact hues ============ */
+  #b{--c1:#4f9eff;--c2:#ff9c5e;--c3:#ff6fc1;--c4:#84d678;--c5:#7fbcff;
+     --t1:#dbeafe;--t2:#ffedd5;--t3:#fce7f3;--t4:#d1fae5;--t5:#e0f2fe}
+  body.dark #b{--t1:rgba(96,165,250,.2);--t2:rgba(251,146,60,.2);--t3:rgba(244,114,182,.2);
+     --t4:rgba(74,222,128,.2);--t5:rgba(56,189,248,.2)}
+  /* ============ OPTION C — same hues as A, soft ============ */
+  #c{--c1:#6d5efc;--c2:#e2603f;--c3:#d9407a;--c4:#0e9b8d;--c5:#c9860e;
+     --t1:#ece9ff;--t2:#ffeae4;--t3:#ffe6ef;--t4:#dcf7f4;--t5:#fff1d6}
+  body.dark #c{--c1:#9b90ff;--c2:#ff9576;--c3:#ff7aa8;--c4:#3fc9ba;--c5:#f0b342;
+     --t1:rgba(109,94,252,.18);--t2:rgba(255,122,92,.18);--t3:rgba(242,86,143,.18);
+     --t4:rgba(18,179,163,.18);--t5:rgba(245,165,36,.18)}
+
+  @media (max-width:860px){
+    .stats,.mods{grid-template-columns:1fr}
+    .side{display:none}
+  }
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <b>Lore — colour options</b>
+  <a href="#a">A</a><a href="#b">B</a><a href="#c">C</a>
+  <span class="sp"></span>
+  <button onclick="document.body.classList.toggle('dark')">Light / dark</button>
+</div>
+
+<!-- ============================= A ============================= -->
+<section class="opt solid" id="a">
+  <div class="wrap">
+    <span class="tag">Option A</span>
+    <h2>Creed's level of colour, Lore's own hues</h2>
+    <p class="sub">
+      Exactly how colourful Creed is — solid saturated stat panels, thick colour frames around
+      every module, a colour per folder — but on a violet / coral / rose / teal / amber palette
+      so it reads as its own product rather than a recolour of theirs.
+    </p>
+
+    <div class="legend">
+      <span class="sw"><i style="background:#6d5efc"></i><code>#6d5efc</code></span>
+      <span class="sw"><i style="background:#ff7a5c"></i><code>#ff7a5c</code></span>
+      <span class="sw"><i style="background:#f2568f"></i><code>#f2568f</code></span>
+      <span class="sw"><i style="background:#12b3a3"></i><code>#12b3a3</code></span>
+      <span class="sw"><i style="background:#f5a524"></i><code>#f5a524</code></span>
+    </div>
+
+    <div class="grp">
+      <div class="grp-h">Landing — stat panels</div>
+      <div class="stats">
+        <div class="stat c1"><div class="n">150<small>+ pages</small></div><div class="l">where an agent stops coping</div><div class="d">Past ~150 notes an index no longer fits in context.</div></div>
+        <div class="stat c2"><div class="n">1<small> of 9</small></div><div class="l">wiki tools that speak MCP</div><div class="d">Your agents are locked outside the thing you built.</div></div>
+        <div class="stat c3"><div class="n">0<small> clocks</small></div><div class="l">on anything going stale</div><div class="d">Nothing tells you March's page stopped being true.</div></div>
+      </div>
+    </div>
+
+    <div class="grp">
+      <div class="grp-h">Landing — framed modules</div>
+      <div class="mods">
+        <div class="mod c4"><div class="mod-in"><span class="chip">Link</span><h3>Link the folder. That's the setup.</h3><p>No import, no migration, no new format. Lore reads the markdown where it sits.</p></div></div>
+        <div class="mod c5"><div class="mod-in"><span class="chip">Review</span><h3>Agents propose. You accept.</h3><p>There is no write tool. Every change waits as a diff with a reason and a risk tier.</p></div></div>
+      </div>
+    </div>
+
+    <div class="grp">
+      <div class="grp-h">App — a folder is the document</div>
+      <div class="app">
+        <div class="app-top"><i class="dot"></i><i class="dot"></i><i class="dot"></i><span>localhost:4646 — ~/Documents/wiki</span></div>
+        <div class="app-body">
+          <div class="side">
+            <div class="nav on">▤ Wiki</div><div class="nav">⚯ Connections</div><div class="nav">⚙ Settings</div>
+            <div class="side-h">Folders</div>
+            <div class="fld on"><i style="background:var(--c1)"></i>stack<span class="cnt">3</span></div>
+            <div class="fld"><i style="background:var(--c2)"></i>operating<span class="cnt">2</span></div>
+            <div class="fld"><i style="background:var(--c3)"></i>projects<span class="cnt">3</span></div>
+            <div class="fld"><i style="background:var(--c4)"></i>clients<span class="cnt">6</span></div>
+          </div>
+          <div class="main">
+            <h4>stack</h4><div class="saved">Saved just now</div>
+            <div class="propbar"><span class="plus">+11</span><span class="minus">−0</span><span class="txt">2 proposals</span><span class="sp"></span><span class="ghost">Reject all</span><span class="primary">Accept all</span></div>
+            <div class="sec s1"><div class="sec-t">Deploy pipeline</div><p>Push to main deploys to production. There is no staging step.</p></div>
+            <div class="sec s2"><div class="sec-t">Postgres notes <em>1 proposal</em></div><p>Running Postgres 16. Connection pooling handled at the edge.</p>
+              <div class="inline"><div class="inline-h"><b>Claude Code</b><span class="risk">medium</span><span style="color:var(--text-3)">append</span><span class="sp"></span><span class="plus">+1</span><span class="minus">−0</span><span class="ghost">Reject</span><span class="primary">Accept</span></div>
+                <div class="diff"><span class="k">  Running Postgres 16…</span><span class="a">+ Upgraded to Postgres 17 on 2026-07-20.</span></div></div></div>
+            <div class="sec s3"><div class="sec-t">Auth decisions</div><p>Session cookies over JWTs. Revocation was the deciding factor.</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================= B ============================= -->
+<section class="opt solid" id="b">
+  <div class="wrap">
+    <span class="tag">Option B</span>
+    <h2>Creed's exact hues</h2>
+    <p class="sub">
+      Same saturation and structure as A, but using Creed's own plate colours straight from their
+      stylesheet. Reads as visually near-identical to Creed — closest to their page, least
+      distinct as a separate product.
+    </p>
+
+    <div class="legend">
+      <span class="sw"><i style="background:#4f9eff"></i><code>#4f9eff</code></span>
+      <span class="sw"><i style="background:#ff9c5e"></i><code>#ff9c5e</code></span>
+      <span class="sw"><i style="background:#ff6fc1"></i><code>#ff6fc1</code></span>
+      <span class="sw"><i style="background:#84d678"></i><code>#84d678</code></span>
+      <span class="sw"><i style="background:#7fbcff"></i><code>#7fbcff</code></span>
+    </div>
+
+    <div class="grp">
+      <div class="grp-h">Landing — stat panels</div>
+      <div class="stats">
+        <div class="stat c1"><div class="n">150<small>+ pages</small></div><div class="l">where an agent stops coping</div><div class="d">Past ~150 notes an index no longer fits in context.</div></div>
+        <div class="stat c2"><div class="n">1<small> of 9</small></div><div class="l">wiki tools that speak MCP</div><div class="d">Your agents are locked outside the thing you built.</div></div>
+        <div class="stat c3"><div class="n">0<small> clocks</small></div><div class="l">on anything going stale</div><div class="d">Nothing tells you March's page stopped being true.</div></div>
+      </div>
+    </div>
+
+    <div class="grp">
+      <div class="grp-h">Landing — framed modules</div>
+      <div class="mods">
+        <div class="mod c4"><div class="mod-in"><span class="chip">Link</span><h3>Link the folder. That's the setup.</h3><p>No import, no migration, no new format. Lore reads the markdown where it sits.</p></div></div>
+        <div class="mod c5"><div class="mod-in"><span class="chip">Review</span><h3>Agents propose. You accept.</h3><p>There is no write tool. Every change waits as a diff with a reason and a risk tier.</p></div></div>
+      </div>
+    </div>
+
+    <div class="grp">
+      <div class="grp-h">App — a folder is the document</div>
+      <div class="app">
+        <div class="app-top"><i class="dot"></i><i class="dot"></i><i class="dot"></i><span>localhost:4646 — ~/Documents/wiki</span></div>
+        <div class="app-body">
+          <div class="side">
+            <div class="nav on">▤ Wiki</div><div class="nav">⚯ Connections</div><div class="nav">⚙ Settings</div>
+            <div class="side-h">Folders</div>
+            <div class="fld on"><i style="background:var(--c1)"></i>stack<span class="cnt">3</span></div>
+            <div class="fld"><i style="background:var(--c2)"></i>operating<span class="cnt">2</span></div>
+            <div class="fld"><i style="background:var(--c3)"></i>projects<span class="cnt">3</span></div>
+            <div class="fld"><i style="background:var(--c4)"></i>clients<span class="cnt">6</span></div>
+          </div>
+          <div class="main">
+            <h4>stack</h4><div class="saved">Saved just now</div>
+            <div class="propbar"><span class="plus">+11</span><span class="minus">−0</span><span class="txt">2 proposals</span><span class="sp"></span><span class="ghost">Reject all</span><span class="primary">Accept all</span></div>
+            <div class="sec s1"><div class="sec-t">Deploy pipeline</div><p>Push to main deploys to production. There is no staging step.</p></div>
+            <div class="sec s2"><div class="sec-t">Postgres notes <em>1 proposal</em></div><p>Running Postgres 16. Connection pooling handled at the edge.</p>
+              <div class="inline"><div class="inline-h"><b>Claude Code</b><span class="risk">medium</span><span style="color:var(--text-3)">append</span><span class="sp"></span><span class="plus">+1</span><span class="minus">−0</span><span class="ghost">Reject</span><span class="primary">Accept</span></div>
+                <div class="diff"><span class="k">  Running Postgres 16…</span><span class="a">+ Upgraded to Postgres 17 on 2026-07-20.</span></div></div></div>
+            <div class="sec s3"><div class="sec-t">Auth decisions</div><p>Session cookies over JWTs. Revocation was the deciding factor.</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================= C ============================= -->
+<section class="opt tint" id="c">
+  <div class="wrap">
+    <span class="tag">Option C</span>
+    <h2>Colourful, a notch calmer</h2>
+    <p class="sub">
+      Colour everywhere in the same places — every panel, every frame, every folder and section —
+      but as soft tints with coloured type instead of solid blocks. Still unmistakably colourful,
+      easier to read for long stretches.
+    </p>
+
+    <div class="legend">
+      <span class="sw"><i style="background:#ece9ff"></i><code>tint + #6d5efc type</code></span>
+      <span class="sw"><i style="background:#ffeae4"></i><code>tint + #e2603f type</code></span>
+      <span class="sw"><i style="background:#ffe6ef"></i><code>tint + #d9407a type</code></span>
+      <span class="sw"><i style="background:#dcf7f4"></i><code>tint + #0e9b8d type</code></span>
+    </div>
+
+    <div class="grp">
+      <div class="grp-h">Landing — stat panels</div>
+      <div class="stats">
+        <div class="stat c1"><div class="n">150<small>+ pages</small></div><div class="l">where an agent stops coping</div><div class="d">Past ~150 notes an index no longer fits in context.</div></div>
+        <div class="stat c2"><div class="n">1<small> of 9</small></div><div class="l">wiki tools that speak MCP</div><div class="d">Your agents are locked outside the thing you built.</div></div>
+        <div class="stat c3"><div class="n">0<small> clocks</small></div><div class="l">on anything going stale</div><div class="d">Nothing tells you March's page stopped being true.</div></div>
+      </div>
+    </div>
+
+    <div class="grp">
+      <div class="grp-h">Landing — framed modules</div>
+      <div class="mods">
+        <div class="mod c4"><div class="mod-in"><span class="chip">Link</span><h3>Link the folder. That's the setup.</h3><p>No import, no migration, no new format. Lore reads the markdown where it sits.</p></div></div>
+        <div class="mod c5"><div class="mod-in"><span class="chip">Review</span><h3>Agents propose. You accept.</h3><p>There is no write tool. Every change waits as a diff with a reason and a risk tier.</p></div></div>
+      </div>
+    </div>
+
+    <div class="grp">
+      <div class="grp-h">App — a folder is the document</div>
+      <div class="app">
+        <div class="app-top"><i class="dot"></i><i class="dot"></i><i class="dot"></i><span>localhost:4646 — ~/Documents/wiki</span></div>
+        <div class="app-body">
+          <div class="side">
+            <div class="nav on">▤ Wiki</div><div class="nav">⚯ Connections</div><div class="nav">⚙ Settings</div>
+            <div class="side-h">Folders</div>
+            <div class="fld on"><i style="background:var(--c1)"></i>stack<span class="cnt">3</span></div>
+            <div class="fld"><i style="background:var(--c2)"></i>operating<span class="cnt">2</span></div>
+            <div class="fld"><i style="background:var(--c3)"></i>projects<span class="cnt">3</span></div>
+            <div class="fld"><i style="background:var(--c4)"></i>clients<span class="cnt">6</span></div>
+          </div>
+          <div class="main">
+            <h4>stack</h4><div class="saved">Saved just now</div>
+            <div class="propbar"><span class="plus">+11</span><span class="minus">−0</span><span class="txt">2 proposals</span><span class="sp"></span><span class="ghost">Reject all</span><span class="primary">Accept all</span></div>
+            <div class="sec s1"><div class="sec-t">Deploy pipeline</div><p>Push to main deploys to production. There is no staging step.</p></div>
+            <div class="sec s2"><div class="sec-t">Postgres notes <em>1 proposal</em></div><p>Running Postgres 16. Connection pooling handled at the edge.</p>
+              <div class="inline"><div class="inline-h"><b>Claude Code</b><span class="risk">medium</span><span style="color:var(--text-3)">append</span><span class="sp"></span><span class="plus">+1</span><span class="minus">−0</span><span class="ghost">Reject</span><span class="primary">Accept</span></div>
+                <div class="diff"><span class="k">  Running Postgres 16…</span><span class="a">+ Upgraded to Postgres 17 on 2026-07-20.</span></div></div></div>
+            <div class="sec s3"><div class="sec-t">Auth decisions</div><p>Session cookies over JWTs. Revocation was the deciding factor.</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</body>
+</html>

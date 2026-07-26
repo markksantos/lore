@@ -180,3 +180,95 @@ application code change. Production is clean in both light and dark.
 QA ran against a synthetic 8-page demo vault, **not** the real wiki on this
 machine — that vault contains client names and financial detail, and this session
 was screen-recorded.
+
+---
+
+# Round two — the rebuild
+
+Mark reviewed round one and rejected it on two counts: the design wasn't
+anywhere near as colourful as Creed's, and the app didn't work the way it should.
+Both were correct.
+
+## Diagnosis
+
+Rather than reason from the text I'd scraped, I rendered Creed's saved landing
+page with Playwright and screenshotted their app demo at 2x. That settled it.
+
+**Colour.** I had copied Creed's plate variables into my stylesheet
+(`--plate-proposal: #4f9eff`, `--plate-direct: #ff9c5e`, …) and then never used
+them. Their stat blocks are solid saturated panels with white type; every
+how-it-works module sits inside a thick colour frame; there are fifteen accent
+tints because every section of the file owns a colour. I shipped neutral cards,
+hairline borders and one green accent.
+
+**Shape — the real miss.** Creed's app is a *single scrolling document*. Sidebar
+is three items (File / Connections / Settings) plus a Sections list with coloured
+dots. The main pane stacks sections down one page, each with a coloured left rule
+and coloured title, editable inline, with one global
+`+11 −0 · 1 proposal · Reject all · Accept all` bar at the top and individual
+proposals appearing *inside the section they change*.
+
+I had built a file explorer: chevron folder tree, click a file, it opens in a
+pane, proposals live in a separate Review tab. That is Obsidian's paradigm
+wearing Creed's paint — exactly what the brief said not to do. I defaulted to the
+obvious structure instead of translating theirs.
+
+## The one decision I couldn't make alone
+
+Creed has ten sections; Mark's wiki has 579 pages. "One scrolling document"
+doesn't survive that without deciding what "the document" is. Three options went
+back with ASCII previews. Mark picked **a folder is the document** — the sidebar
+lists folders, each opens as one continuous scroll of its pages.
+
+For colour he asked to see the options rather than read descriptions of them, so
+`docs/style-options.html` renders three treatments over identical content
+(landing panels, framed modules, and the app view) with a light/dark toggle. He
+picked **Creed's exact hues**.
+
+## What changed
+
+| Before | After |
+| --- | --- |
+| 4-tab nav: Pages / Review / Health / Agents | 3: Wiki / Connections / Settings |
+| Chevron file tree | Folders with coloured dots |
+| One file open at a time | Folder as one scrolling document |
+| Proposals in a separate Review tab | Inline, inside the section they change |
+| No bulk action | Global `Accept all` / `Reject all` per folder |
+| Health as a nav tab | Folded into Settings |
+| Monochrome green | Eight-slot plate palette, solid panels, thick frames |
+
+New: `lib/palette.ts`, `app/api/folder`, `components/lore/folder-document.tsx`,
+`components/lore/page-section.tsx`, `components/lore/settings-view.tsx`,
+`resolveMany()` for bulk resolve. Deleted: `review-view.tsx`, `page-view.tsx`,
+`health-view.tsx`.
+
+## Bugs found in round two
+
+**Two sections rendered the same colour.** Page colour was assigned by hashing
+the page id, and with eight slots a collision inside a three-page folder is
+likely enough to hit immediately — which it did. Adjacent sections being the same
+colour defeats the entire point. Now assigned by position within the folder, so
+neighbours are never equal.
+
+**The outgoing-links row duplicated the prose.** Each section listed its
+outgoing links beneath the body, but wikilinks already render inline and are
+already clickable, so every link appeared twice. Row removed.
+
+**A callout inside a coloured section drew a blue rule.** `blockquote::before`
+was hardcoded to the action blue, so a pink section sprouted a blue bar. It now
+inherits `--plate`.
+
+**Stale copy.** The FAQ and the how-it-works body still told users their changes
+"wait in Review" — a screen that no longer exists. Rewritten to describe the
+inline flow.
+
+## Verification
+
+| Check | Result |
+| --- | --- |
+| `npx tsc --noEmit` | clean |
+| `npm run build` | clean, 11 routes |
+| `/api/folder?path=stack` | 3 sections, 1 incoming, totals `+12 −0` across 2 proposals |
+| Console errors, production, light + dark | zero |
+| Horizontal overflow at 375 / 768px | none |
+| Landing + app, both themes | screenshotted and reviewed by eye |

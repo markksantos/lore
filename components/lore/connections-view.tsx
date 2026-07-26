@@ -15,7 +15,7 @@ import { APP_PORT } from "@/lib/brand";
  * Most tools in this space ship one or the other and leave you to discover
  * which your agent needs.
  */
-export function AgentsView({ root, installDir }: { root: string; installDir: string }) {
+export function ConnectionsView({ root, installDir }: { root: string; installDir: string }) {
   const [wrote, setWrote] = useState<"idle" | "writing" | "done">("idle");
   const [error, setError] = useState<string | null>(null);
 
@@ -53,7 +53,7 @@ export function AgentsView({ root, installDir }: { root: string; installDir: str
     <div className="mx-auto max-w-3xl px-8 py-9">
       <header className="mb-7">
         <h1 className="text-[26px] font-semibold tracking-[-0.035em] text-[var(--lore-text-primary)]">
-          Agents
+          Connections
         </h1>
         <p className="t-body mt-1.5 text-[var(--lore-text-secondary)]">
           Two ways in. Wire either one and your agents can read this wiki — and propose

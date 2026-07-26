@@ -44,23 +44,55 @@
   --lore-button-primary-fg: #ffffff;
   --lore-button-primary-hover: #2b2b28;
 
-  /* Brand action colour. Constant across both themes so the accent reads
-     identically in light and dark. */
-  --lore-accent: #2f6f4f;
-  --lore-accent-hover: #275c42;
-  --lore-accent-tint: rgba(47, 111, 79, 0.1);
+  /* Brand action colour — primary CTAs, accept buttons, focus rings. Held
+     constant across both themes so the blue reads identically in light and
+     dark, exactly as Creed does it. */
+  --lore-accent: #2563eb;
+  --lore-accent-hover: #1d4ed8;
+  --lore-accent-tint: rgba(37, 99, 235, 0.1);
 
   --lore-success: #16a34a;
   --lore-danger: #dc2626;
 
-  /* Tag / folder tints, cycled by index so a vault's tags stay visually
-     distinguishable without anyone having to pick colours. */
-  --tint-1: #ede9fe;
-  --tint-2: #dbeafe;
-  --tint-3: #d1fae5;
-  --tint-4: #fef3c7;
-  --tint-5: #ffe4e6;
-  --tint-6: #cffafe;
+  /* ------------------------------------------------------------------ plates
+     The colour identity of the product. Every folder and every page gets one
+     of these eight slots by stable index (see lib/palette.ts), so a wiki reads
+     as a set of coloured objects rather than a grey file list. Slots 1–5 are
+     Creed's plate colours; 6–8 extend the same family so a folder of more than
+     five pages doesn't immediately repeat.
+
+     `--pal-N` is the saturated fill: solid panels, thick module frames, the
+     section rule, the sidebar dot. `--pal-N-tint` is the wash used behind
+     coloured type where a solid block would be too loud. */
+  --pal-1: #4f9eff;
+  --pal-2: #ff9c5e;
+  --pal-3: #ff6fc1;
+  --pal-4: #84d678;
+  --pal-5: #7fbcff;
+  --pal-6: #c084fc;
+  --pal-7: #fbbf24;
+  --pal-8: #22d3ee;
+
+  --pal-1-tint: #dbeafe;
+  --pal-2-tint: #ffedd5;
+  --pal-3-tint: #fce7f3;
+  --pal-4-tint: #d1fae5;
+  --pal-5-tint: #e0f2fe;
+  --pal-6-tint: #f3e8ff;
+  --pal-7-tint: #fef3c7;
+  --pal-8-tint: #cffafe;
+
+  /* Type colour to pair with a tint. The raw plate is tuned for a solid fill
+     and goes illegibly light on a pale wash, so each tint carries its own
+     darker companion. */
+  --pal-1-ink: #1d6fd6;
+  --pal-2-ink: #c2662c;
+  --pal-3-ink: #d13b8f;
+  --pal-4-ink: #3f9433;
+  --pal-5-ink: #2f7fd1;
+  --pal-6-ink: #8b47d6;
+  --pal-7-ink: #b47d0a;
+  --pal-8-ink: #0e93ad;
 
   /* Scenery fades. The sky art at the top and bottom of the landing page melts
      into the page background through these. Stops are densely sampled along an
@@ -93,19 +125,46 @@
   --lore-button-primary-fg: #0e0e0d;
   --lore-button-primary-hover: #cfcfc8;
 
-  --lore-accent: #4f9b74;
-  --lore-accent-hover: #5fae85;
-  --lore-accent-tint: rgba(79, 155, 116, 0.16);
+  /* The action blue is deliberately NOT re-tinted for dark — holding it
+     constant is what makes the brand colour read as the same colour. */
+  --lore-accent: #2563eb;
+  --lore-accent-hover: #1d4ed8;
+  --lore-accent-tint: rgba(59, 130, 246, 0.18);
 
   --lore-success: #4ade80;
   --lore-danger: #f87171;
 
-  --tint-1: rgba(192, 132, 252, 0.18);
-  --tint-2: rgba(96, 165, 250, 0.18);
-  --tint-3: rgba(74, 222, 128, 0.16);
-  --tint-4: rgba(251, 191, 36, 0.18);
-  --tint-5: rgba(251, 113, 133, 0.18);
-  --tint-6: rgba(34, 211, 238, 0.16);
+  /* Deepened plates. A pastel that reads as cheerful on white flashes on a
+     near-black canvas, so each fill drops saturation and value while keeping
+     its hue. */
+  --pal-1: #2069d6;
+  --pal-2: #d46d2d;
+  --pal-3: #d62b8f;
+  --pal-4: #4bc03b;
+  --pal-5: #3a86e8;
+  --pal-6: #9333ea;
+  --pal-7: #d99b12;
+  --pal-8: #0e9cb8;
+
+  --pal-1-tint: rgba(96, 165, 250, 0.18);
+  --pal-2-tint: rgba(251, 146, 60, 0.18);
+  --pal-3-tint: rgba(244, 114, 182, 0.18);
+  --pal-4-tint: rgba(74, 222, 128, 0.16);
+  --pal-5-tint: rgba(56, 189, 248, 0.18);
+  --pal-6-tint: rgba(192, 132, 252, 0.18);
+  --pal-7-tint: rgba(251, 191, 36, 0.18);
+  --pal-8-tint: rgba(34, 211, 238, 0.16);
+
+  /* On dark the tints are already translucent washes, so the companion ink
+     brightens rather than darkens. */
+  --pal-1-ink: #7fb4ff;
+  --pal-2-ink: #ffb37a;
+  --pal-3-ink: #ff8fd0;
+  --pal-4-ink: #9ae68f;
+  --pal-5-ink: #93c9ff;
+  --pal-6-ink: #d4a5fc;
+  --pal-7-ink: #fcd34d;
+  --pal-8-ink: #5fe0f0;
 
   --scenery-fade-down: linear-gradient(180deg, rgba(14,14,13,0) 0%, rgba(14,14,13,0.012) 14%, rgba(14,14,13,0.05) 26%, rgba(14,14,13,0.11) 37%, rgba(14,14,13,0.2) 47%, rgba(14,14,13,0.32) 56%, rgba(14,14,13,0.45) 64%, rgba(14,14,13,0.59) 72%, rgba(14,14,13,0.73) 80%, rgba(14,14,13,0.85) 87%, rgba(14,14,13,0.94) 93%, rgba(14,14,13,1) 100%);
   --scenery-fade-band: linear-gradient(180deg, rgba(14,14,13,1) 0%, rgba(14,14,13,0.98) 4%, rgba(14,14,13,0.9) 8%, rgba(14,14,13,0.74) 12%, rgba(14,14,13,0.5) 16%, rgba(14,14,13,0.26) 20%, rgba(14,14,13,0.1) 24%, rgba(14,14,13,0.016) 28%, rgba(14,14,13,0) 32%, rgba(14,14,13,0) 65%, rgba(14,14,13,0.016) 69%, rgba(14,14,13,0.1) 73%, rgba(14,14,13,0.26) 77%, rgba(14,14,13,0.5) 81%, rgba(14,14,13,0.74) 85%, rgba(14,14,13,0.9) 89%, rgba(14,14,13,0.98) 93%, rgba(14,14,13,1) 97%, rgba(14,14,13,1) 100%);
@@ -319,7 +378,7 @@
   bottom: 0;
   left: 0;
   width: 4px;
-  background: var(--lore-accent);
+  background: var(--plate, var(--lore-accent));
   content: "";
 }
 
@@ -426,12 +485,76 @@
 }
 
 ::selection {
-  background: rgba(47, 111, 79, 0.22);
+  background: rgba(37, 99, 235, 0.24);
 }
 
 .dark ::selection {
-  background: rgba(79, 155, 116, 0.38);
+  background: rgba(59, 130, 246, 0.42);
   color: #f5f5f0;
+}
+
+/* ------------------------------------------------------------------- plates
+   A `.plate` is a saturated colour panel with white type — the landing page's
+   stat blocks. A `.frame` is the thick colour border Creed wraps every
+   how-it-works module in. Both take their colour from `--plate`, set inline by
+   the component from lib/palette.ts, so one rule serves all eight slots. */
+
+.plate {
+  background: var(--plate, var(--lore-accent));
+  color: #ffffff;
+  border-radius: 1rem;
+}
+
+.plate-muted {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.frame {
+  background: var(--plate, var(--lore-accent));
+  border-radius: 1.15rem;
+  padding: 0.6rem;
+}
+
+.frame > * {
+  background: var(--lore-surface);
+  border-radius: 0.72rem;
+}
+
+/* A page or folder's colour identity in list form: the dot in the sidebar and
+   the rule down the left of a section in the document. */
+.pal-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--plate, var(--lore-text-tertiary));
+}
+
+.pal-rule {
+  position: relative;
+  padding-left: 0.95rem;
+}
+
+.pal-rule::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.15rem;
+  bottom: 0;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--plate, var(--lore-border-strong));
+}
+
+/* Section titles take the page's colour. On the pale canvas the raw plate is
+   too light to read as type, so `--plate-ink` is used instead. */
+.pal-title {
+  color: var(--plate-ink, var(--lore-text-primary));
+}
+
+.pal-chip {
+  background: var(--plate-tint, var(--lore-surface-raised));
+  color: var(--plate-ink, var(--lore-text-secondary));
 }
 
 @keyframes lore-fade-up {

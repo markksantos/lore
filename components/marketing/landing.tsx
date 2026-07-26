@@ -6,6 +6,7 @@ import { ArrowRight, FolderOpen, Plug, ShieldCheck, ChevronDown } from "lucide-r
 import { SceneryImage } from "@/components/marketing/scenery-image";
 import { MarketingFooter, MarketingHeader } from "@/components/marketing/site-chrome";
 import { VaultDemo } from "@/components/marketing/vault-demo";
+import { paletteVars } from "@/lib/palette";
 import { cn } from "@/lib/utils";
 
 export function Landing() {
@@ -79,7 +80,7 @@ function Hero() {
               <div className="mt-7 flex justify-center">
                 <Link
                   href="/vault"
-                  className="group inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-white pl-4 pr-3 text-[14px] font-medium text-[#1c3a2b] transition-colors hover:bg-[#f4f6f4]"
+                  className="group inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-white pl-4 pr-3 text-[14px] font-medium text-[#12356f] transition-colors hover:bg-[#eef2fb]"
                 >
                   <span className="leading-none">Link your wiki</span>
                   <ArrowRight
@@ -107,20 +108,23 @@ function Problem() {
       title="You already wrote it down. Your agents still ask."
       lede="Everything an agent needs to stop guessing is sitting in a folder on your disk. It just has no way in — and no way to give anything back."
     >
-      <div className="mt-12 grid gap-x-10 gap-y-8 sm:grid-cols-3">
+      <div className="mt-12 grid gap-4 sm:grid-cols-3">
         <Stat
-          value="150+"
-          unit="pages"
+          slot={0}
+          value="150"
+          unit="+ pages"
           label="where an agent stops coping"
           body="Past roughly a hundred and fifty notes, an index no longer fits in context. The agent stops finding the right page and starts writing a duplicate."
         />
         <Stat
-          value="1 of 9"
-          unit=""
+          slot={1}
+          value="1"
+          unit="of 9"
           label="wiki tools that speak MCP"
           body="Almost every notes app in this space assumes a human at a keyboard. Your agents are locked outside the thing you built for them."
         />
         <Stat
+          slot={2}
           value="0"
           unit="clocks"
           label="on anything going stale"
@@ -135,18 +139,21 @@ function HowItWorks() {
   const items = [
     {
       icon: FolderOpen,
+      slot: 3,
       title: "Link the folder. That's the setup.",
       body: "No import, no migration, no new format. Lore reads the markdown where it sits — your headings, your frontmatter, your [[wikilinks]], your folder names. It infers the structure you already chose instead of imposing one. Delete Lore tomorrow and the wiki is byte-for-byte what it was.",
     },
     {
       icon: Plug,
+      slot: 0,
       title: "Every agent gets a map, not a haystack",
       body: "Lore writes one AGENTS.md at your vault root — every page, folder, tag, and a one-line summary — and serves the same map over MCP with search and read. An agent skims the map, opens the two pages that matter, and answers. It never has to read your whole wiki or grep blind.",
     },
     {
       icon: ShieldCheck,
+      slot: 6,
       title: "Agents propose. You accept.",
-      body: "There is no write tool. When an agent learns something durable it files a proposal, and the change waits in Review as a diff with a reason and a risk tier. The wiki changes when you say so — because the edit that hurts is never the obviously wrong one, it's the plausible one you'd have missed.",
+      body: "There is no write tool. When an agent learns something durable it files a proposal, and the diff appears inside the page it would change, with a reason and a risk tier, right where you are already reading. The wiki changes when you say so — because the edit that hurts is never the obviously wrong one, it's the plausible one you'd have missed.",
     },
   ];
 
@@ -156,25 +163,32 @@ function HowItWorks() {
       title="Three moving parts."
       lede="Link a folder, hand your agents the map, keep the pen."
     >
-      <div className="mt-12 space-y-px overflow-hidden rounded-2xl border border-[var(--lore-border)] bg-[var(--lore-border)]">
+      {/* Each module sits in a thick colour frame — the pattern that carries
+          most of the page's colour. */}
+      <div className="mt-12 space-y-4">
         {items.map((item, i) => {
           const Icon = item.icon;
           return (
-            <div
-              key={item.title}
-              className="flex flex-col gap-4 bg-[var(--lore-surface)] px-6 py-8 sm:flex-row sm:gap-8 sm:px-9 sm:py-10"
-            >
-              <div className="flex shrink-0 items-start gap-4 sm:w-52">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--lore-accent-tint)] text-[var(--lore-accent)]">
-                  <Icon size={17} />
-                </span>
-                <span className="t-meta pt-2.5 font-mono text-[var(--lore-text-tertiary)]">
-                  0{i + 1}
-                </span>
-              </div>
-              <div className="max-w-2xl">
-                <h3 className="t-step text-[var(--lore-text-primary)]">{item.title}</h3>
-                <p className="t-body mt-2.5 text-[var(--lore-text-secondary)]">{item.body}</p>
+            <div key={item.title} style={paletteVars(item.slot)} className="frame">
+              <div className="flex flex-col gap-4 px-6 py-7 sm:flex-row sm:gap-8 sm:px-8 sm:py-8">
+                <div className="flex shrink-0 items-start gap-3.5 sm:w-44">
+                  <span
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white"
+                    style={{ background: "var(--plate)" }}
+                  >
+                    <Icon size={17} />
+                  </span>
+                  <span
+                    className="t-meta pt-2.5 text-[var(--lore-text-tertiary)]"
+                    style={{ fontFamily: "var(--font-mono), monospace" }}
+                  >
+                    0{i + 1}
+                  </span>
+                </div>
+                <div className="max-w-2xl">
+                  <h3 className="t-step pal-title">{item.title}</h3>
+                  <p className="t-body mt-2.5 text-[var(--lore-text-secondary)]">{item.body}</p>
+                </div>
               </div>
             </div>
           );
@@ -194,30 +208,31 @@ function Trust() {
       <div className="mt-11 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
           {
+            slot: 0,
             head: "Orphans",
             body: "Pages nothing links to and that link nowhere. An agent walking your links will never reach them.",
           },
           {
+            slot: 2,
             head: "Dead links",
             body: "Every [[link]] pointing at a page that doesn't exist yet. Each one is a page you meant to write.",
           },
           {
+            slot: 6,
             head: "Staleness clocks",
             body: "Pricing gets 30 days, tooling 90, clients 60, everything else 180. One global threshold catches nothing.",
           },
           {
+            slot: 3,
             head: "Untagged",
             body: "Tags are the cheapest way to make a page findable by an agent that doesn't know its title.",
           },
         ].map((card) => (
-          <div
-            key={card.head}
-            className="rounded-xl border border-[var(--lore-border)] bg-[var(--lore-surface)] px-5 py-5"
-          >
-            <h3 className="text-[14.5px] font-semibold text-[var(--lore-text-primary)]">
-              {card.head}
-            </h3>
-            <p className="t-body mt-1.5 text-[var(--lore-text-secondary)]">{card.body}</p>
+          <div key={card.head} style={paletteVars(card.slot)} className="frame">
+            <div className="h-full px-5 py-5">
+              <h3 className="pal-title text-[14.5px] font-semibold">{card.head}</h3>
+              <p className="t-body mt-1.5 text-[var(--lore-text-secondary)]">{card.body}</p>
+            </div>
           </div>
         ))}
       </div>
@@ -251,14 +266,15 @@ function Steps() {
       lede="There is no account to create, because there is no server to create it on."
     >
       <div className="mt-11 grid gap-6 sm:grid-cols-3">
-        {steps.map((step) => (
-          <div key={step.n}>
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--lore-text-primary)] text-[12px] font-semibold text-[var(--lore-button-primary-fg)]">
+        {steps.map((step, i) => (
+          <div key={step.n} style={paletteVars(i === 0 ? 0 : i === 1 ? 3 : 2)}>
+            <span
+              className="flex h-8 w-8 items-center justify-center rounded-xl text-[13px] font-bold text-white"
+              style={{ background: "var(--plate)" }}
+            >
               {step.n}
             </span>
-            <h3 className="mt-3.5 text-[15px] font-semibold text-[var(--lore-text-primary)]">
-              {step.title}
-            </h3>
+            <h3 className="pal-title mt-3.5 text-[15px] font-semibold">{step.title}</h3>
             <p className="t-body mt-1.5 text-[var(--lore-text-secondary)]">{step.body}</p>
           </div>
         ))}
@@ -400,29 +416,28 @@ function Section({
   );
 }
 
+/** A solid colour panel with white type — the loudest thing on the page. */
 function Stat({
+  slot,
   value,
   unit,
   label,
   body,
 }: {
+  slot: number;
   value: string;
   unit: string;
   label: string;
   body: string;
 }) {
   return (
-    <div>
-      <div className="flex items-baseline gap-1">
-        <span className="text-[38px] font-semibold leading-none tracking-[-0.04em] text-[var(--lore-text-primary)]">
-          {value}
-        </span>
-        {unit ? (
-          <span className="text-[15px] text-[var(--lore-text-tertiary)]">{unit}</span>
-        ) : null}
+    <div style={paletteVars(slot)} className="plate px-6 py-6">
+      <div className="flex items-baseline gap-1.5">
+        <span className="text-[42px] font-bold leading-none tracking-[-0.045em]">{value}</span>
+        <span className="plate-muted text-[15px] font-semibold">{unit}</span>
       </div>
-      <p className="mt-2 text-[13.5px] font-medium text-[var(--lore-text-primary)]">{label}</p>
-      <p className="t-body mt-1.5 text-[var(--lore-text-secondary)]">{body}</p>
+      <p className="mt-4 text-[14px] font-semibold leading-snug">{label}</p>
+      <p className="plate-muted mt-2 text-[13px] leading-relaxed">{body}</p>
     </div>
   );
 }

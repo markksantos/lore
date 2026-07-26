@@ -29,8 +29,8 @@ Lore is a local app that sits on top of that folder and does three things:
    file-reading agents, and an MCP server with search/read/health tools for
    agents that speak it.
 3. **Keeps the pen in your hand.** Agents cannot write. They *propose*, and the
-   change waits in a Review queue as a diff with a reason and a risk tier until
-   you accept it.
+   diff appears inside the page it would change — with a reason and a risk tier —
+   right where you are already reading. Nothing lands until you accept it.
 
 It is not a note-taking app. Keep writing in Obsidian, or vim, or whatever you
 already use. Lore is the layer that makes the same folder useful to an agent.
@@ -52,14 +52,14 @@ path or pick one Lore already found on your machine. That's the whole setup.
 
 ### Any agent that reads files
 
-In the app, go to **Agents → Write AGENTS.md**. This drops a single file at your
+In the app, go to **Connections → Write AGENTS.md**. This drops a single file at your
 vault root: every page, its folder, its tags, and a one-line summary. It is the
 only file Lore ever adds to your wiki, and it is regenerated wholesale each time
 you press the button.
 
 ### Agents that speak MCP
 
-The **Agents** tab shows a ready-to-paste config with the path already filled in
+The **Connections** tab shows a ready-to-paste config with the path already filled in
 for your machine:
 
 ```json
@@ -113,16 +113,35 @@ a `replace` on existing prose is `high` by default.
 ```
 app/            Next.js App Router — landing page, /vault app, /api routes
 components/
-  lore/         The app: onboarding, sidebar, page view, review, health, agents
+  lore/         The app: onboarding, sidebar, folder document, page sections,
+                connections, settings
   marketing/    The landing page, the product-shot replica, site chrome
 lib/
   config.ts     ~/.lore/config.json — the only state outside your wiki
   wiki.ts       Scanning, frontmatter, wikilinks, backlinks, search, health
-  proposals.ts  The review queue and its diff
+  proposals.ts  Proposals, bulk resolve, and the diff
+  palette.ts    The eight-slot colour assignment
   markdown.ts   Rendering, wikilink and tag resolution
 mcp/server.mjs  The MCP server (stdio, no dependencies)
-docs/           Architecture, research, build log
+docs/           Architecture, research, build log, colour options
 ```
+
+## How the app is laid out
+
+Three destinations, and one of them is the product.
+
+**Wiki** — the sidebar lists your folders, each with its own colour. Pick one and
+it opens as a *single scrolling document*: every page in that folder is a
+coloured section, editable in place. A bar at the top shows the folder's whole
+pending state — `+11 −0 · 2 proposals · Reject all · Accept all` — and each
+individual proposal sits inside the section it would change, as a diff you accept
+without going anywhere.
+
+You do not open files. You read a folder.
+
+**Connections** — how agents get in: write `AGENTS.md`, or copy the MCP config.
+
+**Settings** — the linked folder, a rescan, and the health report.
 
 ## Privacy
 

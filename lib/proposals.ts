@@ -170,6 +170,39 @@ export async function resolveProposal(
 }
 
 /**
+ * Resolve many proposals in one pass — the "Accept all" / "Reject all" bar at
+ * the top of a folder document.
+ *
+ * Failures are collected rather than thrown: if one proposal conflicts because
+ * its page changed on disk, the other nine should still land, and the user
+ * should be told exactly which one didn't.
+ */
+export async function resolveMany(
+  root: string,
+  ids: string[],
+  action: "accept" | "reject",
+): Promise<{ resolved: number; failures: { id: string; message: string }[] }> {
+  const failures: { id: string; message: string }[] = [];
+  let resolved = 0;
+
+  // Sequential on purpose. Two accepts touching the same file concurrently
+  // would both pass the conflict check and race on the write.
+  for (const id of ids) {
+    try {
+      await resolveProposal(root, id, action);
+      resolved += 1;
+    } catch (error) {
+      failures.push({
+        id,
+        message: error instanceof Error ? error.message : "Could not resolve.",
+      });
+    }
+  }
+
+  return { resolved, failures };
+}
+
+/**
  * A minimal line diff for the review UI. Not Myers — for the small, mostly
  * additive edits an agent proposes, a common-prefix/suffix trim gives a diff
  * that reads correctly and costs nothing.
