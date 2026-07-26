@@ -549,8 +549,13 @@
   border-radius: 0.72rem;
 }
 
-/* A page or folder's colour identity in list form: the dot in the sidebar and
-   the rule down the left of a section in the document. */
+/* A page or folder's colour identity: the dot in the sidebar, and a short
+   pill that sits beside a section title in the document.
+
+   The pill is deliberately the height of the title rather than a rule spanning
+   the whole section — a full-height rule turns a long page into a stack of
+   bracketed blocks, while the pill reads as a marker on the heading and lets
+   the body text align flush with it. */
 .pal-dot {
   width: 0.5rem;
   height: 0.5rem;
@@ -559,18 +564,11 @@
   background: var(--plate, var(--lore-text-tertiary));
 }
 
-.pal-rule {
-  position: relative;
-  padding-left: 0.95rem;
-}
-
-.pal-rule::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0.15rem;
-  bottom: 0;
+.pal-bar {
+  display: inline-block;
+  flex: 0 0 auto;
   width: 3px;
+  height: 2.25rem;
   border-radius: 999px;
   background: var(--plate, var(--lore-border-strong));
 }

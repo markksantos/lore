@@ -302,6 +302,11 @@ visibly against a photographic sky.
 **Squircle bullets, never round dots** (`border-radius: 0.13em` on a `0.4em`
 square) — the one detail that stops a markdown list reading as browser default.
 
+**The section marker is a short pill, not a full-height rule** (`.pal-bar`:
+3px × 2.25rem, beside the title). A rule spanning the whole section turns a long
+page into a stack of bracketed blocks; the pill marks the heading and lets the
+body align flush with it.
+
 ### Art
 
 Twelve assets in `public/assets/landing/scenery/` — six scenes, each a
@@ -366,6 +371,21 @@ title, 18px section titles, 15px body, 14px sidebar. An earlier version squeezed
 the same content into 11–14px and the result read as a *diagram of* a product
 rather than the product. If the shot needs to be smaller, the card gets smaller
 — the type does not.
+
+Box metrics are fixed, and they matter as much as the type did:
+
+| | Value |
+| --- | --- |
+| Card | `max-w-6xl` (1152px) |
+| Height | `h-[540px] sm:h-[580px] lg:h-[620px]` |
+| Chrome bar | `h-11` (44px) |
+| Sidebar | `w-[212px]`, `px-5 py-5` |
+| Document measure | `mx-auto max-w-[700px] px-4 md:px-7 pb-10` |
+| Section spacing | `mt-9` (36px) |
+
+The document measure is the one people skip. Letting the body run the full width
+of the pane makes every screen look airy and unresolved — a 700px column centred
+in the remaining space is what makes it read as a document.
 
 `components/marketing/browser-chrome.tsx` frames it. Real traffic-light colours,
 navigation affordances and a centred address pill, because three flat grey

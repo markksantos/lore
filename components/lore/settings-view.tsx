@@ -228,8 +228,9 @@ function Group({
   children: React.ReactNode;
 }) {
   return (
-    <section style={paletteVars(slot)} className="pal-rule mt-8">
-      <h3 className="flex items-baseline gap-2 text-[15px] font-semibold">
+    <section style={paletteVars(slot)} className="mt-8">
+      <h3 className="flex items-center gap-2.5 text-[15px] font-semibold">
+        <span className="pal-bar !h-5" />
         <span className="pal-title">{title}</span>
         <span
           className={cn(

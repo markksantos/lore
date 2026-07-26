@@ -213,8 +213,11 @@ export function ProposeDemo() {
   return (
     <div ref={ref} className="w-full">
       <DemoCard className="h-[15.5rem]">
-        <div style={paletteVars(0)} className="pal-rule">
-          <h4 className="pal-title text-[13.5px] font-semibold">Deploy pipeline</h4>
+        <div style={paletteVars(0)}>
+          <div className="flex items-center gap-2">
+            <span className="pal-bar !h-5" />
+            <h4 className="pal-title text-[13.5px] font-semibold">Deploy pipeline</h4>
+          </div>
           <ul className="mt-1.5 space-y-1">
             <li className="text-[12px] leading-relaxed text-[var(--lore-text-secondary)]">
               A red build blocks the deploy — never override it.

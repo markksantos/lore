@@ -264,10 +264,10 @@ export function HeroSimulator() {
     <div className="overflow-hidden rounded-2xl border border-[var(--lore-border)] bg-[var(--lore-surface)] shadow-[0_40px_100px_-45px_rgba(15,23,42,0.55)]">
       <BrowserChrome url="lore.md" />
 
-      <div className="flex h-[30rem] md:h-[34rem]">
+      <div className="flex h-[540px] sm:h-[580px] lg:h-[620px]">
         {/* -------------------------------------------------------- sidebar */}
-        <div className="hidden w-[15.5rem] shrink-0 flex-col border-r border-[var(--lore-border)] px-3 pb-3 pt-4 sm:flex">
-          <div className="flex items-center gap-2.5 px-2 text-[var(--lore-text-primary)]">
+        <div className="hidden w-[212px] shrink-0 flex-col border-r border-[var(--lore-border)] px-5 py-5 sm:flex">
+          <div className="flex items-center gap-2.5 text-[var(--lore-text-primary)]">
             <BrandMark size={20} />
             <span className="text-[16px] font-semibold tracking-[-0.025em]">Lore</span>
           </div>
@@ -310,7 +310,7 @@ export function HeroSimulator() {
             </kbd>
           </div>
 
-          <p className="mb-1.5 mt-4 px-2 text-[11px] font-semibold uppercase tracking-[0.09em] text-[var(--lore-text-tertiary)]">
+          <p className="mb-1.5 mt-4 text-[11px] font-semibold uppercase tracking-[0.09em] text-[var(--lore-text-tertiary)]">
             Folders
           </p>
           <div className="space-y-0.5">
@@ -363,7 +363,7 @@ export function HeroSimulator() {
               </button>
             ) : null}
             <div className="border-t border-[var(--lore-border)] pt-3">
-              <div className="flex items-center gap-2.5 px-1">
+              <div className="flex items-center gap-2.5">
                 <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--lore-accent-tint)] text-[12px] font-semibold text-[var(--lore-accent)]">
                   M
                 </span>
@@ -376,7 +376,8 @@ export function HeroSimulator() {
         </div>
 
         {/* ----------------------------------------------------------- main */}
-        <div className="lore-scrollbar flex-1 overflow-y-auto px-6 py-6 md:px-9 md:py-7">
+        <div className="lore-scrollbar flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-[700px] px-4 pb-10 pt-6 md:px-7">
           {tab === "connections" ? <ConnectionsPane /> : null}
           {tab === "settings" ? <SettingsPane /> : null}
 
@@ -458,8 +459,9 @@ export function HeroSimulator() {
               </AnimatePresence>
 
               {folder.pages.map((page, i) => (
-                <motion.div key={page.id} layout style={paletteVars(i)} className="pal-rule mt-8">
+                <motion.div key={page.id} layout style={paletteVars(i)} className="group mt-9">
                   <div className="flex items-center gap-2.5">
+                    <span className="pal-bar" />
                     <h4 className="pal-title text-[18px] font-semibold tracking-[-0.02em]">
                       {page.title}
                     </h4>
@@ -597,7 +599,8 @@ export function HeroSimulator() {
                 </motion.div>
               ))}
             </>
-          ) : null}
+            ) : null}
+          </div>
         </div>
       </div>
     </div>

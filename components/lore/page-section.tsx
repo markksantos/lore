@@ -109,8 +109,9 @@ export function PageSection({
   );
 
   return (
-    <section id={id} style={palette} className="pal-rule group mt-9 scroll-mt-8 first:mt-6">
-      <div className="flex flex-wrap items-center gap-2">
+    <section id={id} style={palette} className="group mt-9 scroll-mt-8 first:mt-6">
+      <div className="flex flex-wrap items-center gap-2.5">
+        <span className="pal-bar" />
         <h2 className="pal-title text-[17px] font-semibold tracking-[-0.02em]">{page.title}</h2>
 
         {proposals.length > 0 ? (
