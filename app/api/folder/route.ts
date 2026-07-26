@@ -14,18 +14,30 @@ export const dynamic = "force-dynamic";
  * would make the document assemble itself in front of them.
  *
  * `?path=` is the folder; the empty string is the vault root.
+ *
+ * PAGINATED, because a real vault has folders this cannot hold: one measured
+ * corpus keeps 654 pages in `clients/`, and returning all of them with full
+ * source would be a multi-megabyte response rendering thousands of DOM nodes.
+ * `?offset=` and `?limit=` page through, newest-edited first so the top of the
+ * document is the part you are most likely to want.
  */
 export async function GET(request: Request) {
   try {
     const vault = await requireVault();
-    const folder = new URL(request.url).searchParams.get("path") ?? "";
+    const params = new URL(request.url).searchParams;
+    const folder = params.get("path") ?? "";
+    const offset = Math.max(0, Number(params.get("offset") ?? 0) || 0);
+    const limit = Math.min(200, Math.max(1, Number(params.get("limit") ?? 40) || 40));
 
     const [index, allProposals] = await Promise.all([
       getIndex(vault.root),
       listProposals(vault.root),
     ]);
 
-    const pages = index.pages.filter((page) => page.folder === folder);
+    const inFolder = index.pages
+      .filter((page) => page.folder === folder)
+      .sort((a, b) => b.mtime - a.mtime);
+    const pages = inFolder.slice(offset, offset + limit);
     const pending = allProposals.filter((p) => p.status === "pending");
 
     const sections = await Promise.all(
@@ -60,7 +72,16 @@ export async function GET(request: Request) {
       { count: 0, added: 0, removed: 0 },
     );
 
-    return Response.json({ folder, sections, incoming, totals });
+    return Response.json({
+      folder,
+      sections,
+      incoming,
+      totals,
+      total: inFolder.length,
+      offset,
+      limit,
+      hasMore: offset + pages.length < inFolder.length,
+    });
   } catch (error) {
     return fail(error, 409);
   }

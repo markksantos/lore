@@ -6,8 +6,11 @@ import { Sidebar } from "@/components/lore/sidebar";
 import { FolderDocument } from "@/components/lore/folder-document";
 import { ConnectionsView } from "@/components/lore/connections-view";
 import { SettingsView } from "@/components/lore/settings-view";
+import { ReviewView } from "@/components/lore/review-view";
+import { InsightsView } from "@/components/lore/insights-view";
+import { ExploreShell } from "@/components/lore/explore-shell";
 
-export type View = "wiki" | "connections" | "settings";
+export type View = "wiki" | "review" | "insights" | "explore" | "connections" | "settings";
 
 export function VaultApp({
   initialIndex,
@@ -21,7 +24,7 @@ export function VaultApp({
   const [folder, setFolder] = useState<string>(initialIndex.folders[0]?.folder ?? "");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[] | null>(null);
-  const [pendingByFolder, setPendingByFolder] = useState<Record<string, number>>({});
+  const [needsReview, setNeedsReview] = useState(0);
   /** Bumped to tell the open folder document to reload itself. */
   const [revision, setRevision] = useState(0);
   /** Set when search picks a page, so the document scrolls to it. */
@@ -33,21 +36,18 @@ export function VaultApp({
     setRevision((r) => r + 1);
   }, []);
 
-  // Pending counts per folder drive the sidebar badges. Agents propose while
-  // the app sits open, so this polls; 10s is free and nothing feels lost.
+  /**
+   * How many pages changed recently but nobody has signed off on. This is the
+   * badge that replaced the old proposal queue: it counts what happened rather
+   * than what is waiting for permission, because nothing waits for permission.
+   */
   const refreshPending = useCallback(async () => {
-    const response = await fetch("/api/proposals");
+    const response = await fetch("/api/review?days=7");
     if (!response.ok) return;
-    const { proposals } = await response.json();
-    const counts: Record<string, number> = {};
-    for (const p of proposals as { status: string; relPath: string }[]) {
-      if (p.status !== "pending") continue;
-      const dir = p.relPath.includes("/")
-        ? p.relPath.slice(0, p.relPath.lastIndexOf("/"))
-        : "";
-      counts[dir] = (counts[dir] ?? 0) + 1;
-    }
-    setPendingByFolder(counts);
+    const data = await response.json();
+    setNeedsReview(
+      (data.triage as { trust: string }[]).filter((t) => t.trust !== "verified").length,
+    );
   }, []);
 
   useEffect(() => {
@@ -111,7 +111,7 @@ export function VaultApp({
           setView("wiki");
           setFocusPage(null);
         }}
-        pendingByFolder={pendingByFolder}
+        needsReview={needsReview}
         query={query}
         onQuery={setQuery}
         results={results}
@@ -125,7 +125,7 @@ export function VaultApp({
         }}
       />
 
-      <main className="lore-scrollbar flex-1 overflow-y-auto">
+      <main className={view === "explore" ? "min-w-0 flex-1 overflow-hidden" : "lore-scrollbar min-w-0 flex-1 overflow-y-auto"}>
         {view === "wiki" ? (
           <FolderDocument
             key={folder}
@@ -138,6 +138,11 @@ export function VaultApp({
               await Promise.all([refresh(), refreshPending()]);
             }}
           />
+        ) : null}
+        {view === "review" ? <ReviewView onOpenPage={openPage} /> : null}
+        {view === "insights" ? <InsightsView onOpenPage={openPage} /> : null}
+        {view === "explore" ? (
+          <ExploreShell index={index} pageTitles={pageTitles} onOpenPage={openPage} />
         ) : null}
         {view === "connections" ? (
           <ConnectionsView root={index.root} installDir={installDir} />

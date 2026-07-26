@@ -1,5 +1,5 @@
 import { fail, requireVault } from "@/lib/server";
-import { buildAgentIndex, writeRaw } from "@/lib/wiki";
+import { buildAgentIndex, readRaw, writeRaw } from "@/lib/wiki";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,18 +22,53 @@ export async function GET() {
   }
 }
 
+/** The fence Lore writes between its generated map and anything you wrote. */
+const BEGIN = "<!-- lore:begin -->";
+const END = "<!-- lore:end -->";
+
 /**
- * Write that map to AGENTS.md at the vault root. This is the only file Lore
- * ever puts inside a user's wiki, it is regenerated wholesale on every run,
- * and it is the one thing that makes a plain folder legible to an agent that
- * only knows how to read files.
+ * Write the map into AGENTS.md at the vault root.
+ *
+ * This used to overwrite the file wholesale, which was a data-loss bug aimed
+ * squarely at the people this product is for: anyone following the llm-wiki
+ * pattern already keeps a hand-written AGENTS.md, and pressing the button
+ * destroyed it.
+ *
+ * Now the generated map lives inside a fenced block and everything outside the
+ * fence is preserved verbatim. A file with no fence gets the map appended below
+ * what is already there, never on top of it. `?force=1` is the explicit escape
+ * hatch for replacing the whole file.
  */
-export async function POST() {
+export async function POST(request: Request) {
   try {
     const vault = await requireVault();
-    const markdown = await buildAgentIndex(vault.root, vault.name);
-    await writeRaw(vault.root, "AGENTS.md", markdown);
-    return Response.json({ ok: true, path: "AGENTS.md" });
+    const force = new URL(request.url).searchParams.get("force") === "1";
+    const map = await buildAgentIndex(vault.root, vault.name);
+    const block = `${BEGIN}\n${map}\n${END}`;
+
+    const existing = await readRaw(vault.root, "AGENTS.md").catch(() => null);
+
+    let next: string;
+    let mode: "created" | "replaced-block" | "appended" | "overwritten";
+
+    if (existing === null) {
+      next = block + "\n";
+      mode = "created";
+    } else if (force) {
+      next = block + "\n";
+      mode = "overwritten";
+    } else if (existing.includes(BEGIN) && existing.includes(END)) {
+      const before = existing.slice(0, existing.indexOf(BEGIN));
+      const after = existing.slice(existing.indexOf(END) + END.length);
+      next = before + block + after;
+      mode = "replaced-block";
+    } else {
+      next = `${existing.replace(/\s*$/, "")}\n\n${block}\n`;
+      mode = "appended";
+    }
+
+    await writeRaw(vault.root, "AGENTS.md", next);
+    return Response.json({ ok: true, path: "AGENTS.md", mode, preserved: existing !== null && !force });
   } catch (error) {
     return fail(error);
   }

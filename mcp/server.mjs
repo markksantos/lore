@@ -2,14 +2,23 @@
 /**
  * Lore MCP server.
  *
- * A thin stdio bridge onto the local Lore app. It deliberately exposes five
+ * A thin stdio bridge onto the local Lore app. It deliberately exposes four
  * tools, not twenty-one: an agent that has to choose between twenty-one
  * overlapping tools spends its budget choosing.
  *
- * There is no write tool. `propose_edit` is the only way an agent can change
- * anything, and it lands in the human's Review queue as a diff. That is the
- * whole point of the product — an agent that can silently rewrite your wiki
- * will eventually rewrite something true into something plausible.
+ * There is no write tool and no approval gate. An earlier version shipped a
+ * `propose_edit` tool that queued changes for human approval; it was removed
+ * because it did not work and could not work. It competed with every agent's
+ * built-in file-write tool and lost, and a vault measured at 300 changed pages
+ * per week would turn a perfect gate into a 300-item queue that resolves to
+ * "accept all" — worse than no gate, because it manufactures confidence.
+ *
+ * Lore watches the filesystem instead, which captures every harness equally.
+ *
+ * What this server IS for, beyond answering questions: it is the only place
+ * that sees what agents ask of the wiki. Every call is journalled, which is
+ * what produces the two reports nothing else can generate — which pages carry
+ * the weight, and which questions the wiki failed to answer.
  *
  * Speaks MCP over stdio using JSON-RPC 2.0 directly; the protocol surface we
  * need is four methods, so a dependency would cost more than it saves.
@@ -18,6 +27,7 @@
 import { createInterface } from "node:readline";
 
 const LORE_URL = process.env.LORE_URL ?? "http://127.0.0.1:4646";
+const AGENT = process.env.LORE_AGENT_NAME ?? "MCP agent";
 const PROTOCOL_VERSION = "2025-06-18";
 
 const TOOLS = [
@@ -43,7 +53,7 @@ const TOOLS = [
   {
     name: "wiki_read",
     description:
-      "Read one page in full, plus the pages that link to it and the pages it links to. Use the exact `path` from wiki_index or wiki_search.",
+      "Read one page in full, plus the pages that link to it and the pages it links to, and whether a human has verified it. Prefer verified pages when sources disagree, and say so when you rely on an unverified one. Use the exact `path` from wiki_index or wiki_search.",
     inputSchema: {
       type: "object",
       properties: {
@@ -58,43 +68,6 @@ const TOOLS = [
     description:
       "Report what is wrong with the wiki: orphaned pages, links pointing at pages that don't exist, and pages past their review window. Use when asked to tidy, audit, or find gaps.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
-  },
-  {
-    name: "propose_edit",
-    description:
-      "Propose a change to the wiki. This does NOT write the file — it queues a diff for the human to accept or reject. Use it whenever you learn something durable that belongs in the wiki. Be specific in `reason`: the human reads it to decide.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        path: {
-          type: "string",
-          description: "Vault-relative path, e.g. notes/stack.md. For kind=create, the new path.",
-        },
-        kind: {
-          type: "string",
-          enum: ["create", "append", "replace"],
-          description:
-            "create: a new page. append: add to the end of an existing page (cheapest, prefer it). replace: rewrite the whole page (use sparingly).",
-        },
-        content: {
-          type: "string",
-          description:
-            "For append, only the new text. For create and replace, the full file content.",
-        },
-        reason: {
-          type: "string",
-          description: "One line: what you learned and why it belongs in the wiki.",
-        },
-        risk: {
-          type: "string",
-          enum: ["low", "medium", "high"],
-          description:
-            "How much damage a wrong accept would do. Replacing existing prose is high.",
-        },
-      },
-      required: ["path", "kind", "content", "reason"],
-      additionalProperties: false,
-    },
   },
 ];
 
@@ -113,15 +86,39 @@ async function callLore(path, init) {
   return text;
 }
 
+/**
+ * Report a tool call to Lore's usage log.
+ *
+ * Fire-and-forget on purpose: telemetry must never delay or fail the answer the
+ * agent is waiting on. A dropped event is a rounding error; a stalled tool call
+ * is a broken product.
+ */
+function report(event) {
+  fetch(`${LORE_URL}/api/mcp-event`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ...event, agent: AGENT }),
+  }).catch(() => {});
+}
+
 async function runTool(name, args = {}) {
   switch (name) {
-    case "wiki_index":
-      return callLore("/api/agent");
+    case "wiki_index": {
+      const map = await callLore("/api/agent");
+      report({ t: "index", tokens: Math.round(map.length / 4) });
+      return map;
+    }
 
     case "wiki_search": {
       const raw = await callLore(`/api/search?q=${encodeURIComponent(args.query ?? "")}`);
       const { results } = JSON.parse(raw);
-      if (!results?.length) return `No pages match "${args.query}".`;
+      report({ t: "search", query: args.query ?? "", hits: results?.length ?? 0 });
+      // A zero-result search is the single most useful thing this server can
+      // observe: it is a question the wiki could not answer, which is a page
+      // worth writing. The wording nudges the agent to say so out loud.
+      if (!results?.length) {
+        return `No pages match "${args.query}". This gap has been logged for the human to fill.`;
+      }
       return results
         .map(
           (hit) =>
@@ -134,6 +131,7 @@ async function runTool(name, args = {}) {
     case "wiki_read": {
       const raw = await callLore(`/api/page?path=${encodeURIComponent(args.path ?? "")}`);
       const data = JSON.parse(raw);
+      report({ t: "read", page: data.page.id });
       const linked = data.backlinks.map((p) => p.relPath);
       const links = data.outgoing.map((p) => p.relPath);
       return [
@@ -152,6 +150,7 @@ async function runTool(name, args = {}) {
     }
 
     case "wiki_health": {
+      report({ t: "health" });
       const raw = await callLore("/api/health");
       const h = JSON.parse(raw);
       return [
@@ -162,23 +161,6 @@ async function runTool(name, args = {}) {
         `Stale (${h.stale.length}): ${h.stale.slice(0, 20).map((p) => `${p.relPath} — ${p.days}d`).join(", ") || "none"}`,
         `Untagged pages: ${h.untagged}`,
       ].join("\n");
-    }
-
-    case "propose_edit": {
-      const raw = await callLore("/api/proposals", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          path: args.path,
-          kind: args.kind,
-          content: args.content,
-          reason: args.reason,
-          risk: args.risk,
-          agent: process.env.LORE_AGENT_NAME ?? "MCP agent",
-        }),
-      });
-      const { proposal } = JSON.parse(raw);
-      return `Proposed. It is now waiting in the human's Review queue as a ${proposal.risk}-risk ${proposal.kind} on ${proposal.relPath}. The file has NOT been changed. Do not assume it was accepted.`;
     }
 
     default:

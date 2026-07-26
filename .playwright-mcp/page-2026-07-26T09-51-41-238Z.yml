@@ -1,0 +1,143 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e8]:
+      - link "Capacities" [ref=e10] [cursor=pointer]:
+        - /url: /
+      - navigation [ref=e15]:
+        - button "Product" [ref=e17]
+        - button "Resources" [ref=e20]
+        - link "Download" [ref=e23] [cursor=pointer]:
+          - /url: /download-app
+        - link "Pricing" [ref=e25] [cursor=pointer]:
+          - /url: /pricing
+      - generic [ref=e26]:
+        - button "Switch to dark mode" [ref=e27]
+        - generic [ref=e29]:
+          - link "Sign In" [ref=e30] [cursor=pointer]:
+            - /url: https://app.capacities.io
+          - link "Get Started" [ref=e31] [cursor=pointer]:
+            - /url: https://app.capacities.io/start
+  - main [ref=e32]:
+    - generic [ref=e35]:
+      - generic [ref=e36]:
+        - heading "Pricing" [level=1] [ref=e40]
+        - paragraph [ref=e41]: Choose the plan that works for you.
+      - paragraph [ref=e42]:
+        - text: We believe that everybody should have access to tools for building knowledge. Therefore, the core product of Capacities is and will remain free.
+        - link "Read our promise" [ref=e43] [cursor=pointer]:
+          - /url: /pricing/promise
+  - contentinfo [ref=e48]:
+    - generic [ref=e49]:
+      - generic [ref=e51]:
+        - generic [ref=e52]:
+          - link "Capacities" [ref=e53] [cursor=pointer]:
+            - /url: /
+          - paragraph [ref=e58]: The studio for your mind
+          - generic [ref=e59]:
+            - link "Discord" [ref=e60] [cursor=pointer]:
+              - /url: https://discord.gg/3eBP9YxHgQ
+            - link "YouTube" [ref=e62] [cursor=pointer]:
+              - /url: https://www.youtube.com/@CapacitiesHQ
+            - link "Substack" [ref=e64] [cursor=pointer]:
+              - /url: https://substack.com/@capacities
+            - link "Twitter" [ref=e66] [cursor=pointer]:
+              - /url: https://twitter.com/capacitiesHQ
+            - link "Instagram" [ref=e68] [cursor=pointer]:
+              - /url: https://www.instagram.com/capacitieshq/
+            - link "Reddit" [ref=e70] [cursor=pointer]:
+              - /url: https://www.reddit.com/r/capacitiesapp/
+        - generic [ref=e72]:
+          - heading "Product" [level=3] [ref=e73]
+          - list [ref=e74]:
+            - listitem [ref=e75]:
+              - link "Features" [ref=e76] [cursor=pointer]:
+                - /url: /product
+            - listitem [ref=e77]:
+              - link "Pro" [ref=e78] [cursor=pointer]:
+                - /url: /pro
+            - listitem [ref=e79]:
+              - link "Believer" [ref=e80] [cursor=pointer]:
+                - /url: /believer
+            - listitem [ref=e81]:
+              - link "Pricing" [ref=e82] [cursor=pointer]:
+                - /url: /pricing
+            - listitem [ref=e83]:
+              - link "Download" [ref=e84] [cursor=pointer]:
+                - /url: /download-app
+            - listitem [ref=e85]:
+              - link "Roadmap" [ref=e86] [cursor=pointer]:
+                - /url: /roadmap
+            - listitem [ref=e87]:
+              - link "What's new" [ref=e88] [cursor=pointer]:
+                - /url: /whats-new
+            - listitem [ref=e89]:
+              - link "What's next?" [ref=e90] [cursor=pointer]:
+                - /url: /whats-next
+            - listitem [ref=e91]:
+              - link "What's Not Next?" [ref=e92] [cursor=pointer]:
+                - /url: /whats-not-next
+        - generic [ref=e93]:
+          - heading "Resources" [level=3] [ref=e94]
+          - list [ref=e95]:
+            - listitem [ref=e96]:
+              - link "Documentation" [ref=e97] [cursor=pointer]:
+                - /url: https://docs.capacities.io
+            - listitem [ref=e99]:
+              - link "Blog" [ref=e100] [cursor=pointer]:
+                - /url: /blog
+            - listitem [ref=e101]:
+              - link "Compare" [ref=e102] [cursor=pointer]:
+                - /url: /compare
+            - listitem [ref=e103]:
+              - link "Help" [ref=e104] [cursor=pointer]:
+                - /url: /help
+            - listitem [ref=e105]:
+              - link "FAQ" [ref=e106] [cursor=pointer]:
+                - /url: /faq
+            - listitem [ref=e107]:
+              - link "Community" [ref=e108] [cursor=pointer]:
+                - /url: /community
+            - listitem [ref=e109]:
+              - link "Newsletter" [ref=e110] [cursor=pointer]:
+                - /url: /newsletter
+        - generic [ref=e111]:
+          - heading "Company" [level=3] [ref=e112]
+          - list [ref=e113]:
+            - listitem [ref=e114]:
+              - link "Team" [ref=e115] [cursor=pointer]:
+                - /url: /about/team
+            - listitem [ref=e116]:
+              - link "Principles" [ref=e117] [cursor=pointer]:
+                - /url: /about/principles
+            - listitem [ref=e118]:
+              - link "Sustainability" [ref=e119] [cursor=pointer]:
+                - /url: /about/sustainability
+            - listitem [ref=e120]:
+              - link "Media Kit" [ref=e121] [cursor=pointer]:
+                - /url: https://drive.google.com/drive/folders/1prQVOqyp8BROTvGWGlJbvWZTDdlUX3Qt
+            - listitem [ref=e123]:
+              - link "Contact" [ref=e124] [cursor=pointer]:
+                - /url: /contact
+            - listitem [ref=e125]:
+              - link "Status" [ref=e126] [cursor=pointer]:
+                - /url: https://status.capacities.io
+            - listitem [ref=e128]:
+              - text: Supported by
+              - generic [ref=e129]:
+                - img "Media Lab Bayern" [ref=e130]
+                - generic [ref=e131]: Media Lab Bayern
+        - generic [ref=e132]:
+          - heading "Legal" [level=3] [ref=e133]
+          - list [ref=e134]:
+            - listitem [ref=e135]:
+              - link "Privacy Policy" [ref=e136] [cursor=pointer]:
+                - /url: /privacy-policy
+            - listitem [ref=e137]:
+              - link "Terms & Conditions" [ref=e138] [cursor=pointer]:
+                - /url: /terms-and-conditions
+            - listitem [ref=e139]:
+              - link "Imprint" [ref=e140] [cursor=pointer]:
+                - /url: /impressum
+      - generic [ref=e142]:
+        - paragraph [ref=e143]: © 2026 Capacities Labs GmbH. All rights reserved.
+        - button "Switch to dark mode" [ref=e145]

@@ -272,3 +272,110 @@ inline flow.
 | Console errors, production, light + dark | zero |
 | Horizontal overflow at 375 / 768px | none |
 | Landing + app, both themes | screenshotted and reviewed by eye |
+
+---
+
+# Round three — the rethink
+
+Mark pushed back twice, and was right both times.
+
+**First:** "why is it asking permission to edit files? Claude Code already does
+that." **Second:** "Claude understands my wiki better than a local model would —
+that's not the moat. What it can't do is help me *see* my wiki."
+
+Both landed. The audit and two research passes confirmed them with measurement.
+
+## What the measurement showed
+
+Against the real vault at `~/Documents/wiki`:
+
+| | |
+| --- | --- |
+| Pages | 1,424 |
+| Tokens | ~2.3M — 12× a 200k window |
+| Changed in 7 days | 303 |
+| Changed in 24h | 56 |
+| In-place rewrites | 60 of 75 modified files |
+| Prose deleted, unreviewed | ~1,450 lines in 15 days |
+| Pages with agent `confidence:` | 1,156 → 959 high, 202 medium, **2 low** |
+| Pages with any human `reviewed`/`verified` | **0** |
+
+Agents rewrite ~300 pages a week, grade their own work "high" 83% of the time,
+and nothing in the corpus has ever recorded a human confirmation.
+
+## Three things I got wrong
+
+1. **The review queue was unenforceable.** Proved it: a direct `Write` to a page
+   bypassed `propose_edit` entirely and Lore did not notice. The gate competed
+   with every agent's built-in write tool and lost.
+2. **It was also redundant.** Claude Code already asks before editing files. I
+   built a second, weaker permission layer on top of a working one.
+3. **Even a perfect gate would fail.** 303 changes/week through a gate is a
+   303-item queue, which resolves to "Accept All" and manufactures confidence —
+   worse than no gate.
+
+And one I got wrong twice: I proposed governance, then retrieval. Both were me
+trying to make Lore do the *thinking*, when Claude already does the thinking.
+
+**A measurement error, corrected:** I told Mark the wiki was dead — "0 edits in
+7 days". That came from `find -newermt`, which returns 0 for every window on
+this system while the newest edit is minutes old. `stat` gave the truth. Never
+trust a single tool's date arithmetic without a second opinion.
+
+## What replaced it
+
+**Promotion, not permission.** Agents write freely. Everything lands
+`unverified`. A human promotes what they actually checked, and the promotion is
+pinned to a content hash — so an agent rewriting a verified page drops it
+straight back to the top of the list. Trust that cannot lapse is a sticker.
+
+Three primitives, all only possible because Lore sits in the MCP path and on the
+filesystem:
+
+- `lib/journal.ts` — harness-agnostic write journal. Watches the filesystem, so
+  it captures Claude Code, Cursor, a script and your own hand equally. Nothing
+  opts in. Hash-authoritative with a 90s reconcile, because the events lie.
+- `lib/verify.ts` — the verification ledger and the triage ranking. Weighted by
+  lines deleted, blast radius (inbound links, log-damped), and lapsed-vs-never.
+- `lib/usage.ts` — what agents read, and every search that returned nothing.
+  Each miss is a question the wiki failed to answer: a to-write list from real
+  demand instead of guesswork.
+
+## Bugs found during this round
+
+**Trust computed from a stale cache.** Verifying a page then rewriting it left
+it reporting "verified" — the exact failure the feature exists to prevent. The
+scan cache had no way to learn about writes Lore did not make. Fixed: the
+watcher invalidates it, and the trust endpoint never reads cached.
+
+**`Write AGENTS.md` destroyed hand-written files.** The target user already keeps
+a hand-maintained `AGENTS.md` (Mark's is 48 lines). The button regenerated it
+wholesale. Now fenced with `<!-- lore:begin -->` — everything outside is
+preserved, a file without the fence gets appended to, `?force=1` to replace.
+
+**A folder endpoint that could not survive the real vault.** `clients/` holds 654
+pages and the endpoint returned all of them with full source. Now paginated,
+40 at a time, newest first.
+
+## Research corrections worth keeping
+
+- **Gemma 4 exists** (2 Apr 2026, now Apache 2.0). I nearly asserted it did not.
+  Mark already had `gemma4:12b` pulled locally.
+- **Electron over Tauri** — Lore is a Node server app; all route handlers are
+  `runtime: "nodejs"`. Tauri has no Node, and 8 sourced Tauri→Electron
+  migrations blame webview divergence.
+- **`osascript` is an 80% folder picker today**, without packaging anything. The
+  File System Access API is Chrome-only, Safari never, and its handles expose no
+  path — so it could not feed the MCP server anyway.
+- **Licence trap avoided:** `@cosmograph/*` is CC-BY-NC. The graph uses d3-force.
+- **Obsidian ships no semantic search and no local model.** The only plugin that
+  does went commercial in Dec 2025. That gap is real.
+
+## What the team built
+
+Eight modules in parallel, sixteen agents, zero errors: graph, markdown editor,
+coverage treemap, faceted explorer, near-duplicate detection (MinHash + LSH),
+schema conformance grid, timeline, split compare.
+
+`propose_edit` is gone. The MCP server is four read tools that journal every
+call — a sensor, not a gate.

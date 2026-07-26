@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { FolderOpen, ArrowRight, Loader2 } from "lucide-react";
+import { FolderOpen, ArrowRight, Loader2, FolderSearch } from "lucide-react";
 import { SceneryImage } from "@/components/marketing/scenery-image";
 import { BrandMark } from "@/components/marketing/brand-mark";
 import { formatCount } from "@/lib/utils";
@@ -25,7 +25,23 @@ export function Onboarding({
   const router = useRouter();
   const [path, setPath] = useState("");
   const [busy, setBusy] = useState(false);
+  const [picking, setPicking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  /**
+   * Ask the OS for a folder. Lore's server is on this machine, so it can open a
+   * real macOS picker — no need to make anyone type a path. Falls through
+   * silently to the text field wherever that isn't available.
+   */
+  async function browse() {
+    setPicking(true);
+    setError(null);
+    const response = await fetch("/api/pick", { method: "POST" }).catch(() => null);
+    setPicking(false);
+    if (!response?.ok) return;
+    const data = await response.json();
+    if (data.path) link(data.path);
+  }
 
   async function link(target: string) {
     if (!target.trim() || busy) return;
@@ -108,6 +124,16 @@ export function Onboarding({
             {error ? (
               <p className="t-meta mt-2.5 text-[var(--lore-danger)]">{error}</p>
             ) : null}
+
+            <button
+              type="button"
+              onClick={browse}
+              disabled={busy || picking}
+              className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-[var(--lore-border)] text-[14px] font-medium text-[var(--lore-text-secondary)] transition-colors hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)] disabled:opacity-50"
+            >
+              {picking ? <Loader2 size={15} className="animate-spin" /> : <FolderSearch size={15} />}
+              {picking ? "Waiting for the picker…" : "Browse…"}
+            </button>
 
             <button
               type="button"

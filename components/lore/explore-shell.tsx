@@ -1,0 +1,93 @@
+"use client";
+
+import { useState } from "react";
+import {
+  Share2,
+  LayoutGrid,
+  SlidersHorizontal,
+  Copy,
+  ClipboardCheck,
+  CalendarClock,
+  Columns2,
+} from "lucide-react";
+import type { VaultIndex } from "@/lib/types";
+import { GraphView } from "@/components/lore/graph-view";
+import { CoverageMap } from "@/components/lore/coverage-map";
+import { ExplorerView } from "@/components/lore/explorer-view";
+import { DuplicatesView } from "@/components/lore/duplicates-view";
+import { SchemaView } from "@/components/lore/schema-view";
+import { TimelineView } from "@/components/lore/timeline-view";
+import { CompareView } from "@/components/lore/compare-view";
+import { cn } from "@/lib/utils";
+
+/**
+ * Explore — the seven ways of looking at the corpus, behind one nav item.
+ *
+ * These are grouped rather than promoted to the sidebar for a reason. Only one
+ * of them is a place you work; the rest are lenses you reach for occasionally.
+ * Giving each its own top-level slot would imply they are all equally load
+ * bearing, and would push the nav past the point where anyone reads it.
+ */
+
+const TABS = [
+  { id: "explorer", label: "Browse", icon: SlidersHorizontal },
+  { id: "graph", label: "Graph", icon: Share2 },
+  { id: "map", label: "Map", icon: LayoutGrid },
+  { id: "timeline", label: "Timeline", icon: CalendarClock },
+  { id: "compare", label: "Compare", icon: Columns2 },
+  { id: "duplicates", label: "Duplicates", icon: Copy },
+  { id: "schema", label: "Schema", icon: ClipboardCheck },
+] as const;
+
+type TabId = (typeof TABS)[number]["id"];
+
+export function ExploreShell({
+  index,
+  pageTitles,
+  onOpenPage,
+}: {
+  index: VaultIndex;
+  pageTitles: Map<string, string>;
+  onOpenPage: (pageId: string) => void;
+}) {
+  const [tab, setTab] = useState<TabId>("explorer");
+
+  return (
+    <div className="flex h-full min-w-0 flex-col">
+      <div className="flex shrink-0 flex-wrap gap-1 border-b border-[var(--lore-border)] px-6 py-2.5 md:px-8">
+        {TABS.map((t) => {
+          const Icon = t.icon;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium transition-colors",
+                tab === t.id
+                  ? "bg-[var(--lore-surface-raised)] text-[var(--lore-text-primary)]"
+                  : "text-[var(--lore-text-secondary)] hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)]",
+              )}
+            >
+              <Icon size={14} className="opacity-80" />
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Each lens is mounted only while selected. The graph runs a physics
+          simulation and the duplicate finder hashes the whole corpus — keeping
+          those alive behind a hidden tab would burn a laptop for nothing. */}
+      <div className="min-w-0 flex-1 overflow-hidden">
+        {tab === "explorer" ? <ExplorerView index={index} onOpenPage={onOpenPage} /> : null}
+        {tab === "graph" ? <GraphView index={index} onOpenPage={onOpenPage} /> : null}
+        {tab === "map" ? <CoverageMap index={index} onOpenPage={onOpenPage} /> : null}
+        {tab === "timeline" ? <TimelineView index={index} onOpenPage={onOpenPage} /> : null}
+        {tab === "compare" ? <CompareView index={index} pageTitles={pageTitles} /> : null}
+        {tab === "duplicates" ? <DuplicatesView index={index} onOpenPage={onOpenPage} /> : null}
+        {tab === "schema" ? <SchemaView index={index} /> : null}
+      </div>
+    </div>
+  );
+}

@@ -11,8 +11,16 @@
     "mcp": "node mcp/server.mjs"
   },
   "dependencies": {
+    "@codemirror/lang-markdown": "6.5.1",
+    "@codemirror/state": "6.7.1",
+    "@codemirror/view": "6.43.6",
+    "@uiw/react-codemirror": "4.25.11",
+    "chokidar": "5.0.0",
     "clsx": "^2.1.1",
+    "d3-force": "3.0.0",
+    "diff": "9.0.0",
     "framer-motion": "12.42.2",
+    "gpt-tokenizer": "3.4.0",
     "gray-matter": "^4.0.3",
     "lucide-react": "^0.469.0",
     "marked": "18.0.7",
@@ -23,6 +31,8 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/d3-force": "3.0.10",
+    "@types/diff": "7.0.2",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

@@ -1,7 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import { Search, Plus, BookText, Plug, Settings, Sun, Moon } from "lucide-react";
+import {
+  Search,
+  Plus,
+  BookText,
+  Plug,
+  Settings,
+  Sun,
+  Moon,
+  ShieldCheck,
+  BarChart3,
+  Compass,
+} from "lucide-react";
 import type { SearchResult, VaultIndex } from "@/lib/types";
 import type { View } from "@/components/lore/vault-app";
 import { BrandMark } from "@/components/marketing/brand-mark";
@@ -11,6 +22,9 @@ import { cn, formatCount, relativeTime } from "@/lib/utils";
 
 const NAV: { id: View; label: string; icon: typeof BookText }[] = [
   { id: "wiki", label: "Wiki", icon: BookText },
+  { id: "review", label: "Review", icon: ShieldCheck },
+  { id: "insights", label: "Insights", icon: BarChart3 },
+  { id: "explore", label: "Explore", icon: Compass },
   { id: "connections", label: "Connections", icon: Plug },
   { id: "settings", label: "Settings", icon: Settings },
 ];
@@ -21,7 +35,7 @@ export function Sidebar({
   onView,
   folder,
   onFolder,
-  pendingByFolder,
+  needsReview,
   query,
   onQuery,
   results,
@@ -33,7 +47,7 @@ export function Sidebar({
   onView: (view: View) => void;
   folder: string;
   onFolder: (folder: string) => void;
-  pendingByFolder: Record<string, number>;
+  needsReview: number;
   query: string;
   onQuery: (value: string) => void;
   results: SearchResult[] | null;
@@ -85,9 +99,9 @@ export function Sidebar({
         </button>
       </div>
 
-      {/* Three destinations, exactly. Everything about the wiki itself lives in
-          the document; Connections is how agents get in; Settings is the vault
-          and its health. A fourth tab would mean the document isn't enough. */}
+      {/* Wiki is where you read. Review and Insights are the two things only
+          Lore can tell you — what your agents changed, and what they asked for.
+          Explore holds the lenses. Connections and Settings are plumbing. */}
       <nav className="space-y-0.5 px-3">
         {NAV.map((item) => {
           const Icon = item.icon;
@@ -105,6 +119,11 @@ export function Sidebar({
             >
               <Icon size={15} className="opacity-80" />
               {item.label}
+              {item.id === "review" && needsReview > 0 ? (
+                <span className="ml-auto flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--lore-accent)] px-1 text-[11px] font-semibold text-white">
+                  {needsReview}
+                </span>
+              ) : null}
             </button>
           );
         })}
@@ -138,9 +157,7 @@ export function Sidebar({
             <p className="mb-1.5 mt-1 px-2 text-[10px] font-semibold uppercase tracking-[0.09em] text-[var(--lore-text-tertiary)]">
               Folders
             </p>
-            {index.folders.map((entry, i) => {
-              const pending = pendingByFolder[entry.folder] ?? 0;
-              return (
+            {index.folders.map((entry, i) => (
                 <button
                   key={entry.folder || "__root"}
                   type="button"
@@ -155,18 +172,11 @@ export function Sidebar({
                 >
                   <span className="pal-dot" />
                   <span className="truncate">{entry.folder || "Root"}</span>
-                  {pending > 0 ? (
-                    <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--lore-accent)] px-1 text-[10px] font-semibold text-white">
-                      {pending}
-                    </span>
-                  ) : (
-                    <span className="ml-auto text-[11px] text-[var(--lore-text-tertiary)]">
-                      {entry.count}
-                    </span>
-                  )}
+                  <span className="ml-auto text-[11px] text-[var(--lore-text-tertiary)]">
+                    {entry.count}
+                  </span>
                 </button>
-              );
-            })}
+            ))}
           </>
         )}
       </div>

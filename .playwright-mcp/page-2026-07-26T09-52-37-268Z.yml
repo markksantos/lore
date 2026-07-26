@@ -1,0 +1,226 @@
+- main [ref=f4e2]:
+  - generic [ref=f4e3]:
+    - link "Home" [ref=f4e4] [cursor=pointer]:
+      - /url: /graph/3bc00ad3-f421-41e7-8c65-40861c298be5
+    - generic [ref=f4e5]:
+      - button "Search" [ref=f4e6] [cursor=pointer]:
+        - generic [ref=f4e7]: 
+      - searchbox "Search graph"
+      - generic: Up/Down to navigate
+    - switch [ref=f4e8] [cursor=pointer]
+  - heading "Logseq public roadmap" [level=1] [ref=f4e12]
+  - generic [ref=f4e13]:
+    - generic [ref=f4e14]: "By: gabriel., tiensonqin"
+    - generic [ref=f4e15]: 7/11/2026, 11:05:37 AM
+  - list [ref=f4e16]:
+    - listitem [ref=f4e17]:
+      - generic [ref=f4e18]:
+        - strong [ref=f4e20]: Current status
+        - button "▾" [expanded] [ref=f4e21] [cursor=pointer]
+      - list [ref=f4e23]:
+        - listitem [ref=f4e24]:
+          - generic [ref=f4e25]: Beta testing
+    - listitem [ref=f4e27]:
+      - generic [ref=f4e28]:
+        - strong [ref=f4e30]: Plugins
+        - button "▾" [ref=f4e31] [cursor=pointer]
+    - listitem [ref=f4e32]:
+      - generic [ref=f4e33]:
+        - strong [ref=f4e35]: Features
+        - button "▾" [expanded] [ref=f4e36] [cursor=pointer]
+      - list [ref=f4e38]:
+        - listitem [ref=f4e39]:
+          - generic [ref=f4e40]: Repeated tasks
+        - listitem [ref=f4e50]:
+          - generic [ref=f4e51]: Property history
+        - listitem [ref=f4e61]:
+          - generic [ref=f4e62]: Plugins support on Web
+        - listitem [ref=f4e72]:
+          - generic [ref=f4e73]: Bring back text template
+        - listitem [ref=f4e83]:
+          - generic [ref=f4e84]: Multiple tabs support
+        - listitem [ref=f4e94]:
+          - generic [ref=f4e95]: Multiple windows support
+        - listitem [ref=f4e105]:
+          - generic [ref=f4e106]: Export DB graph to Markdown
+        - listitem [ref=f4e116]:
+          - generic [ref=f4e117]:
+            - generic [ref=f4e126]: Capture
+            - button "▾" [expanded] [ref=f4e127] [cursor=pointer]
+          - list [ref=f4e129]:
+            - listitem [ref=f4e130]:
+              - generic [ref=f4e131]: Image(s)
+            - listitem [ref=f4e141]:
+              - generic [ref=f4e142]:
+                - generic [ref=f4e151]: Voice record on both iOS/Android
+                - link "Charlie" [ref=f4e155] [cursor=pointer]:
+                  - /url: /page/3bc00ad3-f421-41e7-8c65-40861c298be5/674db740-6051-4656-aa08-babd952f8a6b
+                - button "▾" [expanded] [ref=f4e156] [cursor=pointer]
+              - list [ref=f4e158]:
+                - listitem [ref=f4e159]:
+                  - generic [ref=f4e160]: Audio transcribe on iOS
+        - listitem [ref=f4e170]:
+          - generic [ref=f4e171]:
+            - generic [ref=f4e180]: Logseq CLI
+            - link "Gabriel" [ref=f4e184] [cursor=pointer]:
+              - /url: /page/3bc00ad3-f421-41e7-8c65-40861c298be5/674db77a-a4ab-45f8-80b0-a966254e1388
+          - generic [ref=f4e187]:
+            - term [ref=f4e188]: GitHub URL
+            - definition [ref=f4e189]:
+              - link "https://github.com/logseq/logseq/pull/12000" [ref=f4e191] [cursor=pointer]:
+                - /url: https://github.com/logseq/logseq/pull/12000
+        - listitem [ref=f4e192]:
+          - generic [ref=f4e193]:
+            - generic [ref=f4e202]: Logseq MCP
+            - link "Gabriel" [ref=f4e206] [cursor=pointer]:
+              - /url: /page/3bc00ad3-f421-41e7-8c65-40861c298be5/674db77a-a4ab-45f8-80b0-a966254e1388
+          - generic [ref=f4e209]:
+            - term [ref=f4e210]: GitHub URL
+            - definition [ref=f4e211]:
+              - link "https://github.com/logseq/logseq/pull/12111" [ref=f4e213] [cursor=pointer]:
+                - /url: https://github.com/logseq/logseq/pull/12111
+        - listitem [ref=f4e214]:
+          - generic [ref=f4e215]:
+            - generic [ref=f4e224]: Android native experience
+            - generic [ref=f4e227]:
+              - link "Tienson" [ref=f4e228] [cursor=pointer]:
+                - /url: /page/3bc00ad3-f421-41e7-8c65-40861c298be5/674d7790-eec0-4702-9837-1ff27761f0a9
+              - text: ","
+              - link "Charlie" [ref=f4e229] [cursor=pointer]:
+                - /url: /page/3bc00ad3-f421-41e7-8c65-40861c298be5/674db740-6051-4656-aa08-babd952f8a6b
+        - listitem [ref=f4e230]:
+          - generic [ref=f4e231]:
+            - generic [ref=f4e240]: Page publishing
+            - link "Tienson" [ref=f4e244] [cursor=pointer]:
+              - /url: /page/3bc00ad3-f421-41e7-8c65-40861c298be5/674d7790-eec0-4702-9837-1ff27761f0a9
+          - generic [ref=f4e245]:
+            - generic [ref=f4e246]:
+              - generic [ref=f4e247]: Deadline
+              - generic [ref=f4e248]: 2025-12-30 16:00:00.000
+            - generic [ref=f4e250]:
+              - generic [ref=f4e251]: Scheduled
+              - generic [ref=f4e252]: 2025-12-05 16:00:00.000
+        - listitem [ref=f4e254]:
+          - generic [ref=f4e255]:
+            - generic [ref=f4e264]: Views
+            - button "▾" [expanded] [ref=f4e265] [cursor=pointer]
+          - list [ref=f4e267]:
+            - listitem [ref=f4e268]:
+              - generic [ref=f4e269]: List
+            - listitem [ref=f4e279]:
+              - generic [ref=f4e280]: Table
+            - listitem [ref=f4e290]:
+              - generic [ref=f4e291]: Gallery
+            - listitem [ref=f4e301]:
+              - generic [ref=f4e302]: Kanban
+            - listitem [ref=f4e311]:
+              - generic [ref=f4e312]: "Research: Canvas"
+        - listitem [ref=f4e314]:
+          - generic [ref=f4e315]:
+            - link "RTC" [ref=f4e317] [cursor=pointer]:
+              - /url: /page/3bc00ad3-f421-41e7-8c65-40861c298be5/674d5a27-57c9-4e35-bc09-db06879205be
+            - button "▾" [expanded] [ref=f4e318] [cursor=pointer]
+          - list [ref=f4e320]:
+            - listitem [ref=f4e321]:
+              - generic [ref=f4e322]:
+                - generic [ref=f4e331]: End-to-End encryption support
+                - link "zhiyuan" [ref=f4e335] [cursor=pointer]:
+                  - /url: /page/3bc00ad3-f421-41e7-8c65-40861c298be5/f827de30-0ed3-4051-99fe-f88b7d1cd1cd
+                - button "▾" [ref=f4e336] [cursor=pointer]
+            - listitem [ref=f4e337]:
+              - generic [ref=f4e338]:
+                - generic [ref=f4e347]: Recycle to restore deleted pages
+                - button "▾" [ref=f4e348] [cursor=pointer]
+            - listitem [ref=f4e349]:
+              - link "Add emoji reactions" [ref=f4e352] [cursor=pointer]:
+                - /url: /page/3bc00ad3-f421-41e7-8c65-40861c298be5/67f3eb56-1aa9-4b42-afd3-6269aa463bcb
+            - listitem [ref=f4e353]:
+              - generic [ref=f4e354]:
+                - generic [ref=f4e363]: Large graph support
+                - button "▾" [expanded] [ref=f4e364] [cursor=pointer]
+              - list [ref=f4e366]:
+                - listitem [ref=f4e367]:
+                  - generic [ref=f4e368]: Tested with 50k pages, 1M+ blocks
+        - listitem [ref=f4e370]:
+          - generic [ref=f4e371]: Bi-directional properties
+        - listitem [ref=f4e381]:
+          - generic [ref=f4e382]: Self-hosted sync
+        - listitem [ref=f4e392]:
+          - generic [ref=f4e393]:
+            - generic [ref=f4e402]: New CLI
+            - button "▾" [expanded] [ref=f4e403] [cursor=pointer]
+          - list [ref=f4e405]:
+            - listitem [ref=f4e406]:
+              - img "2026-04-25-01-39-18" [ref=f4e408]
+            - listitem [ref=f4e409]:
+              - generic [ref=f4e410]: Headless sync doesn't rely on the desktop app
+            - listitem [ref=f4e420]:
+              - generic [ref=f4e421]: Able to operate the same graph with the desktop app at the same time
+            - listitem [ref=f4e431]:
+              - generic [ref=f4e432]: Agent skills
+        - listitem [ref=f4e442]:
+          - generic [ref=f4e443]: Present conflicts when multiple clients editing the same block's content
+        - listitem [ref=f4e453]:
+          - generic [ref=f4e454]: Markdown mirror
+        - listitem [ref=f4e464]:
+          - generic [ref=f4e465]:
+            - generic [ref=f4e474]: New graph view
+            - button "▾" [ref=f4e475] [cursor=pointer]
+        - listitem [ref=f4e476]:
+          - generic [ref=f4e477]: Comment on block(s)
+        - listitem [ref=f4e487]:
+          - generic [ref=f4e488]: Server Restful API && MCP support
+        - listitem [ref=f4e498]:
+          - generic [ref=f4e499]: Logseq ChatGPT plugin
+        - listitem [ref=f4e509]:
+          - generic [ref=f4e510]: Logseq Pro
+        - listitem [ref=f4e520]:
+          - link "Two-way sync between Markdown and db graph" [ref=f4e531] [cursor=pointer]:
+            - /url: /page/3bc00ad3-f421-41e7-8c65-40861c298be5/6954f5c2-acba-494f-999c-cd719fbb0b4a
+        - listitem [ref=f4e532]:
+          - generic [ref=f4e533]:
+            - generic [ref=f4e541]: Notifications
+            - button "▾" [expanded] [ref=f4e542] [cursor=pointer]
+          - list [ref=f4e544]:
+            - listitem [ref=f4e545]:
+              - generic [ref=f4e546]: Comment reply
+            - listitem [ref=f4e548]:
+              - generic [ref=f4e549]: Tasks
+            - listitem [ref=f4e551]:
+              - generic [ref=f4e552]: Mention
+        - listitem [ref=f4e554]:
+          - generic [ref=f4e555]:
+            - generic [ref=f4e563]: Page history
+            - button "▾" [expanded] [ref=f4e564] [cursor=pointer]
+          - list [ref=f4e566]:
+            - listitem [ref=f4e567]:
+              - generic [ref=f4e568]: Ideally, we can provide block history too
+        - listitem [ref=f4e570]:
+          - generic [ref=f4e571]: Built-in calendar integration
+        - listitem [ref=f4e580]:
+          - generic [ref=f4e581]:
+            - generic [ref=f4e589]: Template share
+            - button "▾" [expanded] [ref=f4e590] [cursor=pointer]
+          - list [ref=f4e592]:
+            - listitem [ref=f4e593]:
+              - generic [ref=f4e594]: Able to download and use templates easier
+        - listitem [ref=f4e596]:
+          - generic [ref=f4e597]:
+            - generic [ref=f4e605]: Rich-text editor for better UX
+            - button "▾" [expanded] [ref=f4e606] [cursor=pointer]
+          - list [ref=f4e608]:
+            - listitem [ref=f4e609]:
+              - generic [ref=f4e610]: Hide raw block ids
+            - listitem [ref=f4e612]:
+              - generic [ref=f4e613]: Make inline properties possible
+        - listitem [ref=f4e615]:
+          - generic [ref=f4e616]: Whiteboard
+    - listitem [ref=f4e625]:
+      - generic [ref=f4e626]:
+        - strong [ref=f4e628]: Research
+        - button "▾" [expanded] [ref=f4e629] [cursor=pointer]
+      - list [ref=f4e631]:
+        - listitem [ref=f4e632]:
+          - generic [ref=f4e633]: Use CRDT to resolve block content conflicts automatically
+        - listitem [ref=f4e642]:
+          - generic [ref=f4e643]: Agents with Logseq graphs as memory
