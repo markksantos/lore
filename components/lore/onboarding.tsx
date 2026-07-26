@@ -1,0 +1,161 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { FolderOpen, ArrowRight, Loader2 } from "lucide-react";
+import { SceneryImage } from "@/components/marketing/scenery-image";
+import { BrandMark } from "@/components/marketing/brand-mark";
+import { formatCount } from "@/lib/utils";
+
+/**
+ * First run. Exactly one decision: which folder is your wiki.
+ *
+ * There is no account step, no import, no "choose a template", and no empty
+ * default vault — every one of those asks the user to commit before they've
+ * seen anything. If they already have a wiki, this screen is over in one click.
+ */
+export function Onboarding({
+  suggestions,
+}: {
+  suggestions: { root: string; files: number }[];
+}) {
+  const router = useRouter();
+  const [path, setPath] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function link(target: string) {
+    if (!target.trim() || busy) return;
+    setBusy(true);
+    setError(null);
+
+    const response = await fetch("/api/vault", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "link", path: target }),
+    });
+    const data = await response.json();
+
+    if (!response.ok) {
+      setError(data.error ?? "Could not link that folder.");
+      setBusy(false);
+      return;
+    }
+    router.refresh();
+  }
+
+  return (
+    <main className="relative flex min-h-svh flex-col overflow-hidden bg-[var(--lore-background)]">
+      {/* The same sky that opens the landing page, cropped to a shallow band so
+          the app's first screen is recognisably the same product. */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-[42svh] overflow-hidden">
+        <SceneryImage
+          src="/assets/landing/scenery/light-hero.png"
+          fileName="light-hero.png"
+          label="Light hero"
+          priority
+          className="dark:hidden"
+        />
+        <SceneryImage
+          src="/assets/landing/scenery/dark-hero.png"
+          fileName="dark-hero.png"
+          label="Dark hero"
+          className="hidden dark:block"
+        />
+        <div
+          className="absolute inset-x-0 bottom-0 h-full"
+          style={{ backgroundImage: "var(--scenery-fade-down)" }}
+        />
+      </div>
+
+      <div className="relative z-10 flex flex-1 items-center justify-center px-5 py-16">
+        <div className="lore-fade-up w-full max-w-[30rem]">
+          <div className="mb-7 flex items-center justify-center gap-2 text-white drop-shadow-sm">
+            <BrandMark size={22} />
+            <span className="text-[18px] font-semibold tracking-[-0.03em]">Lore</span>
+          </div>
+
+          <div className="rounded-2xl border border-[var(--lore-border)] bg-[var(--lore-surface)] p-7 shadow-[0_18px_50px_-24px_rgba(15,23,42,0.35)]">
+            <h1 className="text-[22px] font-semibold tracking-[-0.03em] text-[var(--lore-text-primary)]">
+              Link your wiki
+            </h1>
+            <p className="t-body mt-2 text-[var(--lore-text-secondary)]">
+              Point Lore at the folder your markdown already lives in. Nothing moves, nothing
+              gets rewritten, and nothing is uploaded.
+            </p>
+
+            <label className="mt-6 block">
+              <span className="t-meta font-medium text-[var(--lore-text-secondary)]">
+                Folder path
+              </span>
+              <input
+                value={path}
+                onChange={(event) => setPath(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") link(path);
+                }}
+                placeholder="~/Documents/wiki"
+                spellCheck={false}
+                autoFocus
+                className="mt-1.5 w-full rounded-lg border border-[var(--lore-border)] bg-[var(--lore-background)] px-3 py-2.5 text-[14px] text-[var(--lore-text-primary)] outline-none transition-colors placeholder:text-[var(--lore-text-tertiary)] focus:border-[var(--lore-accent)]"
+                style={{ fontFamily: "var(--font-mono), monospace" }}
+              />
+            </label>
+
+            {error ? (
+              <p className="t-meta mt-2.5 text-[var(--lore-danger)]">{error}</p>
+            ) : null}
+
+            <button
+              type="button"
+              onClick={() => link(path)}
+              disabled={!path.trim() || busy}
+              className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-[var(--lore-accent)] text-[14px] font-medium text-white transition-colors hover:bg-[var(--lore-accent-hover)] disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              {busy ? <Loader2 size={15} className="animate-spin" /> : null}
+              {busy ? "Linking…" : "Link folder"}
+              {busy ? null : <ArrowRight size={15} />}
+            </button>
+
+            {suggestions.length > 0 ? (
+              <div className="mt-7 border-t border-[var(--lore-border)] pt-5">
+                <p className="t-meta font-medium text-[var(--lore-text-secondary)]">
+                  Found on this Mac
+                </p>
+                <div className="mt-2.5 space-y-1.5">
+                  {suggestions.map((suggestion) => (
+                    <button
+                      key={suggestion.root}
+                      type="button"
+                      onClick={() => link(suggestion.root)}
+                      disabled={busy}
+                      className="group flex w-full items-center gap-2.5 rounded-lg border border-[var(--lore-border)] bg-[var(--lore-background)] px-3 py-2.5 text-left transition-colors hover:border-[var(--lore-border-strong)] hover:bg-[var(--lore-surface-raised)] disabled:opacity-50"
+                    >
+                      <FolderOpen
+                        size={15}
+                        className="shrink-0 text-[var(--lore-text-tertiary)] group-hover:text-[var(--lore-accent)]"
+                      />
+                      <span
+                        className="flex-1 truncate text-[12.5px] text-[var(--lore-text-primary)]"
+                        style={{ fontFamily: "var(--font-mono), monospace" }}
+                      >
+                        {suggestion.root.replace(/^\/Users\/[^/]+/, "~")}
+                      </span>
+                      <span className="t-meta shrink-0 text-[var(--lore-text-tertiary)]">
+                        {formatCount(suggestion.files)} pages
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          <p className="t-meta mt-5 text-center text-[var(--lore-text-tertiary)]">
+            Lore stores only the folder path, in <code>~/.lore/config.json</code>.
+          </p>
+        </div>
+      </div>
+    </main>
+  );
+}

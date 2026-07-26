@@ -1,0 +1,428 @@
+"use client";
+
+import Link from "next/link";
+import { useState } from "react";
+import { ArrowRight, FolderOpen, Plug, ShieldCheck, ChevronDown } from "lucide-react";
+import { SceneryImage } from "@/components/marketing/scenery-image";
+import { MarketingFooter, MarketingHeader } from "@/components/marketing/site-chrome";
+import { VaultDemo } from "@/components/marketing/vault-demo";
+import { cn } from "@/lib/utils";
+
+export function Landing() {
+  return (
+    <>
+      <MarketingHeader />
+      <Hero />
+
+      {/* The product shot bridges the hero and the first content section:
+          pulled up so its top overlaps the faded sky and its body extends into
+          the page, like a hero shot crossing the seam. */}
+      <div className="relative z-20 -mt-[28vh] px-4 md:-mt-[32vh] md:px-10 lg:px-12">
+        <div className="mx-auto max-w-5xl">
+          <VaultDemo />
+        </div>
+      </div>
+
+      <Problem />
+      <HowItWorks />
+      <Trust />
+      <Steps />
+      <Faq />
+      <Finale />
+      <MarketingFooter />
+    </>
+  );
+}
+
+function Hero() {
+  return (
+    <section className="relative bg-[var(--lore-background)]">
+      <div className="relative flex min-h-[94svh] flex-col overflow-hidden">
+        <SceneryImage
+          src="/assets/landing/scenery/light-hero.png"
+          fileName="light-hero.png"
+          label="Light hero"
+          priority
+          className="dark:hidden"
+        />
+        <SceneryImage
+          src="/assets/landing/scenery/dark-hero.png"
+          fileName="dark-hero.png"
+          label="Dark hero"
+          className="hidden dark:block"
+        />
+
+        {/* Top wash keeps the header and headline legible over the sky. */}
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(12,30,22,0.24)_0%,rgba(12,30,22,0.1)_30%,rgba(12,30,22,0)_60%)] dark:bg-[linear-gradient(180deg,rgba(0,0,0,0.4)_0%,rgba(0,0,0,0.18)_30%,rgba(0,0,0,0)_60%)]" />
+
+        {/* Bottom fade melts the art into the page background. */}
+        <div
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2"
+          style={{ backgroundImage: "var(--scenery-fade-down)" }}
+        />
+
+        <div className="relative z-10 flex flex-1 flex-col px-6 py-5 md:px-10 md:py-7">
+          <div className="flex flex-1 items-start justify-center pt-[14vh] text-center md:pt-[13vh]">
+            <div className="w-full max-w-3xl">
+              {/* The two-line lockup is held on tablet and up; below that the
+                  clamp alone isn't enough to keep "for all your agents" on one
+                  line at 375px, so it is allowed to wrap rather than overflow. */}
+              <h1 className="t-hero text-white">
+                <span className="block">Your wiki,</span>
+                <span className="block md:whitespace-nowrap">for all your agents</span>
+              </h1>
+
+              <p className="mx-auto mt-5 max-w-xl text-[15px] font-semibold text-white/90 md:mt-6 md:text-[18px]">
+                Point it at the markdown folder you already have.
+              </p>
+
+              <div className="mt-7 flex justify-center">
+                <Link
+                  href="/vault"
+                  className="group inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-white pl-4 pr-3 text-[14px] font-medium text-[#1c3a2b] transition-colors hover:bg-[#f4f6f4]"
+                >
+                  <span className="leading-none">Link your wiki</span>
+                  <ArrowRight
+                    size={16}
+                    className="transition-transform duration-200 group-hover:translate-x-0.5"
+                  />
+                </Link>
+              </div>
+
+              <p className="mt-4 text-[13px] text-white/70">
+                Runs on your machine. Nothing uploaded, no account.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Problem() {
+  return (
+    <Section
+      eyebrow="The problem"
+      title="You already wrote it down. Your agents still ask."
+      lede="Everything an agent needs to stop guessing is sitting in a folder on your disk. It just has no way in — and no way to give anything back."
+    >
+      <div className="mt-12 grid gap-x-10 gap-y-8 sm:grid-cols-3">
+        <Stat
+          value="150+"
+          unit="pages"
+          label="where an agent stops coping"
+          body="Past roughly a hundred and fifty notes, an index no longer fits in context. The agent stops finding the right page and starts writing a duplicate."
+        />
+        <Stat
+          value="1 of 9"
+          unit=""
+          label="wiki tools that speak MCP"
+          body="Almost every notes app in this space assumes a human at a keyboard. Your agents are locked outside the thing you built for them."
+        />
+        <Stat
+          value="0"
+          unit="clocks"
+          label="on anything going stale"
+          body="Nothing tells you the pricing page you wrote in March stopped being true in May. The agent quotes it anyway, with total confidence."
+        />
+      </div>
+    </Section>
+  );
+}
+
+function HowItWorks() {
+  const items = [
+    {
+      icon: FolderOpen,
+      title: "Link the folder. That's the setup.",
+      body: "No import, no migration, no new format. Lore reads the markdown where it sits — your headings, your frontmatter, your [[wikilinks]], your folder names. It infers the structure you already chose instead of imposing one. Delete Lore tomorrow and the wiki is byte-for-byte what it was.",
+    },
+    {
+      icon: Plug,
+      title: "Every agent gets a map, not a haystack",
+      body: "Lore writes one AGENTS.md at your vault root — every page, folder, tag, and a one-line summary — and serves the same map over MCP with search and read. An agent skims the map, opens the two pages that matter, and answers. It never has to read your whole wiki or grep blind.",
+    },
+    {
+      icon: ShieldCheck,
+      title: "Agents propose. You accept.",
+      body: "There is no write tool. When an agent learns something durable it files a proposal, and the change waits in Review as a diff with a reason and a risk tier. The wiki changes when you say so — because the edit that hurts is never the obviously wrong one, it's the plausible one you'd have missed.",
+    },
+  ];
+
+  return (
+    <Section
+      eyebrow="How it works"
+      title="Three moving parts."
+      lede="Link a folder, hand your agents the map, keep the pen."
+    >
+      <div className="mt-12 space-y-px overflow-hidden rounded-2xl border border-[var(--lore-border)] bg-[var(--lore-border)]">
+        {items.map((item, i) => {
+          const Icon = item.icon;
+          return (
+            <div
+              key={item.title}
+              className="flex flex-col gap-4 bg-[var(--lore-surface)] px-6 py-8 sm:flex-row sm:gap-8 sm:px-9 sm:py-10"
+            >
+              <div className="flex shrink-0 items-start gap-4 sm:w-52">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--lore-accent-tint)] text-[var(--lore-accent)]">
+                  <Icon size={17} />
+                </span>
+                <span className="t-meta pt-2.5 font-mono text-[var(--lore-text-tertiary)]">
+                  0{i + 1}
+                </span>
+              </div>
+              <div className="max-w-2xl">
+                <h3 className="t-step text-[var(--lore-text-primary)]">{item.title}</h3>
+                <p className="t-body mt-2.5 text-[var(--lore-text-secondary)]">{item.body}</p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Section>
+  );
+}
+
+function Trust() {
+  return (
+    <Section
+      eyebrow="Health"
+      title="It tells you where the wiki has rotted."
+      lede="Orphaned pages, links pointing at notes you never wrote, and anything past its review window — scored, so you can watch the number move."
+    >
+      <div className="mt-11 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {[
+          {
+            head: "Orphans",
+            body: "Pages nothing links to and that link nowhere. An agent walking your links will never reach them.",
+          },
+          {
+            head: "Dead links",
+            body: "Every [[link]] pointing at a page that doesn't exist yet. Each one is a page you meant to write.",
+          },
+          {
+            head: "Staleness clocks",
+            body: "Pricing gets 30 days, tooling 90, clients 60, everything else 180. One global threshold catches nothing.",
+          },
+          {
+            head: "Untagged",
+            body: "Tags are the cheapest way to make a page findable by an agent that doesn't know its title.",
+          },
+        ].map((card) => (
+          <div
+            key={card.head}
+            className="rounded-xl border border-[var(--lore-border)] bg-[var(--lore-surface)] px-5 py-5"
+          >
+            <h3 className="text-[14.5px] font-semibold text-[var(--lore-text-primary)]">
+              {card.head}
+            </h3>
+            <p className="t-body mt-1.5 text-[var(--lore-text-secondary)]">{card.body}</p>
+          </div>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+function Steps() {
+  const steps = [
+    {
+      n: "1",
+      title: "Link your folder",
+      body: "Paste a path, or pick one Lore already found on your Mac. It scans in under a second.",
+    },
+    {
+      n: "2",
+      title: "Write the index",
+      body: "One click drops AGENTS.md into your vault. Every file-reading agent finds it without being told.",
+    },
+    {
+      n: "3",
+      title: "Connect over MCP",
+      body: "Copy the config — the path is already filled in — restart your client, and the tools are live.",
+    },
+  ];
+
+  return (
+    <Section
+      eyebrow="Get started"
+      title="Under two minutes."
+      lede="There is no account to create, because there is no server to create it on."
+    >
+      <div className="mt-11 grid gap-6 sm:grid-cols-3">
+        {steps.map((step) => (
+          <div key={step.n}>
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--lore-text-primary)] text-[12px] font-semibold text-[var(--lore-button-primary-fg)]">
+              {step.n}
+            </span>
+            <h3 className="mt-3.5 text-[15px] font-semibold text-[var(--lore-text-primary)]">
+              {step.title}
+            </h3>
+            <p className="t-body mt-1.5 text-[var(--lore-text-secondary)]">{step.body}</p>
+          </div>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+const FAQ = [
+  {
+    q: "Does Lore move or reformat my files?",
+    a: "No. It reads the folder in place and writes only when you save a page or accept a proposal. The single file it ever adds is AGENTS.md at the vault root, and only when you press the button. Uninstall it and your wiki is untouched.",
+  },
+  {
+    q: "Does it work with my Obsidian vault?",
+    a: "Yes — that's the intended case. Lore reads [[wikilinks]], inline #tags, and YAML frontmatter, and skips .obsidian and .trash. Keep using Obsidian for writing; Lore is the layer that makes the same folder legible to your agents.",
+  },
+  {
+    q: "What can an agent actually do?",
+    a: "Five tools: read the index, search, read a page, report health, and propose an edit. That's it. There is no write tool, no delete tool, and no shell.",
+  },
+  {
+    q: "Is anything uploaded?",
+    a: "Nothing. Lore is a local Next.js app talking to your own filesystem. The only state it keeps outside your wiki is ~/.lore/config.json, which holds the folder path, and the pending proposal queue.",
+  },
+  {
+    q: "Why can't agents just write directly?",
+    a: "Because the edit that costs you isn't the obviously wrong one you'd catch — it's the confident, plausible one you'd never look at twice. A diff and a reason takes five seconds to read and is the only thing standing between a useful wiki and a subtly false one.",
+  },
+];
+
+function Faq() {
+  const [open, setOpen] = useState<number | null>(0);
+
+  return (
+    <Section eyebrow="Questions" title="Straight answers.">
+      <div className="mt-10 divide-y divide-[var(--lore-border)] border-y border-[var(--lore-border)]">
+        {FAQ.map((item, i) => (
+          <div key={item.q}>
+            <button
+              type="button"
+              onClick={() => setOpen(open === i ? null : i)}
+              className="flex w-full items-center justify-between gap-4 py-5 text-left"
+            >
+              <span className="text-[15.5px] font-medium text-[var(--lore-text-primary)]">
+                {item.q}
+              </span>
+              <ChevronDown
+                size={17}
+                className={cn(
+                  "shrink-0 text-[var(--lore-text-tertiary)] transition-transform duration-200",
+                  open === i && "rotate-180",
+                )}
+              />
+            </button>
+            {open === i ? (
+              <p className="t-body max-w-2xl pb-5 text-[var(--lore-text-secondary)]">{item.a}</p>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+function Finale() {
+  return (
+    <section className="relative overflow-hidden">
+      <div className="relative min-h-[62svh]">
+        <SceneryImage
+          src="/assets/landing/scenery/light-finale.png"
+          fileName="light-finale.png"
+          label="Light finale"
+          className="dark:hidden"
+        />
+        <SceneryImage
+          src="/assets/landing/scenery/dark-finale.png"
+          fileName="dark-finale.png"
+          label="Dark finale"
+          className="hidden dark:block"
+        />
+
+        {/* Matched pair of fades framing a clear centre, so the band joins the
+            section above and the footer below without a visible seam. */}
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{ backgroundImage: "var(--scenery-fade-band)" }}
+        />
+
+        <div className="relative flex min-h-[62svh] flex-col items-center justify-center px-6 text-center">
+          <h2 className="t-section max-w-2xl text-[var(--lore-text-primary)]">
+            Everything you know,
+            <br />
+            already in context.
+          </h2>
+          <p className="t-lede mt-4 max-w-md text-[var(--lore-text-secondary)]">
+            Stop re-explaining what you already wrote down.
+          </p>
+          <Link
+            href="/vault"
+            className="group mt-7 inline-flex h-10 items-center gap-2 rounded-lg bg-[var(--lore-text-primary)] pl-4 pr-3 text-[14px] font-medium text-[var(--lore-button-primary-fg)] transition-colors hover:bg-[var(--lore-button-primary-hover)]"
+          >
+            Link your wiki
+            <ArrowRight
+              size={16}
+              className="transition-transform duration-200 group-hover:translate-x-0.5"
+            />
+          </Link>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ------------------------------------------------------------------ primitives
+
+function Section({
+  eyebrow,
+  title,
+  lede,
+  children,
+}: {
+  eyebrow: string;
+  title: string;
+  lede?: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <section className="mx-auto max-w-5xl px-6 py-20 md:px-8 md:py-28">
+      <p className="t-meta font-medium uppercase tracking-[0.1em] text-[var(--lore-accent)]">
+        {eyebrow}
+      </p>
+      <h2 className="t-section mt-3 max-w-3xl text-[var(--lore-text-primary)]">{title}</h2>
+      {lede ? (
+        <p className="t-lede mt-4 max-w-2xl text-[var(--lore-text-secondary)]">{lede}</p>
+      ) : null}
+      {children}
+    </section>
+  );
+}
+
+function Stat({
+  value,
+  unit,
+  label,
+  body,
+}: {
+  value: string;
+  unit: string;
+  label: string;
+  body: string;
+}) {
+  return (
+    <div>
+      <div className="flex items-baseline gap-1">
+        <span className="text-[38px] font-semibold leading-none tracking-[-0.04em] text-[var(--lore-text-primary)]">
+          {value}
+        </span>
+        {unit ? (
+          <span className="text-[15px] text-[var(--lore-text-tertiary)]">{unit}</span>
+        ) : null}
+      </div>
+      <p className="mt-2 text-[13.5px] font-medium text-[var(--lore-text-primary)]">{label}</p>
+      <p className="t-body mt-1.5 text-[var(--lore-text-secondary)]">{body}</p>
+    </div>
+  );
+}

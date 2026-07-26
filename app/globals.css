@@ -1,0 +1,448 @@
+@import "tailwindcss" source(none);
+
+@source "./";
+@source "../components";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-border: var(--border);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --radius-sm: 0.625rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 0.875rem;
+  --radius-xl: 1rem;
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* Warm near-white paper canvas with two raised surface tints and hairline
+   borders. The whole palette is deliberately low-chroma so that the sky art at
+   the top and bottom of the landing page is the only saturated thing on the
+   page, and long-form prose stays comfortable to read. */
+:root {
+  --background: #f9f9f8;
+  --foreground: #1f1f1a;
+  --card: #ffffff;
+  --border: #e6e6e2;
+  --muted: #f3f3f1;
+  --muted-foreground: #636360;
+
+  --lore-background: #f9f9f8;
+  --lore-surface: #ffffff;
+  --lore-surface-raised: #f3f3f1;
+  --lore-surface-selected: #eeeeea;
+  --lore-border: #e6e6e2;
+  --lore-border-strong: #d6d6d0;
+  --lore-text-primary: #1f1f1a;
+  --lore-text-secondary: #636360;
+  --lore-text-tertiary: #9a9a96;
+  --lore-button-primary-fg: #ffffff;
+  --lore-button-primary-hover: #2b2b28;
+
+  /* Brand action colour. Constant across both themes so the accent reads
+     identically in light and dark. */
+  --lore-accent: #2f6f4f;
+  --lore-accent-hover: #275c42;
+  --lore-accent-tint: rgba(47, 111, 79, 0.1);
+
+  --lore-success: #16a34a;
+  --lore-danger: #dc2626;
+
+  /* Tag / folder tints, cycled by index so a vault's tags stay visually
+     distinguishable without anyone having to pick colours. */
+  --tint-1: #ede9fe;
+  --tint-2: #dbeafe;
+  --tint-3: #d1fae5;
+  --tint-4: #fef3c7;
+  --tint-5: #ffe4e6;
+  --tint-6: #cffafe;
+
+  /* Scenery fades. The sky art at the top and bottom of the landing page melts
+     into the page background through these. Stops are densely sampled along an
+     ease curve so the ramp reads as a smooth blur rather than banding.
+     `fade-down` melts art downward into the page; `fade-band` frames the
+     closing band with a matched pair of fades around a clear centre. */
+  --scenery-fade-down: linear-gradient(180deg, rgba(249,249,248,0) 0%, rgba(249,249,248,0.012) 14%, rgba(249,249,248,0.05) 26%, rgba(249,249,248,0.11) 37%, rgba(249,249,248,0.2) 47%, rgba(249,249,248,0.32) 56%, rgba(249,249,248,0.45) 64%, rgba(249,249,248,0.59) 72%, rgba(249,249,248,0.73) 80%, rgba(249,249,248,0.85) 87%, rgba(249,249,248,0.94) 93%, rgba(249,249,248,1) 100%);
+  --scenery-fade-band: linear-gradient(180deg, rgba(249,249,248,1) 0%, rgba(249,249,248,0.98) 4%, rgba(249,249,248,0.9) 8%, rgba(249,249,248,0.74) 12%, rgba(249,249,248,0.5) 16%, rgba(249,249,248,0.26) 20%, rgba(249,249,248,0.1) 24%, rgba(249,249,248,0.016) 28%, rgba(249,249,248,0) 32%, rgba(249,249,248,0) 65%, rgba(249,249,248,0.016) 69%, rgba(249,249,248,0.1) 73%, rgba(249,249,248,0.26) 77%, rgba(249,249,248,0.5) 81%, rgba(249,249,248,0.74) 85%, rgba(249,249,248,0.9) 89%, rgba(249,249,248,0.98) 93%, rgba(249,249,248,1) 97%, rgba(249,249,248,1) 100%);
+}
+
+/* Near-black canvas with the same two-surface structure. Text contrast is
+   pulled down slightly from pure white so long reading sessions stay easy. */
+.dark {
+  --background: #0e0e0d;
+  --foreground: #e7e7e2;
+  --card: #161615;
+  --border: #262624;
+  --muted: #1f1f1d;
+  --muted-foreground: #9c9c95;
+
+  --lore-background: #0e0e0d;
+  --lore-surface: #161615;
+  --lore-surface-raised: #1f1f1d;
+  --lore-surface-selected: #26262a;
+  --lore-border: #262624;
+  --lore-border-strong: #34342f;
+  --lore-text-primary: #e7e7e2;
+  --lore-text-secondary: #9c9c95;
+  --lore-text-tertiary: #6b6b65;
+  --lore-button-primary-fg: #0e0e0d;
+  --lore-button-primary-hover: #cfcfc8;
+
+  --lore-accent: #4f9b74;
+  --lore-accent-hover: #5fae85;
+  --lore-accent-tint: rgba(79, 155, 116, 0.16);
+
+  --lore-success: #4ade80;
+  --lore-danger: #f87171;
+
+  --tint-1: rgba(192, 132, 252, 0.18);
+  --tint-2: rgba(96, 165, 250, 0.18);
+  --tint-3: rgba(74, 222, 128, 0.16);
+  --tint-4: rgba(251, 191, 36, 0.18);
+  --tint-5: rgba(251, 113, 133, 0.18);
+  --tint-6: rgba(34, 211, 238, 0.16);
+
+  --scenery-fade-down: linear-gradient(180deg, rgba(14,14,13,0) 0%, rgba(14,14,13,0.012) 14%, rgba(14,14,13,0.05) 26%, rgba(14,14,13,0.11) 37%, rgba(14,14,13,0.2) 47%, rgba(14,14,13,0.32) 56%, rgba(14,14,13,0.45) 64%, rgba(14,14,13,0.59) 72%, rgba(14,14,13,0.73) 80%, rgba(14,14,13,0.85) 87%, rgba(14,14,13,0.94) 93%, rgba(14,14,13,1) 100%);
+  --scenery-fade-band: linear-gradient(180deg, rgba(14,14,13,1) 0%, rgba(14,14,13,0.98) 4%, rgba(14,14,13,0.9) 8%, rgba(14,14,13,0.74) 12%, rgba(14,14,13,0.5) 16%, rgba(14,14,13,0.26) 20%, rgba(14,14,13,0.1) 24%, rgba(14,14,13,0.016) 28%, rgba(14,14,13,0) 32%, rgba(14,14,13,0) 65%, rgba(14,14,13,0.016) 69%, rgba(14,14,13,0.1) 73%, rgba(14,14,13,0.26) 77%, rgba(14,14,13,0.5) 81%, rgba(14,14,13,0.74) 85%, rgba(14,14,13,0.9) 89%, rgba(14,14,13,0.98) 93%, rgba(14,14,13,1) 97%, rgba(14,14,13,1) 100%);
+}
+
+@layer base {
+  * {
+    border-color: var(--lore-border);
+    box-sizing: border-box;
+  }
+
+  html {
+    font-family: var(--font-sans), system-ui, sans-serif;
+  }
+
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    min-height: 100%;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+}
+
+/* ---------------------------------------------------------------- typography
+   A five-step scale. Everything on the marketing page and inside the app uses
+   one of these classes; nothing sets an ad-hoc font-size. */
+
+.t-hero {
+  font-weight: 600;
+  font-size: clamp(2.2rem, 9vw, 3rem);
+  line-height: 1.04;
+  letter-spacing: -0.025em;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@media (min-width: 768px) {
+  .t-hero {
+    font-size: clamp(2.75rem, 5.5vw, 3.75rem);
+  }
+}
+
+.t-section {
+  font-weight: 500;
+  font-size: clamp(1.75rem, 7.5vw, 3.4rem);
+  line-height: 1.04;
+  letter-spacing: -0.03em;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+@media (min-width: 768px) {
+  .t-section {
+    font-size: clamp(2.25rem, 4.6vw, 3.4rem);
+  }
+}
+
+.t-step {
+  font-weight: 500;
+  font-size: 1.35rem;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.t-lede {
+  font-size: 17px;
+  line-height: 1.6;
+  letter-spacing: -0.005em;
+}
+
+@media (min-width: 768px) {
+  .t-lede {
+    font-size: 19px;
+    line-height: 1.55;
+  }
+}
+
+.t-body {
+  font-size: 15px;
+  line-height: 1.7;
+  letter-spacing: -0.005em;
+}
+
+.t-meta {
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+/* ------------------------------------------------------------------ surfaces */
+
+.lore-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--lore-border-strong) transparent;
+}
+
+.lore-scrollbar::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.lore-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.lore-scrollbar::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: var(--lore-border-strong);
+  background-clip: padding-box;
+}
+
+/* Squircle bullet markers, never round dots — the one detail that stops a
+   plain markdown list from reading as browser default. */
+.lore-bullets {
+  list-style: none;
+  padding-left: 0;
+}
+
+.lore-bullets > li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7em;
+}
+
+.lore-bullets > li::before {
+  content: "";
+  flex: 0 0 auto;
+  margin-top: 0.8em;
+  width: 0.4em;
+  height: 0.4em;
+  border-radius: 0.13em;
+  background: var(--lore-bullet, currentColor);
+}
+
+/* --------------------------------------------------------------- prose view
+   The rendered-note surface inside the app. Sized for reading, not for
+   matching a marketing headline. */
+
+.lore-prose {
+  font-size: 16px;
+  line-height: 1.75;
+  color: var(--lore-text-primary);
+}
+
+.lore-prose > * + * {
+  margin-top: 1rem;
+}
+
+.lore-prose h1,
+.lore-prose h2,
+.lore-prose h3,
+.lore-prose h4 {
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+}
+
+.lore-prose h1 { font-size: 1.9rem; margin-top: 2rem; }
+.lore-prose h2 { font-size: 1.5rem; margin-top: 2rem; }
+.lore-prose h3 { font-size: 1.22rem; margin-top: 1.6rem; }
+.lore-prose h4 { font-size: 1.05rem; margin-top: 1.4rem; }
+
+.lore-prose ul,
+.lore-prose ol {
+  padding-left: 1.35rem;
+}
+
+.lore-prose ul { list-style: none; padding-left: 0; }
+
+.lore-prose ul > li {
+  position: relative;
+  padding-left: 1.3em;
+}
+
+.lore-prose ul > li::before {
+  content: "";
+  position: absolute;
+  left: 0.15em;
+  top: 0.72em;
+  width: 0.4em;
+  height: 0.4em;
+  border-radius: 0.13em;
+  background: var(--lore-text-tertiary);
+}
+
+.lore-prose ol { list-style: decimal; }
+.lore-prose li + li { margin-top: 0.35rem; }
+
+.lore-prose blockquote {
+  position: relative;
+  border-radius: 0 0.75rem 0.75rem 0;
+  background: var(--lore-surface-raised);
+  padding: 0.7rem 0.95rem 0.7rem 1.35rem;
+}
+
+.lore-prose blockquote::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 4px;
+  background: var(--lore-accent);
+  content: "";
+}
+
+.lore-prose blockquote > * + * { margin-top: 0.6rem; }
+
+.lore-prose code {
+  border-radius: 0.45rem;
+  background: var(--lore-surface-raised);
+  padding: 0.15rem 0.35rem;
+  font-family: var(--font-mono), monospace;
+  font-size: 0.9em;
+}
+
+.lore-prose pre {
+  overflow-x: auto;
+  border-radius: 0.75rem;
+  background: var(--lore-surface-raised);
+  padding: 0.85rem 1rem;
+  font-family: var(--font-mono), monospace;
+  font-size: 0.88em;
+  line-height: 1.55;
+  tab-size: 2;
+}
+
+.lore-prose pre code {
+  background: transparent;
+  padding: 0;
+  font-size: inherit;
+}
+
+.lore-prose hr {
+  border: 0;
+  border-top: 1px solid var(--lore-border);
+  margin: 2rem 0;
+}
+
+.lore-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.lore-prose th,
+.lore-prose td {
+  border: 1px solid var(--lore-border);
+  padding: 0.45rem 0.65rem;
+  text-align: left;
+}
+
+.lore-prose th {
+  background: var(--lore-surface-raised);
+  font-weight: 600;
+}
+
+.lore-prose a {
+  color: var(--lore-accent);
+  font-weight: 500;
+}
+
+.lore-prose a:hover { opacity: 0.82; }
+
+/* A resolved [[wikilink]] — reads as a first-class object, not a hyperlink. */
+.lore-wikilink {
+  display: inline;
+  padding: 1px 6px;
+  margin: 0 1px;
+  border-radius: 6px;
+  background: var(--lore-accent-tint);
+  color: var(--lore-accent);
+  font-weight: 500;
+  font-size: 0.95em;
+  white-space: nowrap;
+}
+
+/* A [[wikilink]] pointing at a page that doesn't exist yet. Visibly unresolved
+   rather than silently dead — an unbuilt page is a to-do, not an error. */
+.lore-wikilink[data-missing="true"] {
+  background: transparent;
+  color: var(--lore-text-tertiary);
+  border: 1px dashed var(--lore-border-strong);
+}
+
+.lore-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 6px;
+  background: var(--lore-accent-tint);
+  color: var(--lore-accent);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.lore-tag::before {
+  content: "#";
+  opacity: 0.5;
+  margin-right: 1px;
+}
+
+/* Invert pure-black-on-white marks (wordmark, GitHub icon) in dark mode. */
+.dark .lore-invert-on-dark {
+  filter: invert(1);
+}
+
+::selection {
+  background: rgba(47, 111, 79, 0.22);
+}
+
+.dark ::selection {
+  background: rgba(79, 155, 116, 0.38);
+  color: #f5f5f0;
+}
+
+@keyframes lore-fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+.lore-fade-up {
+  animation: lore-fade-up 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lore-fade-up { animation: none; }
+}
