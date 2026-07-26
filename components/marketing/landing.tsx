@@ -140,13 +140,13 @@ function HowItWorks() {
     {
       icon: FolderOpen,
       slot: 3,
-      title: "Link the folder. That's the setup.",
+      title: "Point it at the folder you already have",
       body: "No import, no migration, no new format. Lore reads the markdown where it sits — your headings, your frontmatter, your [[wikilinks]], your folder names. It infers the structure you already chose instead of imposing one. Delete Lore tomorrow and the wiki is byte-for-byte what it was.",
     },
     {
       icon: Plug,
       slot: 0,
-      title: "Every agent gets a map, not a haystack",
+      title: "Every agent gets a map of the whole wiki",
       body: "Lore writes one AGENTS.md at your vault root — every page, folder, tag, and a one-line summary — and serves the same map over MCP with search and read. An agent skims the map, opens the two pages that matter, and answers. It never has to read your whole wiki or grep blind.",
     },
     {
