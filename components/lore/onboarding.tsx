@@ -6,6 +6,7 @@ import { FolderOpen, ArrowRight, Loader2 } from "lucide-react";
 import { SceneryImage } from "@/components/marketing/scenery-image";
 import { BrandMark } from "@/components/marketing/brand-mark";
 import { formatCount } from "@/lib/utils";
+import type { Scene } from "@/lib/scenery";
 
 /**
  * First run. Exactly one decision: which folder is your wiki.
@@ -16,8 +17,10 @@ import { formatCount } from "@/lib/utils";
  */
 export function Onboarding({
   suggestions,
+  scene,
 }: {
   suggestions: { root: string; files: number }[];
+  scene: Scene;
 }) {
   const router = useRouter();
   const [path, setPath] = useState("");
@@ -50,16 +53,16 @@ export function Onboarding({
           the app's first screen is recognisably the same product. */}
       <div className="pointer-events-none absolute inset-x-0 top-0 h-[42svh] overflow-hidden">
         <SceneryImage
-          src="/assets/landing/scenery/light-hero.png"
-          fileName="light-hero.png"
-          label="Light hero"
+          src={scene.light}
+          fileName={`hero-${scene.id}.png`}
+          label={scene.label}
           priority
           className="dark:hidden"
         />
         <SceneryImage
-          src="/assets/landing/scenery/dark-hero.png"
-          fileName="dark-hero.png"
-          label="Dark hero"
+          src={scene.dark}
+          fileName={`hero-${scene.id}-dark.png`}
+          label={`${scene.label} (dark)`}
           className="hidden dark:block"
         />
         <div

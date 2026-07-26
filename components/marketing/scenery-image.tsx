@@ -17,12 +17,16 @@ export function SceneryImage({
   fileName,
   label,
   priority,
+  position = "center",
   className,
 }: {
   src: string;
   fileName: string;
   label?: string;
   priority?: boolean;
+  /** Which part of the art survives the crop. The closing band uses "bottom"
+      so the same scene shows its foliage rather than its empty middle. */
+  position?: "center" | "bottom";
   className?: string;
 }) {
   const [errored, setErrored] = useState(false);
@@ -68,7 +72,11 @@ export function SceneryImage({
       onLoad={(event) => {
         if (event.currentTarget.naturalWidth === 0) setErrored(true);
       }}
-      className={cn("absolute inset-0 h-full w-full object-cover object-center", className)}
+      className={cn(
+        "absolute inset-0 h-full w-full object-cover",
+        position === "bottom" ? "object-bottom" : "object-center",
+        className,
+      )}
     />
   );
 }

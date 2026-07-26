@@ -304,14 +304,25 @@ square) — the one detail that stops a markdown list reading as browser default
 
 ### Art
 
-Four assets in `public/assets/landing/scenery/`, generated as light/dark twins of
-the same scene so the theme toggle reads as a time-of-day change rather than two
-unrelated photographs:
+Twelve assets in `public/assets/landing/scenery/` — six scenes, each a
+`hero-N.png` / `hero-N-dark.png` pair. The dark version of each is the *same
+composition at night*, produced by editing the light original rather than
+generating separately, so the theme toggle reads as a change in time of day
+rather than a swap between two unrelated pictures.
 
-| File | Where |
-| --- | --- |
-| `light-hero.png` / `dark-hero.png` | landing hero, onboarding band |
-| `light-finale.png` / `dark-finale.png` | closing band |
+**One scene is picked per request** (`lib/scenery.ts`, `pickScene()`), so the
+page greets you differently every visit without ever looking like a different
+product. The roll happens on the server and is passed down as a prop: a
+client-side roll would either mismatch the server's HTML during hydration or
+leave the hero blank until after first paint. This is why `app/page.tsx` is
+`force-dynamic` — the rotation is its only dynamic input.
+
+The closing band **reuses whichever scene the hero drew**, anchored to the foot
+of the image (`position="bottom"`) instead of its centre. The page therefore
+always opens and closes in the same world, and there is no second set of assets
+to keep in sync. Because that art is a saturated sky rather than the muted plate
+the band used to carry, the closing headline is white over a radial wash — the
+same treatment as the hero.
 
 `SceneryImage` self-heals: if a file 404s it renders a labelled placeholder
 naming the exact path to drop the art into, so a half-finished fork never ships a

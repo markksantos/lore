@@ -7,13 +7,14 @@ import { SceneryImage } from "@/components/marketing/scenery-image";
 import { MarketingFooter, MarketingHeader } from "@/components/marketing/site-chrome";
 import { VaultDemo } from "@/components/marketing/vault-demo";
 import { paletteVars } from "@/lib/palette";
+import type { Scene } from "@/lib/scenery";
 import { cn } from "@/lib/utils";
 
-export function Landing() {
+export function Landing({ scene }: { scene: Scene }) {
   return (
     <>
       <MarketingHeader />
-      <Hero />
+      <Hero scene={scene} />
 
       {/* The product shot bridges the hero and the first content section:
           pulled up so its top overlaps the faded sky and its body extends into
@@ -29,27 +30,27 @@ export function Landing() {
       <Trust />
       <Steps />
       <Faq />
-      <Finale />
+      <Finale scene={scene} />
       <MarketingFooter />
     </>
   );
 }
 
-function Hero() {
+function Hero({ scene }: { scene: Scene }) {
   return (
     <section className="relative bg-[var(--lore-background)]">
       <div className="relative flex min-h-[94svh] flex-col overflow-hidden">
         <SceneryImage
-          src="/assets/landing/scenery/light-hero.png"
-          fileName="light-hero.png"
-          label="Light hero"
+          src={scene.light}
+          fileName={`hero-${scene.id}.png`}
+          label={scene.label}
           priority
           className="dark:hidden"
         />
         <SceneryImage
-          src="/assets/landing/scenery/dark-hero.png"
-          fileName="dark-hero.png"
-          label="Dark hero"
+          src={scene.dark}
+          fileName={`hero-${scene.id}-dark.png`}
+          label={`${scene.label} (dark)`}
           className="hidden dark:block"
         />
 
@@ -340,20 +341,24 @@ function Faq() {
   );
 }
 
-function Finale() {
+function Finale({ scene }: { scene: Scene }) {
   return (
     <section className="relative overflow-hidden">
       <div className="relative min-h-[62svh]">
+        {/* The same scene the hero drew, anchored to its foot so the page
+            closes on the foliage it opened with. */}
         <SceneryImage
-          src="/assets/landing/scenery/light-finale.png"
-          fileName="light-finale.png"
-          label="Light finale"
+          src={scene.light}
+          fileName={`hero-${scene.id}.png`}
+          label={scene.label}
+          position="bottom"
           className="dark:hidden"
         />
         <SceneryImage
-          src="/assets/landing/scenery/dark-finale.png"
-          fileName="dark-finale.png"
-          label="Dark finale"
+          src={scene.dark}
+          fileName={`hero-${scene.id}-dark.png`}
+          label={`${scene.label} (dark)`}
+          position="bottom"
           className="hidden dark:block"
         />
 
@@ -364,18 +369,24 @@ function Finale() {
           style={{ backgroundImage: "var(--scenery-fade-band)" }}
         />
 
+        {/* Centre wash. The art is now a saturated sky rather than the muted
+            plate this band used to carry, so the closing type is white over a
+            darkening middle — the same treatment as the hero. Sits above the
+            fade so the band still melts into the page at both edges. */}
+        <div className="pointer-events-none absolute inset-x-0 top-1/4 h-1/2 bg-[radial-gradient(ellipse_at_center,rgba(10,26,52,0.42)_0%,rgba(10,26,52,0.22)_45%,rgba(10,26,52,0)_75%)]" />
+
         <div className="relative flex min-h-[62svh] flex-col items-center justify-center px-6 text-center">
-          <h2 className="t-section max-w-2xl text-[var(--lore-text-primary)]">
+          <h2 className="t-section max-w-2xl text-white [text-shadow:0_1px_18px_rgba(10,26,52,0.35)]">
             Everything you know,
             <br />
             already in context.
           </h2>
-          <p className="t-lede mt-4 max-w-md text-[var(--lore-text-secondary)]">
+          <p className="t-lede mt-4 max-w-md font-medium text-white/90">
             Stop re-explaining what you already wrote down.
           </p>
           <Link
             href="/vault"
-            className="group mt-7 inline-flex h-10 items-center gap-2 rounded-lg bg-[var(--lore-text-primary)] pl-4 pr-3 text-[14px] font-medium text-[var(--lore-button-primary-fg)] transition-colors hover:bg-[var(--lore-button-primary-hover)]"
+            className="group mt-7 inline-flex h-10 items-center gap-2 rounded-lg bg-white pl-4 pr-3 text-[14px] font-medium text-[#12356f] transition-colors hover:bg-[#eef2fb]"
           >
             Link your wiki
             <ArrowRight
