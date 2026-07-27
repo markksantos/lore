@@ -52,5 +52,11 @@
   "main": "electron/main.js",
   "overrides": {
     "sharp": "^0.34.5"
-  }
+  },
+  "author": {
+    "name": "Mark Santos",
+    "email": "markksantos@gmail.com"
+  },
+  "homepage": "https://github.com/markksantos/lore",
+  "license": "MIT"
 }

@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SearchResult, VaultIndex } from "@/lib/types";
-import { Sidebar } from "@/components/lore/sidebar";
+import { AppShell } from "@/components/lore/app-shell";
+import { Sidebar, VIEW_LABEL } from "@/components/lore/sidebar";
 import { FolderDocument } from "@/components/lore/folder-document";
 import { ConnectionsView } from "@/components/lore/connections-view";
 import { SettingsView } from "@/components/lore/settings-view";
@@ -87,70 +88,69 @@ export function VaultApp({
     [index.pages],
   );
 
-  useEffect(() => {
-    function onKey(event: KeyboardEvent) {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        setView("wiki");
-        document.getElementById("lore-search")?.focus();
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  /* The mobile top bar has one line to say where you are. On the wiki that is
+     the folder you are reading — its last segment, since a nested path spends
+     the whole line on ancestors and truncates the part that identifies it. */
+  const title =
+    view === "wiki" ? folder.split("/").pop() || "Root" : VIEW_LABEL[view];
 
   return (
-    <div className="flex h-svh overflow-hidden bg-[var(--lore-background)]">
-      <Sidebar
-        index={index}
-        view={view}
-        onView={setView}
-        folder={folder}
-        onFolder={(next) => {
-          setFolder(next);
-          setView("wiki");
-          setFocusPage(null);
-        }}
-        needsReview={needsReview}
-        query={query}
-        onQuery={setQuery}
-        results={results}
-        onOpenPage={openPage}
-        onCreated={async (relPath) => {
-          await refresh();
-          const dir = relPath.includes("/") ? relPath.slice(0, relPath.lastIndexOf("/")) : "";
-          setFolder(dir);
-          setView("wiki");
-          setFocusPage(relPath);
-        }}
-      />
-
-      <main className={view === "explore" ? "min-w-0 flex-1 overflow-hidden" : "lore-scrollbar min-w-0 flex-1 overflow-y-auto"}>
-        {view === "wiki" ? (
-          <FolderDocument
-            key={folder}
-            folder={folder}
-            revision={revision}
-            pageTitles={pageTitles}
-            focusPage={focusPage}
-            onOpenPage={openPage}
-            onChanged={async () => {
-              await Promise.all([refresh(), refreshPending()]);
-            }}
-          />
-        ) : null}
-        {view === "review" ? <ReviewView onOpenPage={openPage} /> : null}
-        {view === "insights" ? <InsightsView onOpenPage={openPage} /> : null}
-        {view === "explore" ? (
-          <ExploreShell index={index} pageTitles={pageTitles} onOpenPage={openPage} />
-        ) : null}
-        {view === "connections" ? (
-          <ConnectionsView root={index.root} installDir={installDir} />
-        ) : null}
-        {view === "settings" ? (
-          <SettingsView index={index} onOpenPage={openPage} onChanged={refresh} />
-        ) : null}
-      </main>
-    </div>
+    <AppShell
+      title={title}
+      titleHint={view === "wiki" ? folder || "Root" : undefined}
+      needsReview={needsReview}
+      mainScrolls={view !== "explore"}
+      onSearchShortcut={() => setView("wiki")}
+      sidebar={
+        <Sidebar
+          index={index}
+          view={view}
+          onView={setView}
+          folder={folder}
+          onFolder={(next) => {
+            setFolder(next);
+            setView("wiki");
+            setFocusPage(null);
+          }}
+          needsReview={needsReview}
+          query={query}
+          onQuery={setQuery}
+          results={results}
+          onOpenPage={openPage}
+          onCreated={async (relPath) => {
+            await refresh();
+            const dir = relPath.includes("/") ? relPath.slice(0, relPath.lastIndexOf("/")) : "";
+            setFolder(dir);
+            setView("wiki");
+            setFocusPage(relPath);
+          }}
+        />
+      }
+    >
+      {view === "wiki" ? (
+        <FolderDocument
+          key={folder}
+          folder={folder}
+          revision={revision}
+          pageTitles={pageTitles}
+          focusPage={focusPage}
+          onOpenPage={openPage}
+          onChanged={async () => {
+            await Promise.all([refresh(), refreshPending()]);
+          }}
+        />
+      ) : null}
+      {view === "review" ? <ReviewView onOpenPage={openPage} /> : null}
+      {view === "insights" ? <InsightsView onOpenPage={openPage} /> : null}
+      {view === "explore" ? (
+        <ExploreShell index={index} pageTitles={pageTitles} onOpenPage={openPage} />
+      ) : null}
+      {view === "connections" ? (
+        <ConnectionsView root={index.root} installDir={installDir} />
+      ) : null}
+      {view === "settings" ? (
+        <SettingsView index={index} onOpenPage={openPage} onChanged={refresh} />
+      ) : null}
+    </AppShell>
   );
 }

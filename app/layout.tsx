@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import type { ReactNode } from "react";
 import { ThemeProvider } from "@/components/lore/theme-provider";
@@ -11,6 +11,19 @@ const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"]
 export const metadata: Metadata = {
   title: { default: META_TITLE, template: "%s | Lore" },
   description: DESCRIPTION,
+  // Next injects the manifest link itself; the Apple icon has no manifest
+  // equivalent, and iOS screenshots the page instead when the link is missing.
+  icons: { apple: "/icons/apple-touch-icon.png" },
+};
+
+// Next's default viewport meta omits viewport-fit, which leaves every
+// env(safe-area-inset-*) in the app shell resolving to 0 on a notched phone —
+// the top bar then sits under the status bar and the drawer under the home
+// indicator. Declaring the viewport here is what makes those insets real.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {

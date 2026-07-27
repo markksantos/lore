@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Check, Copy, Terminal, Apple, MonitorDown, ShieldCheck } from "lucide-react";
 import { MarketingFooter, MarketingHeader } from "@/components/marketing/site-chrome";
+import { PwaInstall } from "@/components/marketing/pwa-install";
 import { paletteVars } from "@/lib/palette";
 import { GITHUB_URL } from "@/lib/brand";
 import { cn } from "@/lib/utils";
@@ -58,6 +59,11 @@ export function InstallView({ siteMode }: { siteMode: boolean }) {
             </Link>
           </div>
         )}
+
+        {/* Registers the service worker and, on a browser that offers it, the
+            install prompt. Renders nothing in site mode, where an install would
+            be a shortcut to this page. */}
+        <PwaInstall siteMode={siteMode} className="mt-3" />
 
         <Step
           slot={0}

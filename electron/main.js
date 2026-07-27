@@ -149,6 +149,13 @@ async function startServer() {
       NODE_ENV: "production",
       PORT: String(port),
       HOSTNAME: HOST,
+      // The desktop app is always the local half of the product. Without this,
+      // isSiteMode() falls through to inferring from the inherited environment,
+      // and a stray VERCEL/RENDER/K_SERVICE variable in the user's shell would
+      // 404 every filesystem route in an app whose only job is the filesystem.
+      // Explicit "local" is checked before any of those, so the inference can
+      // never fire here.
+      LORE_MODE: "local",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });

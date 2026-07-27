@@ -11,6 +11,7 @@ import {
   Columns2,
 } from "lucide-react";
 import type { VaultIndex } from "@/lib/types";
+import { DesktopOnlyNotice, useIsDesktop } from "@/components/lore/app-shell";
 import { GraphView } from "@/components/lore/graph-view";
 import { CoverageMap } from "@/components/lore/coverage-map";
 import { ExplorerView } from "@/components/lore/explorer-view";
@@ -51,6 +52,10 @@ export function ExploreShell({
   onOpenPage: (pageId: string) => void;
 }) {
   const [tab, setTab] = useState<TabId>("explorer");
+  /* The graph is the one lens with no honest phone form: it draws the whole
+     corpus into a ~310px canvas where the nodes overlap into a smear and are
+     too small to hit. The other six reflow into a single readable column. */
+  const isDesktop = useIsDesktop();
 
   return (
     <div className="flex h-full min-w-0 flex-col">
@@ -81,7 +86,13 @@ export function ExploreShell({
           those alive behind a hidden tab would burn a laptop for nothing. */}
       <div className="min-w-0 flex-1 overflow-hidden">
         {tab === "explorer" ? <ExplorerView index={index} onOpenPage={onOpenPage} /> : null}
-        {tab === "graph" ? <GraphView index={index} onOpenPage={onOpenPage} /> : null}
+        {tab === "graph" ? (
+          isDesktop ? (
+            <GraphView index={index} onOpenPage={onOpenPage} />
+          ) : (
+            <DesktopOnlyNotice feature="The graph" />
+          )
+        ) : null}
         {tab === "map" ? <CoverageMap index={index} onOpenPage={onOpenPage} /> : null}
         {tab === "timeline" ? <TimelineView index={index} onOpenPage={onOpenPage} /> : null}
         {tab === "compare" ? <CompareView index={index} pageTitles={pageTitles} /> : null}

@@ -15,6 +15,14 @@ copyright: Lore
 directories:
   output: dist-desktop
 
+# fpm-based Linux targets (deb, rpm) refuse to build without a homepage. This
+# was added when package.json had no `homepage` field; it has one now, and the
+# two values are identical — both are GITHUB_URL from lib/brand.ts, the URL the
+# app itself already shows users. Pinning it here keeps `--linux` building even
+# if package.json loses the field again.
+extraMetadata:
+  homepage: https://github.com/markksantos/lore
+
 # Replaces electron-builder's default of packing everything. Nothing in
 # main.js or preload.js imports a package, so the app's dependencies belong in
 # the traced standalone bundle below, not duplicated into the asar.
@@ -25,9 +33,27 @@ files:
   - "!node_modules/**/*"
 
 extraResources:
-  # The standalone server plus the node_modules Next traced for it.
+  # The standalone server itself. This does NOT bring node_modules with it:
+  # electron-builder's copy filter (app-builder-lib/out/util/filter.js) hard-codes
+  # `if (relative === "node_modules") return false` for every copy it performs,
+  # extraResources included, so a directory named node_modules sitting at the root
+  # of a `from:` is silently dropped. The packaged server then dies on
+  # `Cannot find module 'next'` before it binds a port.
   - from: .next/standalone
     to: app-server
+    # Next's tracer copies the whole project directory into the standalone
+    # output, `dist-desktop` included once it exists. Without this exclusion the
+    # build eats its own output: run number two packages run number one, run
+    # three packages run two, and the dmg goes 137 MB → 1 GB → worse. Observed,
+    # not hypothetical. Keep this name in step with directories.output above.
+    filter:
+      - "**/*"
+      - "!dist-desktop{,/**/*}"
+  # Which is why the traced dependencies are copied by a second entry that starts
+  # *inside* node_modules. Relative paths under this matcher are `next/…`,
+  # `react/…` and so on — never the bare string the filter rejects.
+  - from: .next/standalone/node_modules
+    to: app-server/node_modules
   # Next does not copy these into the standalone output — the server 404s every
   # asset without them.
   - from: .next/static
@@ -43,6 +69,8 @@ extraResources:
 
 # No native modules anywhere in the tree, so there is nothing to rebuild.
 npmRebuild: false
+
+icon: build/icon.png
 
 mac:
   category: public.app-category.productivity
@@ -72,3 +100,55 @@ nsis:
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
+
+linux:
+  # Freedesktop categories for the generated .desktop entry. Without them the app
+  # lands in an unclassified bucket and is only reachable by search in the GNOME
+  # and KDE application menus.
+  #
+  # The whole semicolon list goes here rather than in `desktop.entry.Categories`:
+  # LinuxTargetHelper writes `desktopMeta.Categories` from this field *after*
+  # merging desktop.entry, so anything set there is overwritten and lost.
+  # `Utility` is the required main category; `TextEditor` and `Development` are
+  # additional ones that put Lore next to editors instead of in "Other".
+  category: Utility;TextEditor;Development
+  # Every other desktop-entry key does honour this block. Note `desktop.entry` —
+  # the pre-25 `desktopEntry` spelling is rejected by the config schema outright.
+  desktop:
+    entry:
+      Keywords: markdown;wiki;notes;agent;mcp;
+  # deb refuses to build without a maintainer. package.json now has an `author`
+  # that electron-builder would derive one from, but that would stamp a personal
+  # email address into every published .deb, so the maintainer is set explicitly.
+  maintainer: Lore <lore@localhost>
+  synopsis: Local-first markdown wiki manager for AI agents
+  description: >-
+    Lore is a local-first markdown wiki manager. It reads a folder of markdown
+    files you choose, serves it to you on loopback only, and lets AI agents
+    propose changes you review and accept.
+  target:
+    - target: AppImage
+      arch:
+        - x64
+        - arm64
+    - target: deb
+      arch:
+        - x64
+        - arm64
+
+appImage:
+  artifactName: ${productName}-${version}-${arch}.AppImage
+
+deb:
+  artifactName: ${productName}-${version}-${arch}.deb
+  # The standalone server is spawned as Electron-in-Node mode, so no system Node
+  # is required; these are the shared libraries Electron itself needs.
+  depends:
+    - libgtk-3-0
+    - libnotify4
+    - libnss3
+    - libxss1
+    - libxtst6
+    - xdg-utils
+    - libatspi2.0-0
+    - libsecret-1-0

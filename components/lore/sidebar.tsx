@@ -13,22 +13,35 @@ import {
   ShieldCheck,
   BarChart3,
   Compass,
+  X,
 } from "lucide-react";
 import type { SearchResult, VaultIndex } from "@/lib/types";
 import type { View } from "@/components/lore/vault-app";
 import { BrandMark } from "@/components/marketing/brand-mark";
+import { useShell } from "@/components/lore/app-shell";
 import { useTheme } from "@/components/lore/theme-provider";
 import { colorForIndex } from "@/lib/palette";
 import { ancestorsOf, buildFolderTree, visibleRows } from "@/lib/tree";
 import { cn, formatCount, relativeTime } from "@/lib/utils";
 
-const NAV: { id: View; label: string; icon: typeof BookText }[] = [
-  { id: "wiki", label: "Wiki", icon: BookText },
-  { id: "review", label: "Review", icon: ShieldCheck },
-  { id: "insights", label: "Insights", icon: BarChart3 },
-  { id: "explore", label: "Explore", icon: Compass },
-  { id: "connections", label: "Connections", icon: Plug },
-  { id: "settings", label: "Settings", icon: Settings },
+/** Lives here because the nav owns the names; the mobile top bar borrows them
+ *  so a view is called the same thing in both places. */
+export const VIEW_LABEL: Record<View, string> = {
+  wiki: "Wiki",
+  review: "Review",
+  insights: "Insights",
+  explore: "Explore",
+  connections: "Connections",
+  settings: "Settings",
+};
+
+const NAV: { id: View; icon: typeof BookText }[] = [
+  { id: "wiki", icon: BookText },
+  { id: "review", icon: ShieldCheck },
+  { id: "insights", icon: BarChart3 },
+  { id: "explore", icon: Compass },
+  { id: "connections", icon: Plug },
+  { id: "settings", icon: Settings },
 ];
 
 export function Sidebar({
@@ -57,6 +70,7 @@ export function Sidebar({
   onCreated: (relPath: string) => void;
 }) {
   const { theme, toggle } = useTheme();
+  const { closeDrawer } = useShell();
   const [creating, setCreating] = useState(false);
   const [filter, setFilter] = useState("");
   /* Only the top level opens by default. On a real vault the tree is 262
@@ -115,12 +129,16 @@ export function Sidebar({
     setCreating(false);
     setNewPath("");
     onCreated(data.path);
+    closeDrawer();
   }
 
   return (
-    <aside className="flex w-[15.5rem] shrink-0 flex-col border-r border-[var(--lore-border)] bg-[var(--lore-surface)]">
-      <div className="flex items-center justify-between px-4 pb-3 pt-4">
-        <div className="flex min-w-0 items-center gap-2 text-[var(--lore-text-primary)]">
+    <aside
+      className="flex h-full w-full min-w-0 flex-col border-r border-[var(--lore-border)] bg-[var(--lore-surface)]"
+      style={{ paddingTop: "env(safe-area-inset-top)" }}
+    >
+      <div className="flex items-center gap-1 px-3 pb-3 pt-3 md:px-4 md:pt-4">
+        <div className="flex min-w-0 flex-1 items-center gap-2 pl-1 text-[var(--lore-text-primary)]">
           <BrandMark size={18} />
           <span className="truncate text-[14px] font-semibold tracking-[-0.02em]">
             {index.name}
@@ -130,9 +148,19 @@ export function Sidebar({
           type="button"
           onClick={toggle}
           aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-          className="rounded-md p-1.5 text-[var(--lore-text-tertiary)] transition-colors hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)]"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-[var(--lore-text-tertiary)] transition-colors hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)] md:h-7 md:w-7"
         >
           {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
+        </button>
+        {/* The drawer's own dismiss. Escape and the backdrop do the same thing,
+            but neither is discoverable with a thumb. */}
+        <button
+          type="button"
+          onClick={closeDrawer}
+          aria-label="Close menu"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-[var(--lore-text-tertiary)] transition-colors active:bg-[var(--lore-surface-raised)] md:hidden"
+        >
+          <X size={17} />
         </button>
       </div>
 
@@ -146,16 +174,19 @@ export function Sidebar({
             <button
               key={item.id}
               type="button"
-              onClick={() => onView(item.id)}
+              onClick={() => {
+                onView(item.id);
+                closeDrawer();
+              }}
               className={cn(
-                "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13.5px] transition-colors",
+                "flex min-h-11 w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13.5px] transition-colors md:min-h-0",
                 view === item.id
                   ? "bg-[var(--lore-surface-raised)] font-medium text-[var(--lore-text-primary)]"
                   : "text-[var(--lore-text-secondary)] hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)]",
               )}
             >
               <Icon size={15} className="opacity-80" />
-              {item.label}
+              {VIEW_LABEL[item.id]}
               {item.id === "review" && needsReview > 0 ? (
                 <span className="ml-auto flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--lore-accent)] px-1 text-[11px] font-semibold text-white">
                   {needsReview}
@@ -178,17 +209,26 @@ export function Sidebar({
             onChange={(event) => onQuery(event.target.value)}
             placeholder="Search"
             spellCheck={false}
-            className="w-full rounded-lg border border-[var(--lore-border)] bg-[var(--lore-background)] py-2 pl-8 pr-10 text-[13px] text-[var(--lore-text-primary)] outline-none transition-colors placeholder:text-[var(--lore-text-tertiary)] focus:border-[var(--lore-accent)]"
+            /* 16px below md is not a style choice: iOS Safari zooms the whole
+               page when a focused field is smaller than that, and the zoom is
+               what produces the horizontal scroll on a phone. */
+            className="w-full rounded-lg border border-[var(--lore-border)] bg-[var(--lore-background)] py-2.5 pl-8 pr-3 text-[16px] text-[var(--lore-text-primary)] outline-none transition-colors placeholder:text-[var(--lore-text-tertiary)] focus:border-[var(--lore-accent)] md:py-2 md:pr-10 md:text-[13px]"
           />
-          <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded border border-[var(--lore-border)] bg-[var(--lore-surface-raised)] px-1.5 py-0.5 text-[10px] text-[var(--lore-text-tertiary)]">
+          <kbd className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 rounded border border-[var(--lore-border)] bg-[var(--lore-surface-raised)] px-1.5 py-0.5 text-[10px] text-[var(--lore-text-tertiary)] md:block">
             ⌘K
           </kbd>
         </div>
       </div>
 
-      <div className="lore-scrollbar flex-1 overflow-y-auto px-3 pb-3">
+      <div className="lore-scrollbar flex-1 overflow-y-auto overscroll-contain px-3 pb-3">
         {results ? (
-          <SearchResults results={results} onOpenPage={onOpenPage} />
+          <SearchResults
+            results={results}
+            onOpenPage={(pageId) => {
+              onOpenPage(pageId);
+              closeDrawer();
+            }}
+          />
         ) : (
           <>
             <div className="mb-1.5 mt-1 flex items-center gap-2 px-2">
@@ -206,7 +246,7 @@ export function Sidebar({
                 onChange={(event) => setFilter(event.target.value)}
                 placeholder="Filter folders"
                 spellCheck={false}
-                className="mb-1.5 w-full rounded-lg border border-[var(--lore-border)] bg-[var(--lore-background)] px-2.5 py-1.5 text-[12px] text-[var(--lore-text-primary)] outline-none placeholder:text-[var(--lore-text-tertiary)] focus:border-[var(--lore-accent)]"
+                className="mb-1.5 w-full rounded-lg border border-[var(--lore-border)] bg-[var(--lore-background)] px-2.5 py-2.5 text-[16px] text-[var(--lore-text-primary)] outline-none placeholder:text-[var(--lore-text-tertiary)] focus:border-[var(--lore-accent)] md:py-1.5 md:text-[12px]"
               />
             ) : null}
 
@@ -218,7 +258,9 @@ export function Sidebar({
                   key={node.path || "__root"}
                   style={colorForIndex(node.depth <= 1 ? i : node.path.length)}
                   className={cn(
-                    "flex items-center rounded-lg transition-colors",
+                    // 44px is the smallest row a thumb reliably hits; the
+                    // desktop tree stays at its original 28px density.
+                    "flex min-h-11 items-center rounded-lg transition-colors md:min-h-0",
                     folder === node.path
                       ? "bg-[var(--lore-surface-selected)] text-[var(--lore-text-primary)]"
                       : "text-[var(--lore-text-secondary)] hover:bg-[var(--lore-surface-raised)]",
@@ -244,7 +286,7 @@ export function Sidebar({
                           return next;
                         })
                       }
-                      className="flex h-7 w-5 shrink-0 items-center justify-center"
+                      className="flex h-11 w-8 shrink-0 items-center justify-center md:h-7 md:w-5"
                       style={{ marginLeft: `${Math.min(node.depth, 4) * 10}px` }}
                     >
                       <ChevronRight
@@ -258,7 +300,7 @@ export function Sidebar({
                   ) : (
                     <span
                       aria-hidden
-                      className="flex h-7 w-5 shrink-0 items-center justify-center"
+                      className="flex h-11 w-8 shrink-0 items-center justify-center md:h-7 md:w-5"
                       style={{ marginLeft: `${Math.min(node.depth, 4) * 10}px` }}
                     >
                       <span className="pal-dot" />
@@ -266,8 +308,11 @@ export function Sidebar({
                   )}
                   <button
                     type="button"
-                    onClick={() => onFolder(node.path)}
-                    className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pr-2.5 text-left text-[13px]"
+                    onClick={() => {
+                      onFolder(node.path);
+                      closeDrawer();
+                    }}
+                    className="flex min-h-11 min-w-0 flex-1 items-center gap-2 py-1.5 pr-2.5 text-left text-[13px] md:min-h-0"
                     title={node.path || "Root"}
                   >
                     <span className={cn("truncate", folder === node.path && "font-medium")}>
@@ -290,7 +335,10 @@ export function Sidebar({
         )}
       </div>
 
-      <div className="border-t border-[var(--lore-border)] p-3">
+      <div
+        className="border-t border-[var(--lore-border)] p-3"
+        style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
+      >
         {creating ? (
           <div>
             <input
@@ -299,6 +347,10 @@ export function Sidebar({
               onKeyDown={(event) => {
                 if (event.key === "Enter") createPage();
                 if (event.key === "Escape") {
+                  // Escape belongs to whatever is innermost. Without this the
+                  // shell also reads it and the drawer closes out from under a
+                  // half-typed path.
+                  event.stopPropagation();
                   setCreating(false);
                   setError(null);
                 }
@@ -306,7 +358,7 @@ export function Sidebar({
               placeholder={folder ? `${folder}/new-page.md` : "new-page.md"}
               autoFocus
               spellCheck={false}
-              className="w-full rounded-lg border border-[var(--lore-border)] bg-[var(--lore-background)] px-2.5 py-2 text-[12.5px] text-[var(--lore-text-primary)] outline-none focus:border-[var(--lore-accent)]"
+              className="w-full rounded-lg border border-[var(--lore-border)] bg-[var(--lore-background)] px-2.5 py-2.5 text-[16px] text-[var(--lore-text-primary)] outline-none focus:border-[var(--lore-accent)] md:py-2 md:text-[12.5px]"
               style={{ fontFamily: "var(--font-mono), monospace" }}
             />
             {error ? <p className="t-meta mt-1.5 text-[var(--lore-danger)]">{error}</p> : null}
@@ -318,7 +370,7 @@ export function Sidebar({
               setCreating(true);
               setNewPath(folder ? `${folder}/` : "");
             }}
-            className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-[13px] font-medium text-[var(--lore-text-secondary)] transition-colors hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)]"
+            className="flex min-h-11 w-full items-center gap-2 rounded-lg px-2 py-2 text-[13px] font-medium text-[var(--lore-text-secondary)] transition-colors hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)] md:min-h-0"
           >
             <Plus size={14} />
             New page
@@ -355,7 +407,7 @@ function SearchResults({
           key={result.page.relPath}
           type="button"
           onClick={() => onOpenPage(result.page.id)}
-          className="block w-full rounded-lg px-2 py-2 text-left transition-colors hover:bg-[var(--lore-surface-raised)]"
+          className="block min-h-11 w-full rounded-lg px-2 py-2.5 text-left transition-colors hover:bg-[var(--lore-surface-raised)] md:min-h-0 md:py-2"
         >
           <span className="flex items-center gap-1.5">
             <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-[var(--lore-text-primary)]">
