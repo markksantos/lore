@@ -1,0 +1,64 @@
+name: Wiki health
+
+# Gate a pull request on the state of the wiki it touches.
+#
+# This is the point where Lore stops being a thing someone opens and starts
+# being a thing that runs whether or not anyone remembers to. A wiki nobody
+# checks rots at the speed its agents write to it; a wiki whose dead links fail
+# the build does not.
+#
+# Thresholds are ceilings on what already exists, not aspirations. Set them to
+# roughly today's numbers and tighten over time — starting at zero on a real
+# wiki means a red build on day one that everyone learns to ignore.
+
+on:
+  pull_request:
+    paths:
+      - "**/*.md"
+      - "**/*.mdx"
+  workflow_dispatch:
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # The CLI reimplements nothing; it talks to the real app over HTTP and
+      # starts the standalone server itself when nothing is listening.
+      - run: npm run build
+
+      - name: Point Lore at the wiki in this repo
+        env:
+          # Change to wherever the markdown lives, e.g. docs/ or wiki/.
+          WIKI_DIR: ${{ github.workspace }}
+        run: |
+          node -e '
+            const fs = require("node:fs");
+            const os = require("node:os");
+            const path = require("node:path");
+            const dir = path.join(os.homedir(), ".lore");
+            fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+            fs.writeFileSync(
+              path.join(dir, "config.json"),
+              JSON.stringify({
+                activeVault: process.env.WIKI_DIR,
+                vaults: [{ root: process.env.WIKI_DIR, name: "repo", linkedAt: Date.now() }],
+              }),
+            );
+          '
+
+      - name: Check
+        run: |
+          npx lore health --max-dead 0 --max-stale 25 --min-score 70
+
+      - name: Report what changed
+        if: always()
+        run: npx lore changes --since "$(git log -1 --format=%cI origin/${{ github.base_ref }})"
