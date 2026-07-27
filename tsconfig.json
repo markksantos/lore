@@ -36,7 +36,10 @@
     ".next/dev/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules",
-    "mcp"
+    "build",
+    "dist",
+    "dist-desktop",
+    "mcp",
+    "node_modules"
   ]
 }

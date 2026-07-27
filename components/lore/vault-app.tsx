@@ -132,6 +132,7 @@ export function VaultApp({
           key={folder}
           folder={folder}
           revision={revision}
+          index={index}
           pageTitles={pageTitles}
           focusPage={focusPage}
           onOpenPage={openPage}

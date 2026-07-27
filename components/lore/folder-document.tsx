@@ -1,10 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Check, X } from "lucide-react";
 import { PageSection } from "@/components/lore/page-section";
 import type { PageMeta } from "@/lib/types";
 import type { Proposal } from "@/components/lore/page-section";
+import type { VaultIndex } from "@/lib/types";
+import {
+  ContextRail,
+  OutlineRail,
+  useActiveSection,
+} from "@/components/lore/document-rails";
 
 export type Section = {
   page: PageMeta;
@@ -38,6 +44,7 @@ const PAGE_SIZE = 40;
 export function FolderDocument({
   folder,
   revision,
+  index,
   pageTitles,
   focusPage,
   onOpenPage,
@@ -45,6 +52,7 @@ export function FolderDocument({
 }: {
   folder: string;
   revision: number;
+  index: VaultIndex;
   pageTitles: Map<string, string>;
   focusPage: string | null;
   onOpenPage: (pageId: string) => void;
@@ -54,6 +62,12 @@ export function FolderDocument({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+
+  const sectionIds = useMemo(
+    () => (data?.sections ?? []).map((section) => `sec-${cssId(section.page.relPath)}`),
+    [data],
+  );
+  const activeSection = useActiveSection(sectionIds);
 
   const load = useCallback(
     async (append = false) => {
@@ -136,9 +150,28 @@ export function FolderDocument({
   }
 
   const { totals } = data;
+  const activeId = activeSection ?? sectionIds[0] ?? null;
+  const activePage =
+    data.sections.find((s) => `sec-${cssId(s.page.relPath)}` === activeId)?.page ?? null;
 
   return (
-    <div ref={scrollRef} className="mx-auto max-w-3xl px-8 py-9">
+    <div
+      ref={scrollRef}
+      className="mx-auto grid w-full max-w-[110rem] grid-cols-1 gap-x-8 px-6 py-9 md:px-8 lg:grid-cols-[minmax(0,1fr)_17rem] xl:grid-cols-[13rem_minmax(0,1fr)_18rem]"
+    >
+      <div className="hidden xl:block">
+        <OutlineRail
+          pages={data.sections.map((s) => s.page)}
+          activeId={activeId}
+          onJump={(relPath) =>
+            document
+              .getElementById(`sec-${cssId(relPath)}`)
+              ?.scrollIntoView({ behavior: "smooth", block: "start" })
+          }
+        />
+      </div>
+
+      <div className="min-w-0 max-w-3xl">
       <header>
         <h1 className="text-[27px] font-semibold tracking-[-0.035em] text-[var(--lore-text-primary)]">
           {data.folder || "Root"}
@@ -241,6 +274,9 @@ export function FolderDocument({
           />
         ))}
       </div>
+      </div>
+
+      <ContextRail page={activePage} index={index} onOpenPage={onOpenPage} />
     </div>
   );
 }
