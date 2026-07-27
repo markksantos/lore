@@ -1,37 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Check, X, Loader2, Pencil, Eye } from "lucide-react";
+import { Check, Loader2, Pencil, Eye } from "lucide-react";
 import type { PageMeta } from "@/lib/types";
 import { renderMarkdown, stripFrontmatter, stripLeadingTitle } from "@/lib/markdown";
 import { paletteVars } from "@/lib/palette";
 import { MarkdownEditor } from "@/components/lore/markdown-editor";
 import { cn, relativeTime } from "@/lib/utils";
 
-export type Proposal = {
-  id: string;
-  relPath: string;
-  agent: string;
-  reason: string;
-  kind: "create" | "append" | "replace";
-  risk: "low" | "medium" | "high";
-  proposed: string;
-  base: string | null;
-  stats: { added: number; removed: number };
-};
-
-const RISK_STYLE: Record<Proposal["risk"], string> = {
-  low: "text-[var(--lore-text-tertiary)] border-[var(--lore-border-strong)]",
-  medium: "text-[#b45309] border-[#b45309]/40 dark:text-[#fbbf24] dark:border-[#fbbf24]/35",
-  high: "text-[var(--lore-danger)] border-[var(--lore-danger)]/40",
-};
-
 /**
  * One page, as a section of the folder document.
  *
  * The colour comes from position in the folder, so adjacent sections are never
- * the same colour. Reading,
- * editing and reviewing all happen here — there is nowhere else to go.
+ * the same colour. Reading and editing both happen here — there is nowhere else
+ * to go, and no state between typing and the file on disk.
  */
 export function PageSection({
   id,
@@ -44,20 +26,20 @@ export function PageSection({
   id: string;
   /** Position in the folder document — drives the section's colour. */
   index: number;
-  section: { page: PageMeta; raw: string; proposals: Proposal[] };
+  section: { page: PageMeta; raw: string };
   pageTitles: Map<string, string>;
   onOpenPage: (pageId: string) => void;
   onChanged: () => void;
 }) {
-  const { page, raw, proposals } = section;
+  const { page, raw } = section;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(raw);
   const [saving, setSaving] = useState(false);
-  const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // The folder reloads after every accept, so the section can be handed new
-  // source while it is mounted. Re-seed the draft unless the user is mid-edit.
+  // An agent writing to the file on disk reloads the folder, so the section can
+  // be handed new source while it is mounted. Re-seed the draft unless the user
+  // is mid-edit — clobbering what they are typing would be worse than staleness.
   useEffect(() => {
     if (!editing) setDraft(raw);
   }, [raw, editing]);
@@ -86,19 +68,6 @@ export function PageSection({
     onChanged();
   }, [draft, page.relPath, onChanged]);
 
-  async function resolve(proposalId: string, action: "accept" | "reject") {
-    setBusyId(proposalId);
-    setError(null);
-    const response = await fetch("/api/proposals", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action, id: proposalId }),
-    });
-    if (!response.ok) setError((await response.json()).error ?? "Could not resolve that.");
-    setBusyId(null);
-    onChanged();
-  }
-
   const onProseClick = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
       const anchor = (event.target as HTMLElement).closest("a[data-page]");
@@ -114,12 +83,6 @@ export function PageSection({
       <div className="flex flex-wrap items-center gap-2.5">
         <span className="pal-bar" />
         <h2 className="pal-title text-[17px] font-semibold tracking-[-0.02em]">{page.title}</h2>
-
-        {proposals.length > 0 ? (
-          <span className="pal-chip rounded-md px-1.5 py-0.5 text-[10.5px] font-semibold">
-            {proposals.length} {proposals.length === 1 ? "proposal" : "proposals"}
-          </span>
-        ) : null}
 
         <span className="flex-1" />
 
@@ -201,134 +164,6 @@ export function PageSection({
           dangerouslySetInnerHTML={{ __html: html }}
         />
       )}
-
-      {/* Proposals live inside the section they change. */}
-      {!editing &&
-        proposals.map((proposal) => (
-          <InlineProposal
-            key={proposal.id}
-            proposal={proposal}
-            busy={busyId === proposal.id}
-            onResolve={resolve}
-          />
-        ))}
-
     </section>
   );
-}
-
-function InlineProposal({
-  proposal,
-  busy,
-  onResolve,
-}: {
-  proposal: Proposal;
-  busy: boolean;
-  onResolve: (id: string, action: "accept" | "reject") => void;
-}) {
-  const lines = useMemo(
-    () => diffLines(proposal.base ?? "", proposal.proposed),
-    [proposal.base, proposal.proposed],
-  );
-
-  return (
-    <div className="mt-3.5 overflow-hidden rounded-xl border border-[var(--lore-border)]">
-      <div className="flex flex-wrap items-center gap-2 border-b border-[var(--lore-border)] bg-[var(--lore-surface-raised)] px-3.5 py-2">
-        <span className="text-[12.5px] font-semibold text-[var(--lore-text-primary)]">
-          {proposal.agent}
-        </span>
-        <span
-          className={cn(
-            "rounded-full border px-1.5 py-px text-[9.5px] font-bold uppercase tracking-[0.05em]",
-            RISK_STYLE[proposal.risk],
-          )}
-        >
-          {proposal.risk}
-        </span>
-        <span className="t-meta text-[var(--lore-text-tertiary)]">{proposal.kind}</span>
-        <span className="flex-1" />
-        <span
-          className="text-[12px] tabular-nums"
-          style={{ fontFamily: "var(--font-mono), monospace" }}
-        >
-          <span className="text-[var(--lore-success)]">+{proposal.stats.added}</span>{" "}
-          <span className="text-[var(--lore-danger)]">−{proposal.stats.removed}</span>
-        </span>
-        <button
-          type="button"
-          onClick={() => onResolve(proposal.id, "reject")}
-          disabled={busy}
-          className="inline-flex h-7 items-center gap-1 rounded-lg px-2 text-[12.5px] font-medium text-[var(--lore-text-secondary)] transition-colors hover:bg-[var(--lore-surface)] disabled:opacity-50"
-        >
-          <X size={12} />
-          Reject
-        </button>
-        <button
-          type="button"
-          onClick={() => onResolve(proposal.id, "accept")}
-          disabled={busy}
-          className="inline-flex h-7 items-center gap-1 rounded-lg bg-[var(--lore-accent)] px-2.5 text-[12.5px] font-medium text-white transition-colors hover:bg-[var(--lore-accent-hover)] disabled:opacity-50"
-        >
-          {busy ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
-          Accept
-        </button>
-      </div>
-
-      <p className="px-3.5 py-2.5 text-[12.5px] leading-relaxed text-[var(--lore-text-secondary)]">
-        {proposal.reason}
-      </p>
-
-      <div
-        className="lore-scrollbar max-h-64 overflow-auto border-t border-[var(--lore-border)] bg-[var(--lore-background)] px-3.5 py-2 text-[12px] leading-[1.7]"
-        style={{ fontFamily: "var(--font-mono), monospace" }}
-      >
-        {lines.map((line, i) => (
-          <div
-            key={i}
-            className={cn(
-              "whitespace-pre-wrap break-words rounded px-1",
-              line.type === "add" && "bg-[var(--lore-success)]/12 text-[var(--lore-success)]",
-              line.type === "remove" && "bg-[var(--lore-danger)]/10 text-[var(--lore-danger)]",
-              line.type === "same" && "text-[var(--lore-text-tertiary)]",
-            )}
-          >
-            {line.type === "add" ? "+ " : line.type === "remove" ? "− " : "  "}
-            {line.text || " "}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/**
- * Client-side twin of the server diff. Duplicated rather than imported because
- * lib/proposals.ts pulls in node:fs, which cannot cross into a client bundle.
- */
-function diffLines(before: string, after: string) {
-  const a = before.split("\n");
-  const b = after.split("\n");
-
-  let start = 0;
-  while (start < a.length && start < b.length && a[start] === b[start]) start++;
-
-  let endA = a.length;
-  let endB = b.length;
-  while (endA > start && endB > start && a[endA - 1] === b[endB - 1]) {
-    endA--;
-    endB--;
-  }
-
-  const context = 2;
-  const lines: { type: "same" | "add" | "remove"; text: string }[] = [];
-  for (let i = Math.max(0, start - context); i < start; i++) {
-    lines.push({ type: "same", text: a[i] });
-  }
-  for (let i = start; i < endA; i++) lines.push({ type: "remove", text: a[i] });
-  for (let i = start; i < endB; i++) lines.push({ type: "add", text: b[i] });
-  for (let i = endA; i < Math.min(a.length, endA + context); i++) {
-    lines.push({ type: "same", text: a[i] });
-  }
-
-  return lines;
 }

@@ -197,12 +197,12 @@ is `0.0.0.0`, which — measured live during the build — put the vault on the 
 anyone on the same wifi could read it and re-link it to any path. That was a real
 defect, not a theoretical one.
 
-**2. `proxy.ts`.** One file guards all 17 routes. It rejects any filesystem request
+**2. `proxy.ts`.** One file guards all 16 filesystem routes. It rejects any filesystem request
 whose `Host` header is not loopback, covering the cases the bind does not: a manual
 `-H 0.0.0.0`, a container publishing the port, a reverse proxy in front.
 
 Guarding here rather than per-route is deliberate: a guard you must remember
-seventeen times is a guard that gets forgotten once.
+sixteen times is a guard that gets forgotten once.
 
 **3. Site mode.** `LORE_MODE=site` makes every filesystem route return 404 and
 redirects `/vault` to `/install`. It is also **inferred** from `VERCEL`, `NETLIFY`,

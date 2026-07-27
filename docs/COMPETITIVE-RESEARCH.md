@@ -739,6 +739,28 @@ Two secondary gaps worth naming, because they're cheap to close and everyone lea
 
 Ordered by "what wins the first 1,000 users," not by build difficulty.
 
+> **Superseded in part — recommendation 3 was built, measured, and reversed.**
+>
+> This section is the pre-build research position, kept as written. Two of its
+> calls did not survive contact with a real vault:
+>
+> - **"The Review Queue — the actual product" (rec 3) was wrong.** It was built,
+>   then removed once measurement showed the gate is unenforceable (agents have
+>   their own write tools), redundant (Claude Code already asks), and worst at
+>   exactly the volume that matters — 303 changes a week resolves to "Accept
+>   All". Replaced by promotion-not-permission: agents write freely, everything
+>   lands unverified, humans promote what they checked, and promotions are pinned
+>   to a content hash so a rewrite lapses them. See DOCUMENTATION.md §2.
+> - **The MCP surface in rec 2 is four read tools, not eight.** `propose_edit`
+>   and `apply_edit` are gone with the queue; `ingest_source` was never built.
+>
+> The rest held up. Shipped: **1** (Connect Folder), **2** (harness detection and
+> one-click wiring, at four tools), **4** (Wiki Health), **5** (staleness, with
+> per-type windows via `STALE_DAYS` rules and a 180-day default), **6** (Schema),
+> **7** (Review and Timeline). **Not built: 8** — there is no static publish. The
+> only sharing that exists is the paired-remote token, which is a different thing:
+> reaching your own machine from your own phone, not publishing to anyone.
+
 ### 1. `Connect Folder` — a real 30-second onboarding, no scaffold, no migration
 One button: pick a directory. The app reads what's there and **infers the schema** rather than
 imposing one — detects `index.md` / `log.md` / `SCHEMA.md` / `AGENTS.md` / `CLAUDE.md`, frontmatter

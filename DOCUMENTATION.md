@@ -66,7 +66,7 @@ One codebase serves two shapes, and `proxy.ts` — Next 16's renamed middleware 
 is the boundary between them.
 
 - **local** — the real app. Loopback only. Full filesystem access.
-- **site** — the marketing pages only. Every one of the seventeen
+- **site** — the marketing pages only. Every one of the sixteen
   filesystem-touching routes returns 404, and `/vault` redirects to `/install`.
 
 `isSiteMode()` returns true when `LORE_MODE=site`, false when `LORE_MODE=local`,
@@ -588,23 +588,30 @@ on or off, because both mismatches are worth telling the user about: on and
 unreachable means the pairing link will not connect, off but reachable means the
 port was opened by hand and the machine is exposed.
 
-### Residual: the removed gate
+### Residual: the removed gate, and how long it survived
 
-`lib/proposals.ts` and `/api/proposals` are still in the tree, `/api/folder`
-still attaches pending proposals to each section, and the folder document still
-renders them — including a header bar with **Accept all** and **Reject all**
-buttons, which is precisely the affordance §2 argues against.
+Removing the gate from the *product* did not remove it from the *tree*. Deleting
+`propose_edit` from the MCP server took away the only way to create a proposal,
+and the feature then looked gone from every angle a user could see: the queue was
+always empty, so the accept/reject UI never rendered.
 
-**Nothing in the product creates one.** `propose_edit` is gone, no MCP tool
-writes a proposal, and nothing in Review or Insights reads one — so in normal
-use the list is empty and the bar never renders. `POST /api/proposals` with a
-`{ path, content, agent, reason }` body still creates one, and the same route
-with `{ action: "accept" | "reject", id | ids }` resolves it; that hand-made
-path is the only way to see any of this UI.
+Underneath, all of it was still wired up. `lib/proposals.ts` still carried a
+header comment asserting the removed design word for word — *"agents never write
+directly … nothing touches the vault until a human accepts it"* — `/api/folder`
+still attached pending proposals to every section, the folder document still had
+an **Accept all** / **Reject all** bar, and `POST /api/proposals` was still live
+on loopback and could still write into the vault through `writeRaw`/`createPage`.
 
-It is dead weight pending removal, not a feature. Documented here so the next
-person to find an accept/reject button in the Wiki view knows it is a leftover
-rather than a second, contradictory trust model.
+A doc audit found it. **It is now deleted** — the module, the route, the
+`/api/folder` fields, the inline diff UI, the ghost "incoming page" sections, and
+the entry in `proxy.ts`. `/api/proposals` returns 404; the API surface is 16
+routes, not 17.
+
+Worth keeping the shape of this in mind, because it is the same failure as the
+dead-link bug and the stale-cache trust bug: **the visible surface agreed with
+the intended design, so nothing prompted anyone to check the layer underneath.**
+An empty queue and a removed queue look identical from the UI. The difference was
+a live write path into the user's wiki that no longer had any legitimate caller.
 
 ---
 
@@ -940,11 +947,12 @@ Stated plainly rather than discovered later.
 - **A folder document loads full source for up to 200 pages at once.** The right
   unit for a personal wiki; a folder with many hundreds of pages wants
   virtualising.
-- **The journal's diff is a common-prefix/suffix trim, not Myers** (as is
-  `diffLines` in the residual proposal code). Correct and free for small,
-  mostly-additive edits; a large reordering renders as one big remove followed
-  by one big add. Compare is the exception — it uses the `diff` package's word
-  diff.
+- **The journal's diff is a common-prefix/suffix trim, not Myers.** Correct and
+  free for small, mostly-additive edits; a large reordering renders as one big
+  remove followed by one big add. This only ever feeds the journal's
+  `linesAdded`/`linesRemoved` counters, so the cost of being wrong is a
+  misleading number in Review, not a misleading diff on screen. Compare is the
+  exception — it uses the `diff` package's word diff.
 
 **Scope**
 
@@ -981,5 +989,6 @@ Stated plainly rather than discovered later.
   server rather than loading a static bundle.
 - **A link whose basename is ambiguous disappears from both checks** — no
   resolved link, no dead-link report. See §8.
-- **The removed approval gate still has residual code** (`lib/proposals.ts`,
-  `/api/proposals`, and proposal rendering inside the folder document). See §10.
+- **The removed approval gate left residual code behind for a day** — the
+  module, route and accept/reject UI outlived the feature because an empty queue
+  and a deleted queue look the same from the interface. Now deleted. See §10.
