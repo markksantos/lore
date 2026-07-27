@@ -30,6 +30,20 @@ All four carry the app icon (`build/icon.png`); no build logs
 The packaged macOS app was launched, its child server answered
 `GET /api/vault` with `200`, and no server process survived quitting the app.
 
+Re-checked against the rebuilt arm64 bundle, spawning its server exactly the way
+`main.js` does (`Lore.app/Contents/MacOS/Lore` with `ELECTRON_RUN_AS_NODE=1`,
+`HOSTNAME=127.0.0.1`, `LORE_MODE=local`, and `VERCEL=1` injected to prove the
+mode override):
+
+```
+/api/vault                      -> 200
+/vault                          -> 200
+/                               -> 200
+/api/vault  Host: evil.example.com -> 403      (loopback boundary intact)
+lsof                            -> TCP 127.0.0.1:<port> (LISTEN)   — loopback only
+after kill                      -> 0 listeners
+```
+
 ### AppImage cannot be assembled on macOS
 
 `npx electron-builder --linux` packages the Linux payload fine — both

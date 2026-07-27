@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FolderOpen, ArrowRight, Loader2, FolderSearch } from "lucide-react";
 import { SceneryImage } from "@/components/marketing/scenery-image";
 import { BrandMark } from "@/components/marketing/brand-mark";
 import { formatCount } from "@/lib/utils";
 import type { Scene } from "@/lib/scenery";
+import { canPickFolder, desktopBridge } from "@/lib/desktop";
 
 /**
  * First run. Exactly one decision: which folder is your wiki.
@@ -27,15 +28,40 @@ export function Onboarding({
   const [busy, setBusy] = useState(false);
   const [picking, setPicking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /* Resolved after mount: window.lore and navigator only exist in the browser,
+     and reading either during render would not match the server's HTML. */
+  const [canBrowse, setCanBrowse] = useState(false);
+
+  useEffect(() => {
+    setCanBrowse(canPickFolder());
+    // The native File menu can also choose a folder, and the renderer has to
+    // react to that as if the user had clicked Browse.
+    const bridge = desktopBridge();
+    return bridge?.onVaultFolderChosen((folder) => link(folder));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /**
-   * Ask the OS for a folder. Lore's server is on this machine, so it can open a
-   * real macOS picker — no need to make anyone type a path. Falls through
-   * silently to the text field wherever that isn't available.
+   * Ask the OS for a folder.
+   *
+   * Two routes, tried in order of capability. The Electron bridge works on
+   * macOS, Windows and Linux, so the packaged app always gets a real dialog.
+   * A browser falls back to /api/pick, which shells out to osascript and is
+   * therefore macOS-only — which is why the button hides itself entirely on a
+   * browser elsewhere rather than offering something that returns 501.
    */
   async function browse() {
     setPicking(true);
     setError(null);
+
+    const bridge = desktopBridge();
+    if (bridge) {
+      const chosen = await bridge.chooseVaultFolder().catch(() => null);
+      setPicking(false);
+      if (chosen) link(chosen);
+      return;
+    }
+
     const response = await fetch("/api/pick", { method: "POST" }).catch(() => null);
     setPicking(false);
     if (!response?.ok) return;
@@ -125,6 +151,7 @@ export function Onboarding({
               <p className="t-meta mt-2.5 text-[var(--lore-danger)]">{error}</p>
             ) : null}
 
+            {canBrowse ? (
             <button
               type="button"
               onClick={browse}
@@ -134,6 +161,7 @@ export function Onboarding({
               {picking ? <Loader2 size={15} className="animate-spin" /> : <FolderSearch size={15} />}
               {picking ? "Waiting for the picker…" : "Browse…"}
             </button>
+            ) : null}
 
             <button
               type="button"

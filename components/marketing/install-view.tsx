@@ -94,11 +94,20 @@ export function InstallView({ siteMode }: { siteMode: boolean }) {
           title="Or build the desktop app"
           body="Same application, in a window, with a real folder picker and no terminal."
         >
-          <CodeBlock label="Terminal" lines={["npm run dist:mac", "# or", "npm run dist:win"]} />
+          <CodeBlock
+            label="Terminal"
+            lines={["npm run dist:mac", "npm run dist:win", "npm run dist:linux"]}
+          />
           <p className="t-meta mt-2.5 text-[var(--lore-text-tertiary)]">
+            The desktop build is the only way to get a native folder picker on Windows
+            and Linux — in a browser, that button is macOS-only, because it shells out to
+            osascript.
+          </p>
+          <p className="t-meta mt-2 text-[var(--lore-text-tertiary)]">
             These builds are unsigned. macOS will ask you to approve it in System Settings
             the first time, and Windows SmartScreen will warn. Signing needs an Apple
-            Developer membership and a Windows certificate, which are not configured here.
+            Developer membership and a Windows certificate, neither of which is configured
+            here. AppImage cannot be assembled on a Mac — build it on Linux.
           </p>
         </Step>
 

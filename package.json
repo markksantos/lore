@@ -10,10 +10,11 @@
     "lint": "eslint",
     "mcp": "node mcp/server.mjs",
     "electron": "electron electron/main.js",
-    "dist:mac": "npm run build && electron-builder --mac",
-    "dist:win": "npm run build && electron-builder --win",
+    "dist:mac": "npm run build && electron-builder --mac --arm64 --x64",
+    "dist:win": "npm run build && electron-builder --win --x64",
     "site:build": "LORE_MODE=site next build",
-    "site:start": "LORE_MODE=site next start"
+    "site:start": "LORE_MODE=site next start",
+    "dist:linux": "npm run build && electron-builder --linux --x64 --arm64"
   },
   "dependencies": {
     "@codemirror/lang-markdown": "6.5.1",

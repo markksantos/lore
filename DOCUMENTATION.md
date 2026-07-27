@@ -42,7 +42,8 @@ equally, and nothing has to opt in.
 There is no static bundle to load into a window — every route handler is
 `runtime: "nodejs"` and reads the user's filesystem — so `electron/main.js` does
 one job: spawn Next's **standalone** server (`output: "standalone"` in
-`next.config.ts`) as a child process on `127.0.0.1:4646` and point a
+`next.config.ts`) as a child process on `127.0.0.1:4646` — falling back to an
+OS-assigned free port if 4646 is taken, usually by `npm run dev` — and point a
 `BrowserWindow` at it once it answers.
 
 Two failures shaped it. Showing the window before the server responds renders a
