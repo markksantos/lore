@@ -60,9 +60,13 @@ const RETRY_MS = 60_000;
 export type EmbeddingStatus = {
   ready: boolean;
   /**
-   * Null until the pipeline has actually loaded. `building && model === null`
-   * is the state to render as "downloading model" — the first call fetches
-   * ~23MB and the UI should say so rather than appear hung.
+   * Null until the pipeline has actually loaded, which on the first run means
+   * a ~23MB download. `building && model === null` is the case worth rendering
+   * as "downloading model" rather than letting the UI look hung.
+   *
+   * Null does not imply a download is in flight: a warm index loaded from disk
+   * reports `ready` with no model until the first query pulls the pipeline in.
+   * `model === null && error === null` only means "not loaded yet".
    */
   model: string | null;
   indexed: number;
@@ -115,6 +119,11 @@ let extractor: Extractor | null = null;
 let extractorLoad: Promise<Extractor | null> | null = null;
 let lastFailureAt = 0;
 let building: Promise<void> | null = null;
+/**
+ * The newest page set handed to `ensureIndex` while a build was already
+ * draining. A running build works from a fixed list and cannot see it.
+ */
+let queued: SourcePage[] | null = null;
 
 const status: EmbeddingStatus = {
   ready: false,
@@ -136,9 +145,10 @@ const hashOf = (text: string) =>
 
 /**
  * Vectors are stored as base64 float32 rather than JSON numbers. A 384-dim
- * vector is 1,536 bytes packed and roughly 3KB as rounded decimal text, and a
- * 1,400-page vault runs to several thousand chunks — the packed form is both
- * smaller and lossless.
+ * vector is 1,536 bytes packed, so 2,048 characters of base64 on disk, against
+ * roughly 3KB as rounded decimal text — and a 1,400-page vault runs to several
+ * thousand chunks. Base64 is the smaller of the two and, unlike rounding to
+ * four places, gives back exactly the float that was written.
  */
 const encodeVec = (v: Float32Array) =>
   Buffer.from(v.buffer, v.byteOffset, v.byteLength).toString("base64");
@@ -360,13 +370,24 @@ export async function ensureIndex(root: string, pages: SourcePage[]): Promise<vo
     return;
   }
 
-  // A build already draining the queue will pick up anything newly stale on
-  // the next call; starting a second one would only fight it for the CPU.
-  if (building) return;
+  // A second concurrent build would only fight the first for the CPU. But the
+  // running one was handed a fixed list and will never see a page edited since
+  // it started, so dropping this call outright would silently leave that edit
+  // out of the index until something happened to call again. Hold the newest
+  // page set and re-check once the current build drains.
+  if (building) {
+    queued = pages;
+    return;
+  }
   building = runBuild(s, stale)
     .catch(() => {})
     .finally(() => {
       building = null;
+      const next = queued;
+      queued = null;
+      // Skip the re-check if the vault changed under us; the new vault's own
+      // ensureIndex drives its index, and this call's root is the old one.
+      if (next && state === s) void ensureIndex(root, next);
     });
 }
 
@@ -413,7 +434,12 @@ export async function semanticSearch(
 
 /**
  * Pages similar to a given one. Runs entirely off stored vectors, so it needs
- * no model in memory and answers in milliseconds.
+ * no model in memory and no download — a cold process can answer this.
+ *
+ * Cost is every source chunk against every stored chunk. On a 1,400-page vault
+ * of ordinary pages that is single-digit milliseconds; comparing one very long
+ * page against a vault of very long pages is half a second, which is why the
+ * chunk cap exists.
  */
 export async function relatedTo(
   root: string,
