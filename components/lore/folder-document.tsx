@@ -8,6 +8,7 @@ import type { VaultIndex } from "@/lib/types";
 import {
   ContextRail,
   OutlineRail,
+  PageOutline,
   useActiveSection,
 } from "@/components/lore/document-rails";
 
@@ -191,7 +192,20 @@ export function FolderDocument({
       </div>
       </div>
 
-      <ContextRail page={activePage} index={index} onOpenPage={onOpenPage} />
+      <div className="hidden lg:block">
+        <ContextRail page={activePage} index={index} onOpenPage={onOpenPage} />
+        {/* The headings of whichever section is being read, so a long page is
+            navigable without leaving the folder document. */}
+        <PageOutline
+          raw={data.sections.find((s) => s.page.relPath === activePage?.relPath)?.raw ?? ""}
+          onJump={(heading) => {
+            const match = [...document.querySelectorAll("h1,h2,h3,h4")].find(
+              (h) => h.textContent?.trim() === heading,
+            );
+            match?.scrollIntoView({ behavior: "smooth", block: "start" });
+          }}
+        />
+      </div>
     </div>
   );
 }

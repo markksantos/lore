@@ -22,6 +22,7 @@ import {
 } from "@codemirror/autocomplete";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
+import { EditorTools } from "@/components/lore/editor-tools";
 import { cn } from "@/lib/utils";
 
 /* CodeMirror builds its DOM in the constructor, so the whole module is pulled
@@ -232,6 +233,59 @@ function createWikilinkSource(getPages: () => Map<string, string>) {
   };
 }
 
+
+/**
+ * Slash commands.
+ *
+ * The blocks people want most are the ones whose syntax nobody remembers: a
+ * table's pipes and dashes, a mermaid fence, a callout. Typing "/" and picking
+ * from a list is faster than looking any of them up, and it is the one
+ * affordance every modern editor has trained people to expect.
+ *
+ * Implemented as a second completion source rather than a bespoke menu, so it
+ * inherits the keyboard handling, positioning and dismissal that already work
+ * for wikilinks.
+ */
+type Snippet = { label: string; detail: string; text: string; cursor?: number };
+
+const SNIPPETS: Snippet[] = [
+  { label: "Heading", detail: "## ", text: "## ", cursor: 3 },
+  { label: "Table", detail: "2-column table", text: "| Column | Column |\n| --- | --- |\n|  |  |\n", cursor: 2 },
+  { label: "Code block", detail: "``` fence", text: "```\n\n```\n", cursor: 4 },
+  { label: "Diagram", detail: "mermaid", text: "```mermaid\ngraph LR\n  A --> B\n```\n", cursor: 11 },
+  { label: "Maths", detail: "display block", text: "$$\n\n$$\n", cursor: 3 },
+  { label: "Task list", detail: "checkboxes", text: "- [ ] \n- [ ] \n", cursor: 6 },
+  { label: "Quote", detail: "blockquote", text: "> ", cursor: 2 },
+  { label: "Divider", detail: "horizontal rule", text: "\n---\n\n" },
+  { label: "Today", detail: "today's date", text: new Date().toISOString().slice(0, 10) },
+  { label: "Frontmatter", detail: "metadata block", text: "---\ntitle: \ntags: []\n---\n\n", cursor: 11 },
+];
+
+function createSlashSource() {
+  return (context: CompletionContext): CompletionResult | null => {
+    // Only at the start of a line or after whitespace: a slash inside a URL or
+    // a path is not someone asking for a menu.
+    const token = context.matchBefore(/(?:^|\s)\/[a-z]*/i);
+    if (!token) return null;
+    const slashAt = context.state.sliceDoc(token.from, token.to).indexOf("/") + token.from;
+
+    return {
+      from: slashAt,
+      options: SNIPPETS.map((snippet) => ({
+        label: `/${snippet.label.toLowerCase()}`,
+        detail: snippet.detail,
+        apply: (view: EditorView, _c: Completion, from: number, to: number) => {
+          view.dispatch({
+            changes: { from, to, insert: snippet.text },
+            selection: { anchor: from + (snippet.cursor ?? snippet.text.length) },
+            userEvent: "input.complete",
+          });
+        },
+      })),
+    };
+  };
+}
+
 /**
  * The markdown editing surface.
  *
@@ -267,6 +321,38 @@ export function MarkdownEditor({
     onChangeRef.current(next);
   }, []);
 
+  /* The toolbar needs the live selection, which only the view knows. Going
+     through the view rather than tracking selection in React state keeps one
+     source of truth — a mirrored copy drifts the moment anything edits the
+     document without going through the mirror. */
+  const viewRef = useRef<EditorView | null>(null);
+
+  const getSelection = useCallback(() => {
+    const view = viewRef.current;
+    if (!view) return "";
+    const { from, to } = view.state.selection.main;
+    return view.state.sliceDoc(from, to);
+  }, []);
+
+  const replaceSelection = useCallback((text: string) => {
+    const view = viewRef.current;
+    if (!view) return;
+    const { from, to } = view.state.selection.main;
+    view.dispatch({
+      changes: { from, to, insert: text },
+      selection: { anchor: from + text.length },
+    });
+    view.focus();
+  }, []);
+
+  const insertAtCursor = useCallback((text: string) => {
+    const view = viewRef.current;
+    if (!view) return;
+    const at = view.state.selection.main.head;
+    view.dispatch({ changes: { from: at, insert: text }, selection: { anchor: at + text.length } });
+    view.focus();
+  }, []);
+
   const extensions = useMemo<Extension[]>(
     () => [
       markdown(),
@@ -274,7 +360,7 @@ export function MarkdownEditor({
       syntaxHighlighting(loreHighlight),
       wikilinkHighlighter,
       autocompletion({
-        override: [createWikilinkSource(() => pageTitlesRef.current)],
+        override: [createWikilinkSource(() => pageTitlesRef.current), createSlashSource()],
         icons: false,
         closeOnBlur: true,
       }),
@@ -303,9 +389,19 @@ export function MarkdownEditor({
         className,
       )}
     >
+      <EditorTools
+        getSelection={getSelection}
+        replaceSelection={replaceSelection}
+        insertAtCursor={insertAtCursor}
+        className="border-b border-[var(--lore-border)] bg-[var(--lore-surface-raised)] px-2.5 py-1.5"
+      />
+
       <CodeMirror
         value={value}
         onChange={handleChange}
+        onCreateEditor={(view) => {
+          viewRef.current = view;
+        }}
         extensions={extensions}
         theme={loreTheme}
         height="100%"

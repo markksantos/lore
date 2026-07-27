@@ -185,6 +185,8 @@ type Body = {
   text?: unknown;
   model?: unknown;
   existing?: unknown;
+  /** Only for `rewrite`: what to do to the selected text. */
+  instruction?: unknown;
 };
 
 /** POST — run one task on the local model. */
@@ -192,8 +194,8 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json()) as Body;
     const task = body.task;
-    if (task !== "summarize" && task !== "tags" && task !== "title") {
-      return fail(new Error("Unknown task. Expected summarize, tags, or title."));
+    if (task !== "summarize" && task !== "tags" && task !== "title" && task !== "rewrite") {
+      return fail(new Error("Unknown task. Expected summarize, tags, title, or rewrite."));
     }
 
     const text = typeof body.text === "string" ? body.text.trim() : "";
@@ -212,6 +214,31 @@ export async function POST(request: Request) {
     }
 
     const excerpt = text.slice(0, MAX_INPUT_CHARS);
+
+    if (task === "rewrite") {
+      const instruction = typeof body.instruction === "string" ? body.instruction.trim() : "";
+      if (!instruction) return fail(new Error("rewrite needs an instruction."));
+
+      const raw = await generate(
+        model,
+        `${instruction}\n\n---\n${excerpt}\n---`,
+        {
+          // The system prompt exists to stop the model doing the one thing that
+          // would make this dangerous on a wiki: adding facts. A rewrite that
+          // invents a detail is indistinguishable from the real note afterwards.
+          system:
+            "You rewrite text. Preserve every fact exactly and add nothing that was not already there. Reply with the rewritten text only — no preamble, no explanation, no surrounding quotes.",
+          timeoutMs: TIMEOUT_MS,
+        },
+      );
+      const text = raw
+        .trim()
+        .replace(/^```[a-z]*\n?|```$/g, "")
+        .replace(/^["']|["']$/g, "")
+        .trim();
+      if (!text) return fail(new Error(`${model} returned nothing usable.`), 502);
+      return Response.json({ model, task, text });
+    }
 
     if (task === "summarize") {
       const raw = await generate(

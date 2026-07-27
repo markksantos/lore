@@ -115,6 +115,59 @@ export function OutlineRail({
   );
 }
 
+/**
+ * The headings inside one page.
+ *
+ * The folder outline above answers "where am I in this folder", which is the
+ * wrong question on a 5,000-word architecture note where the whole folder is one
+ * page. This answers "where am I in this page", and only appears when a page is
+ * long enough for that to be a real question.
+ */
+export function PageOutline({
+  raw,
+  onJump,
+}: {
+  raw: string;
+  onJump: (heading: string) => void;
+}) {
+  const headings = useMemo(() => {
+    const out: { depth: number; text: string }[] = [];
+    let fenced = false;
+    for (const line of raw.split("\n")) {
+      // A "#" inside a fenced block is a shell comment, not a heading.
+      if (/^\s*```/.test(line)) fenced = !fenced;
+      if (fenced) continue;
+      const match = /^(#{1,4})\s+(.*)$/.exec(line);
+      if (match) out.push({ depth: match[1].length, text: match[2].trim() });
+    }
+    return out;
+  }, [raw]);
+
+  if (headings.length < 3) return null;
+
+  return (
+    <nav aria-label="Headings on this page" className="mt-5">
+      <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.09em] text-[var(--lore-text-tertiary)]">
+        On this page
+      </p>
+      <ul className="space-y-px">
+        {headings.map((heading, i) => (
+          <li key={`${heading.text}-${i}`}>
+            <button
+              type="button"
+              onClick={() => onJump(heading.text)}
+              style={{ paddingLeft: `${(heading.depth - 1) * 9 + 6}px` }}
+              className="block w-full truncate rounded-md py-1 pr-1.5 text-left text-[12px] text-[var(--lore-text-tertiary)] transition-colors hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)]"
+            >
+              {heading.text}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
+}
+
 // ----------------------------------------------------------------- right rail
 
 type Related = { id: string; score: number };
