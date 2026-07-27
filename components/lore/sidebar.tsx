@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
+  ChevronRight,
   Search,
   Plus,
   BookText,
@@ -18,6 +19,7 @@ import type { View } from "@/components/lore/vault-app";
 import { BrandMark } from "@/components/marketing/brand-mark";
 import { useTheme } from "@/components/lore/theme-provider";
 import { colorForIndex } from "@/lib/palette";
+import { ancestorsOf, buildFolderTree, visibleRows } from "@/lib/tree";
 import { cn, formatCount, relativeTime } from "@/lib/utils";
 
 const NAV: { id: View; label: string; icon: typeof BookText }[] = [
@@ -56,6 +58,41 @@ export function Sidebar({
 }) {
   const { theme, toggle } = useTheme();
   const [creating, setCreating] = useState(false);
+  const [filter, setFilter] = useState("");
+  /* Only the top level opens by default. On a real vault the tree is 262
+     folders deep in places, and expanding it all reproduces the flat list this
+     replaced. */
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+
+  const tree = useMemo(() => buildFolderTree(index.folders), [index.folders]);
+
+  /* Reveal the selected folder wherever it lives, so opening a page from
+     search or triage does not leave the sidebar pointing somewhere else. */
+  useEffect(() => {
+    const ancestors = ancestorsOf(folder);
+    if (!ancestors.length) return;
+    setExpanded((current) => {
+      if (ancestors.every((a) => current.has(a))) return current;
+      return new Set([...current, ...ancestors]);
+    });
+  }, [folder]);
+
+  const rows = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    if (!q) return visibleRows(tree, expanded);
+    /* Filtering shows matches as a flat list. Preserving the hierarchy while
+       filtering means rendering parents that do not match, which reads as
+       noise when you have already told us what you are looking for. */
+    const flat: ReturnType<typeof visibleRows> = [];
+    const walk = (nodes: typeof tree) => {
+      for (const n of nodes) {
+        if (n.path.toLowerCase().includes(q)) flat.push({ ...n, depth: 0 });
+        walk(n.children);
+      }
+    };
+    walk(tree);
+    return flat;
+  }, [tree, expanded, filter]);
   const [newPath, setNewPath] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -154,29 +191,101 @@ export function Sidebar({
           <SearchResults results={results} onOpenPage={onOpenPage} />
         ) : (
           <>
-            <p className="mb-1.5 mt-1 px-2 text-[10px] font-semibold uppercase tracking-[0.09em] text-[var(--lore-text-tertiary)]">
-              Folders
-            </p>
-            {index.folders.map((entry, i) => (
-                <button
-                  key={entry.folder || "__root"}
-                  type="button"
-                  onClick={() => onFolder(entry.folder)}
-                  style={colorForIndex(i)}
+            <div className="mb-1.5 mt-1 flex items-center gap-2 px-2">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.09em] text-[var(--lore-text-tertiary)]">
+                Folders
+              </p>
+              <span className="text-[10px] text-[var(--lore-text-tertiary)]">
+                {index.folders.length}
+              </span>
+            </div>
+
+            {index.folders.length > 12 ? (
+              <input
+                value={filter}
+                onChange={(event) => setFilter(event.target.value)}
+                placeholder="Filter folders"
+                spellCheck={false}
+                className="mb-1.5 w-full rounded-lg border border-[var(--lore-border)] bg-[var(--lore-background)] px-2.5 py-1.5 text-[12px] text-[var(--lore-text-primary)] outline-none placeholder:text-[var(--lore-text-tertiary)] focus:border-[var(--lore-accent)]"
+              />
+            ) : null}
+
+            {rows.map((node, i) => {
+              const hasChildren = node.children.length > 0;
+              const isOpen = expanded.has(node.path);
+              return (
+                <div
+                  key={node.path || "__root"}
+                  style={colorForIndex(node.depth <= 1 ? i : node.path.length)}
                   className={cn(
-                    "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] transition-colors",
-                    folder === entry.folder
-                      ? "bg-[var(--lore-surface-selected)] font-medium text-[var(--lore-text-primary)]"
-                      : "text-[var(--lore-text-secondary)] hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)]",
+                    "flex items-center rounded-lg transition-colors",
+                    folder === node.path
+                      ? "bg-[var(--lore-surface-selected)] text-[var(--lore-text-primary)]"
+                      : "text-[var(--lore-text-secondary)] hover:bg-[var(--lore-surface-raised)]",
                   )}
+                  // Indentation carries the hierarchy; capped so a deep path
+                  // never squeezes the name into nothing.
                 >
-                  <span className="pal-dot" />
-                  <span className="truncate">{entry.folder || "Root"}</span>
-                  <span className="ml-auto text-[11px] text-[var(--lore-text-tertiary)]">
-                    {entry.count}
-                  </span>
-                </button>
-            ))}
+                  {/* A leaf has nothing to expand, so it gets a marker rather
+                      than a disabled control. Rendering a disabled button
+                      labelled "Expand" on every leaf puts hundreds of dead
+                      targets in the tab order and tells a screen reader there
+                      is something to open when there is not. */}
+                  {hasChildren ? (
+                    <button
+                      type="button"
+                      aria-label={`${isOpen ? "Collapse" : "Expand"} ${node.name}`}
+                      aria-expanded={isOpen}
+                      onClick={() =>
+                        setExpanded((current) => {
+                          const next = new Set(current);
+                          if (next.has(node.path)) next.delete(node.path);
+                          else next.add(node.path);
+                          return next;
+                        })
+                      }
+                      className="flex h-7 w-5 shrink-0 items-center justify-center"
+                      style={{ marginLeft: `${Math.min(node.depth, 4) * 10}px` }}
+                    >
+                      <ChevronRight
+                        size={12}
+                        className={cn(
+                          "text-[var(--lore-text-tertiary)] transition-transform",
+                          isOpen && "rotate-90",
+                        )}
+                      />
+                    </button>
+                  ) : (
+                    <span
+                      aria-hidden
+                      className="flex h-7 w-5 shrink-0 items-center justify-center"
+                      style={{ marginLeft: `${Math.min(node.depth, 4) * 10}px` }}
+                    >
+                      <span className="pal-dot" />
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => onFolder(node.path)}
+                    className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pr-2.5 text-left text-[13px]"
+                    title={node.path || "Root"}
+                  >
+                    <span className={cn("truncate", folder === node.path && "font-medium")}>
+                      {node.name}
+                    </span>
+                    <span className="ml-auto shrink-0 text-[11px] text-[var(--lore-text-tertiary)]">
+                      {hasChildren && !isOpen ? node.total : node.count}
+                    </span>
+                  </button>
+                </div>
+              );
+            })}
+
+            {rows.length === 0 ? (
+              <p className="px-2 py-4 text-center text-[12px] text-[var(--lore-text-tertiary)]">
+                No folder matches.
+              </p>
+            ) : null}
           </>
         )}
       </div>

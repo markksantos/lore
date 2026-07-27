@@ -19,11 +19,23 @@ import { paletteVars } from "@/lib/palette";
 import type { Scene } from "@/lib/scenery";
 import { cn } from "@/lib/utils";
 
-export function Landing({ scene, logos }: { scene: Scene; logos: string[] }) {
+export function Landing({
+  scene,
+  logos,
+  siteMode,
+}: {
+  scene: Scene;
+  logos: string[];
+  siteMode: boolean;
+}) {
+  /* On the public site there is no app to open — every filesystem route is off.
+     Sending someone to a dead /vault would be the worst possible first click. */
+  const cta = siteMode ? "/install" : "/vault";
+  const ctaLabel = siteMode ? "Get Lore" : "Link your wiki";
   return (
     <>
       <MarketingHeader />
-      <Hero scene={scene} />
+      <Hero scene={scene} cta={cta} ctaLabel={ctaLabel} />
 
       {/* The product shot bridges the hero and the first content section:
           pulled up so its top overlaps the faded sky and its body extends into
@@ -40,15 +52,15 @@ export function Landing({ scene, logos }: { scene: Scene; logos: string[] }) {
       <States />
       <Budget />
       <Stack logos={logos} />
-      <Steps />
+      <Steps siteMode={siteMode} />
       <Faq />
-      <Finale scene={scene} />
+      <Finale scene={scene} cta={cta} ctaLabel={ctaLabel} />
       <MarketingFooter />
     </>
   );
 }
 
-function Hero({ scene }: { scene: Scene }) {
+function Hero({ scene, cta, ctaLabel }: { scene: Scene; cta: string; ctaLabel: string }) {
   return (
     <section className="relative bg-[var(--lore-background)]">
       <div className="relative flex min-h-[94svh] flex-col overflow-hidden">
@@ -92,10 +104,10 @@ function Hero({ scene }: { scene: Scene }) {
 
               <div className="mt-7 flex justify-center">
                 <Link
-                  href="/vault"
+                  href={cta}
                   className="group inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-white pl-4 pr-3 text-[14px] font-medium text-[#12356f] transition-colors hover:bg-[#eef2fb]"
                 >
-                  <span className="leading-none">Link your wiki</span>
+                  <span className="leading-none">{ctaLabel}</span>
                   <ArrowRight
                     size={16}
                     className="transition-transform duration-200 group-hover:translate-x-0.5"
@@ -355,14 +367,24 @@ function Stack({ logos }: { logos: string[] }) {
   );
 }
 
-function Steps() {
+function Steps({ siteMode }: { siteMode: boolean }) {
   const steps = [
-    {
-      n: "1",
-      slot: 0,
-      title: "Link your folder",
-      body: "Paste a path, or pick one Lore already found on your Mac. It scans in under a second and starts watching.",
-    },
+    // Step one differs by context: from the public site the first real action is
+    // getting the thing onto your machine, and pretending otherwise would send
+    // someone looking for a Browse button that is not there.
+    siteMode
+      ? {
+          n: "1",
+          slot: 0,
+          title: "Get it onto your machine",
+          body: "Clone and run it, or build the desktop app. Node 20 and nothing else — no account, no database, no key.",
+        }
+      : {
+          n: "1",
+          slot: 0,
+          title: "Link your folder",
+          body: "Browse to the folder your markdown lives in. It scans in under a second and starts watching.",
+        },
     {
       n: "2",
       slot: 3,
@@ -468,7 +490,7 @@ function Faq() {
   );
 }
 
-function Finale({ scene }: { scene: Scene }) {
+function Finale({ scene, cta, ctaLabel }: { scene: Scene; cta: string; ctaLabel: string }) {
   return (
     <section className="relative overflow-hidden">
       <div className="relative min-h-[62svh]">
@@ -512,10 +534,10 @@ function Finale({ scene }: { scene: Scene }) {
             Your agents will keep writing. Nobody was recording this part.
           </p>
           <Link
-            href="/vault"
+            href={cta}
             className="group mt-7 inline-flex h-10 items-center gap-2 rounded-lg bg-white pl-4 pr-3 text-[14px] font-medium text-[#12356f] transition-colors hover:bg-[#eef2fb]"
           >
-            Link your wiki
+            {ctaLabel}
             <ArrowRight
               size={16}
               className="transition-transform duration-200 group-hover:translate-x-0.5"

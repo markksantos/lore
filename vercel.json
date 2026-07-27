@@ -1,0 +1,13 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "npm run build",
+  "framework": "nextjs",
+  "env": {
+    "LORE_MODE": "site"
+  },
+  "build": {
+    "env": {
+      "LORE_MODE": "site"
+    }
+  }
+}

@@ -4,14 +4,16 @@
   "private": true,
   "description": "The wiki for all your agents. A local-first markdown wiki manager that every AI agent can read.",
   "scripts": {
-    "dev": "next dev -p 4646",
+    "dev": "next dev -H 127.0.0.1 -p 4646",
     "build": "next build",
-    "start": "next start -p 4646",
+    "start": "next start -H 127.0.0.1 -p 4646",
     "lint": "eslint",
     "mcp": "node mcp/server.mjs",
     "electron": "electron electron/main.js",
     "dist:mac": "npm run build && electron-builder --mac",
-    "dist:win": "npm run build && electron-builder --win"
+    "dist:win": "npm run build && electron-builder --win",
+    "site:build": "LORE_MODE=site next build",
+    "site:start": "LORE_MODE=site next start"
   },
   "dependencies": {
     "@codemirror/lang-markdown": "6.5.1",
