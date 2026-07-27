@@ -303,16 +303,21 @@
   padding-left: 0;
 }
 
+/* Positioned rather than flexed. `display: flex` on the item turns every inline
+   child into a flex item, so a bullet containing <code>, <em> or <strong> is
+   blockified and the sentence breaks into columns. The marker is the only reason
+   flex was here, and absolute positioning places it without touching the text
+   flow. Left padding is the marker (0.4em) plus the old gap (0.7em). */
 .lore-bullets > li {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.7em;
+  position: relative;
+  padding-left: 1.1em;
 }
 
 .lore-bullets > li::before {
   content: "";
-  flex: 0 0 auto;
-  margin-top: 0.8em;
+  position: absolute;
+  left: 0;
+  top: 0.8em;
   width: 0.4em;
   height: 0.4em;
   border-radius: 0.13em;

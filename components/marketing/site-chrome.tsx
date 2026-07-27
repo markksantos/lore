@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Sun, Moon } from "lucide-react";
+import { Sun, Moon, Github, Globe } from "lucide-react";
 import { BrandMark } from "@/components/marketing/brand-mark";
 import { useTheme } from "@/components/lore/theme-provider";
-import { GITHUB_URL, TAGLINE } from "@/lib/brand";
+import { GITHUB_URL, ORG, ORG_URL, TAGLINE } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 
 export function MarketingHeader() {
@@ -44,6 +44,17 @@ export function MarketingHeader() {
         </Link>
 
         <nav className="flex items-center gap-1">
+          <Link
+            href="/download"
+            className={cn(
+              "hidden rounded-md px-2.5 py-1.5 text-[13.5px] font-medium transition-colors sm:block",
+              scrolled
+                ? "text-[var(--lore-text-secondary)] hover:text-[var(--lore-text-primary)]"
+                : "text-white/85 hover:text-white",
+            )}
+          >
+            Download
+          </Link>
           <a
             href={GITHUB_URL}
             target="_blank"
@@ -87,33 +98,129 @@ export function MarketingHeader() {
   );
 }
 
+/**
+ * Every column entry points at something that exists. A footer is where a
+ * product quietly announces how finished it is, and four columns of links to
+ * pages nobody has written is a louder admission than three honest ones.
+ */
+const COLUMNS: { heading: string; links: { label: string; href: string; ext?: boolean }[] }[] = [
+  {
+    heading: "Product",
+    links: [
+      { label: "Download", href: "/download" },
+      { label: "Install guide", href: "/install" },
+      { label: "Open Lore", href: "/vault" },
+    ],
+  },
+  {
+    heading: "Resources",
+    links: [
+      { label: "Changelog", href: "/changelog" },
+      { label: "Source", href: GITHUB_URL, ext: true },
+    ],
+  },
+  {
+    heading: "Legal",
+    links: [
+      { label: "Privacy", href: "/privacy" },
+      { label: "Terms", href: "/terms" },
+    ],
+  },
+];
+
 export function MarketingFooter() {
   return (
     <footer className="border-t border-[var(--lore-border)] bg-[var(--lore-background)]">
-      <div className="mx-auto flex max-w-6xl flex-col gap-4 px-5 py-9 md:flex-row md:items-center md:justify-between md:px-8">
-        <div className="flex items-center gap-2 text-[var(--lore-text-primary)]">
-          <BrandMark size={17} />
-          <span className="text-[14px] font-semibold tracking-[-0.02em]">Lore</span>
-          <span className="t-meta ml-1 text-[var(--lore-text-tertiary)]">{TAGLINE}</span>
+      <div className="mx-auto max-w-6xl px-5 py-14 md:px-8">
+        <div className="flex flex-col gap-10 md:flex-row md:justify-between">
+          <div className="max-w-xs">
+            <div className="flex items-center gap-2 text-[var(--lore-text-primary)]">
+              <BrandMark size={19} />
+              <span className="text-[17px] font-semibold tracking-[-0.03em]">Lore</span>
+            </div>
+            <p className="mt-3.5 text-[14.5px] leading-relaxed text-[var(--lore-text-secondary)]">
+              {TAGLINE}
+            </p>
+
+            {/* Where a hosted product puts an uptime badge. Lore has no service
+                to report on, and saying so is the more interesting claim. */}
+            <div className="mt-7 inline-flex items-center gap-2 rounded-full bg-[var(--lore-surface-raised)] px-3 py-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-[var(--lore-success)]" />
+              <span className="text-[13px] text-[var(--lore-text-secondary)]">
+                No server to go down
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-x-10 gap-y-8 sm:grid-cols-3 md:gap-x-16">
+            {COLUMNS.map((column) => (
+              <div key={column.heading}>
+                <p className="text-[14.5px] font-semibold tracking-[-0.01em] text-[var(--lore-text-primary)]">
+                  {column.heading}
+                </p>
+                <ul className="mt-4 space-y-3">
+                  {column.links.map((link) => (
+                    <li key={link.label}>
+                      {link.ext ? (
+                        <a
+                          href={link.href}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[14.5px] text-[var(--lore-text-secondary)] transition-colors hover:text-[var(--lore-text-primary)]"
+                        >
+                          {link.label}
+                        </a>
+                      ) : (
+                        <Link
+                          href={link.href}
+                          className="text-[14.5px] text-[var(--lore-text-secondary)] transition-colors hover:text-[var(--lore-text-primary)]"
+                        >
+                          {link.label}
+                        </Link>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
         </div>
-        <div className="flex items-center gap-5">
-          <Link
-            href="/vault"
-            className="t-meta text-[var(--lore-text-secondary)] transition-colors hover:text-[var(--lore-text-primary)]"
-          >
-            Open Lore
-          </Link>
-          <a
-            href={GITHUB_URL}
-            target="_blank"
-            rel="noreferrer"
-            className="t-meta text-[var(--lore-text-secondary)] transition-colors hover:text-[var(--lore-text-primary)]"
-          >
-            GitHub
-          </a>
-          <span className="t-meta text-[var(--lore-text-tertiary)]">
-            Runs entirely on your machine
-          </span>
+
+        <div className="mt-12 flex flex-col gap-4 border-t border-[var(--lore-border)] pt-6 sm:flex-row sm:items-center sm:justify-between">
+          <p className="t-meta text-[var(--lore-text-tertiary)]">
+            © {new Date().getFullYear()} Lore · by{" "}
+            <a
+              href={ORG_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="font-medium text-[var(--lore-accent)] transition-colors hover:text-[var(--lore-accent-hover)]"
+            >
+              {ORG}
+            </a>
+          </p>
+
+          {/* Only the accounts that exist. Greyed-out icons linking nowhere are
+              the same lie as an empty nav column, just smaller. */}
+          <div className="flex items-center gap-1">
+            <a
+              href={GITHUB_URL}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Lore on GitHub"
+              className="rounded-md p-2 text-[var(--lore-text-tertiary)] transition-colors hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)]"
+            >
+              <Github size={16} />
+            </a>
+            <a
+              href={ORG_URL}
+              target="_blank"
+              rel="noreferrer"
+              aria-label={`${ORG} — the studio behind Lore`}
+              className="rounded-md p-2 text-[var(--lore-text-tertiary)] transition-colors hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)]"
+            >
+              <Globe size={16} />
+            </a>
+          </div>
         </div>
       </div>
     </footer>

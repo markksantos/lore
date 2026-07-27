@@ -8,3 +8,10 @@ next-env.d.ts
 tsconfig.tsbuildinfo
 dist-desktop/
 dist/
+
+# Debug debris: Playwright writes screenshots and accessibility dumps to the
+# repo root when a filename is passed without a directory.
+/*.png
+/*.jpg
+/post-click.md
+.playwright-mcp/

@@ -2,7 +2,18 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { ArrowRight, Radio, Plug, ShieldCheck, ChevronDown } from "lucide-react";
+import {
+  ArrowRight,
+  Radio,
+  Plug,
+  ShieldCheck,
+  ChevronDown,
+  Download as DownloadIcon,
+  Apple,
+  Monitor,
+  Terminal,
+  Smartphone,
+} from "lucide-react";
 import { SceneryImage } from "@/components/marketing/scenery-image";
 import { MarketingFooter, MarketingHeader } from "@/components/marketing/site-chrome";
 import { HeroSimulator } from "@/components/marketing/hero-simulator";
@@ -52,6 +63,7 @@ export function Landing({
       <States />
       <Budget />
       <Stack logos={logos} />
+      <Platforms />
       <Steps siteMode={siteMode} />
       <Faq />
       <Finale scene={scene} cta={cta} ctaLabel={ctaLabel} />
@@ -102,7 +114,7 @@ function Hero({ scene, cta, ctaLabel }: { scene: Scene; cta: string; ctaLabel: s
                 Lore keeps the record of which of it a human has actually checked.
               </p>
 
-              <div className="mt-7 flex justify-center">
+              <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
                 <Link
                   href={cta}
                   className="group inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-white pl-4 pr-3 text-[14px] font-medium text-[#12356f] transition-colors hover:bg-[#eef2fb]"
@@ -113,10 +125,21 @@ function Hero({ scene, cta, ctaLabel }: { scene: Scene; cta: string; ctaLabel: s
                     className="transition-transform duration-200 group-hover:translate-x-0.5"
                   />
                 </Link>
+
+                {/* Second door. Plenty of people will not try a local app in a
+                    browser tab but will install one, and the desktop build was
+                    reachable from nowhere on this page. */}
+                <Link
+                  href="/download"
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-white/35 px-4 text-[14px] font-medium text-white backdrop-blur-[2px] transition-colors hover:border-white/60 hover:bg-white/10"
+                >
+                  <DownloadIcon size={15} />
+                  <span className="leading-none">Download</span>
+                </Link>
               </div>
 
               <p className="mt-4 text-[13px] text-white/70">
-                Runs on your machine. Nothing uploaded, no account.
+                macOS, Windows, Linux. Runs on your machine — nothing uploaded, no account.
               </p>
             </div>
           </div>
@@ -365,6 +388,87 @@ function Stack({ logos }: { logos: string[] }) {
         <StackWall logos={logos} className="mt-11" />
       </div>
     </section>
+  );
+}
+
+/**
+ * Where it runs.
+ *
+ * Sits after the compatibility grid because that section answers "will it work
+ * with my agent" and this one answers "will it work on my machine" — the two
+ * questions someone asks in that order before they will click anything.
+ */
+function Platforms() {
+  const platforms = [
+    {
+      slot: 0,
+      icon: Apple,
+      title: "macOS",
+      body: "Apple silicon and Intel. The only platform where the folder picker also works straight from a browser tab.",
+    },
+    {
+      slot: 2,
+      icon: Monitor,
+      title: "Windows",
+      body: "The desktop build is how you get a native folder picker here — a browser cannot open one.",
+    },
+    {
+      slot: 4,
+      icon: Terminal,
+      title: "Linux",
+      body: "AppImage or .deb, x64 and arm64. Or skip packaging entirely and run it from source.",
+    },
+    {
+      slot: 6,
+      icon: Smartphone,
+      title: "Your phone",
+      body: "Installable as a PWA and pairable with the machine your wiki is on, over your own network.",
+    },
+  ];
+
+  return (
+    <Section
+      eyebrow="Everywhere"
+      title="One app, four places."
+      lede="The same local server behind all of them. The desktop build is a window onto 127.0.0.1, not a different product with a different backend."
+    >
+      <Reveal className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {platforms.map((platform) => {
+          const Icon = platform.icon;
+          return (
+            <div
+              key={platform.title}
+              style={paletteVars(platform.slot)}
+              className="rounded-2xl border border-[var(--lore-border)] bg-[var(--lore-surface)] p-5"
+            >
+              <span
+                className="flex h-9 w-9 items-center justify-center rounded-xl text-white"
+                style={{ background: "var(--plate)" }}
+              >
+                <Icon size={17} />
+              </span>
+              <h3 className="pal-title mt-4 text-[16px] font-semibold tracking-[-0.02em]">
+                {platform.title}
+              </h3>
+              <p className="t-body mt-1.5 text-[var(--lore-text-secondary)]">{platform.body}</p>
+            </div>
+          );
+        })}
+      </Reveal>
+
+      <Reveal className="mt-8">
+        <Link
+          href="/download"
+          className="group inline-flex h-10 items-center gap-2 rounded-xl bg-[var(--lore-accent)] pl-4 pr-3.5 text-[14px] font-semibold text-white transition-colors hover:bg-[var(--lore-accent-hover)]"
+        >
+          Get Lore for your machine
+          <ArrowRight
+            size={15}
+            className="transition-transform duration-200 group-hover:translate-x-0.5"
+          />
+        </Link>
+      </Reveal>
+    </Section>
   );
 }
 
