@@ -601,3 +601,49 @@
 @media (prefers-reduced-motion: reduce) {
   .lore-fade-up { animation: none; }
 }
+
+/* ------------------------------------------------------- diagrams and maths
+   Both start life as inert markup from lib/markdown.ts and are filled in by
+   components/lore/rich-blocks.tsx once the page is on screen. */
+
+.lore-mermaid {
+  margin: 1.25rem 0;
+  padding: 1rem;
+  overflow-x: auto;
+  border: 1px solid var(--lore-border);
+  border-radius: 0.75rem;
+  background: var(--lore-surface);
+  text-align: center;
+}
+
+.lore-mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Pre-render, and when a diagram fails, the source is what is showing — so it
+   has to read as code rather than as broken prose. */
+.lore-mermaid:not(.lore-mermaid-rendered) {
+  font-family: var(--font-mono), monospace;
+  font-size: 12.5px;
+  line-height: 1.7;
+  text-align: left;
+  white-space: pre-wrap;
+  color: var(--lore-text-tertiary);
+}
+
+.lore-mermaid-error {
+  border-color: color-mix(in oklab, var(--lore-danger) 40%, transparent);
+  color: var(--lore-danger);
+}
+
+.lore-math[data-display="1"] {
+  margin: 1rem 0;
+  overflow-x: auto;
+  text-align: center;
+}
+
+.lore-math-error {
+  color: var(--lore-danger);
+  font-family: var(--font-mono), monospace;
+}

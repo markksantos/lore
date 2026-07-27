@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, Loader2, Pencil, Eye } from "lucide-react";
 import type { PageMeta } from "@/lib/types";
 import { renderMarkdown, stripFrontmatter, stripLeadingTitle } from "@/lib/markdown";
 import { paletteVars } from "@/lib/palette";
 import { MarkdownEditor } from "@/components/lore/markdown-editor";
+import { useRichBlocks } from "@/components/lore/rich-blocks";
 import { cn, relativeTime } from "@/lib/utils";
 
 /**
@@ -67,6 +68,9 @@ export function PageSection({
     setEditing(false);
     onChanged();
   }, [draft, page.relPath, onChanged]);
+
+  const proseRef = useRef<HTMLDivElement | null>(null);
+  useRichBlocks(html, proseRef);
 
   const onProseClick = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
@@ -159,6 +163,7 @@ export function PageSection({
         </div>
       ) : (
         <div
+          ref={proseRef}
           className="lore-prose mt-2.5 text-[15px]"
           onClick={onProseClick}
           dangerouslySetInnerHTML={{ __html: html }}

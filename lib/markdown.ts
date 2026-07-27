@@ -40,7 +40,33 @@ export function renderMarkdown(source: string, pages: Map<string, string>): stri
   const masked: string[] = [];
   const stash = (match: string) => ` ${MASK_PREFIX}${masked.push(match) - 1} `;
 
-  let body = source
+  /*
+   * Diagrams and math are pulled out before anything else touches the text.
+   *
+   * A mermaid fence is markdown's own code-fence syntax, so leaving it to the
+   * generic fence handler below would render the diagram source as a code
+   * listing. Math is worse: `$x_i$` contains underscores, which the italic rule
+   * eats before a maths renderer ever sees them.
+   *
+   * Both are emitted as inert markup and rendered in the browser (see
+   * components/lore/rich-blocks.tsx). Rendering them here would mean shipping a
+   * DOM implementation into the server bundle for no gain.
+   */
+  let body = source.replace(/```mermaid\n([\s\S]*?)```/g, (_m, code: string) =>
+    stash(`<pre class="lore-mermaid">${escapeHtml(code.trim())}</pre>`),
+  );
+
+  body = body
+    .replace(/\$\$\n?([\s\S]*?)\n?\$\$/g, (_m, tex: string) =>
+      stash(`<div class="lore-math" data-display="1">${escapeHtml(tex.trim())}</div>`),
+    )
+    // Single-dollar inline math, but never `$5` or `$ x` — a wiki about money
+    // would otherwise turn half its prose into equations.
+    .replace(/\$(?!\s)([^$\n]{1,200}?)(?<!\s)\$(?!\d)/g, (_m, tex: string) =>
+      stash(`<span class="lore-math">${escapeHtml(tex.trim())}</span>`),
+    );
+
+  body = body
     .replace(/```[\s\S]*?```/g, stash)
     .replace(/`[^`\n]*`/g, stash);
 
