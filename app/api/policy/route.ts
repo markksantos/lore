@@ -1,6 +1,7 @@
 import { fail, requireVault } from "@/lib/server";
 import { getIndex } from "@/lib/wiki";
 import { readPolicy, windowFor, writePolicy, type Policy } from "@/lib/policy";
+import { recordActivity } from "@/lib/collab";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -75,6 +76,12 @@ export async function POST(request: Request) {
 
     const next = { ...policy, quarantined: [...set] };
     await writePolicy(vault.root, next);
+    await recordActivity(vault.root, {
+      kind: body.quarantined ? "quarantined" : "released",
+      by: "me",
+      pageId: body.pageId,
+      relPath: null,
+    });
     return Response.json({ ok: true, quarantined: next.quarantined });
   } catch (error) {
     return fail(error);

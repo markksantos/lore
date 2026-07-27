@@ -5,6 +5,7 @@ import { primeShadow, readJournal, vaultKey, watchVault } from "@/lib/journal";
 import { hubs, readLedger, triage, trustOf, unverifyPage, verifyPage } from "@/lib/verify";
 import { attributionByPath, readAttribution } from "@/lib/harness";
 import { forecast, readPolicy } from "@/lib/policy";
+import { recordActivity } from "@/lib/collab";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -110,6 +111,12 @@ export async function POST(request: Request) {
 
     if (body.action === "unverify") {
       await unverifyPage(vault.root, body.pageId);
+      await recordActivity(vault.root, {
+        kind: "unverified",
+        by: "me",
+        pageId: body.pageId,
+        relPath: null,
+      });
       return Response.json({ ok: true, trust: "unverified" });
     }
 
@@ -118,6 +125,13 @@ export async function POST(request: Request) {
     if (!hash) return fail(new Error("That page is not in the vault."), 404);
 
     await verifyPage(vault.root, body.pageId, hash, "me", body.note);
+    await recordActivity(vault.root, {
+      kind: "verified",
+      by: "me",
+      pageId: body.pageId,
+      relPath: null,
+      detail: body.note,
+    });
     return Response.json({ ok: true, trust: "verified" });
   } catch (error) {
     return fail(error);
