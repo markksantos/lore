@@ -82,6 +82,7 @@ const FILESYSTEM_ROUTES = [
   "/api/collab",
   "/api/access",
   "/api/mcp",
+  "/api/maintain",
   "/api/attachment",
   "/api/changes",
   "/api/mcp-event",
