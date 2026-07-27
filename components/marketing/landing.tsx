@@ -359,9 +359,10 @@ function Stack({ logos }: { logos: string[] }) {
             you run.
           </p>
         </Reveal>
-      </div>
-      <div className="mt-10">
-        <StackWall logos={logos} />
+
+        {/* Inside the same container as the heading, so the grid's left edge
+            lines up with the type rather than floating centred under it. */}
+        <StackWall logos={logos} className="mt-11" />
       </div>
     </section>
   );
