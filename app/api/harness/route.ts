@@ -109,9 +109,9 @@ export async function POST(request: Request) {
 
 /**
  * Claude Code pipes its own payload shape to the hook (`tool_name`,
- * `tool_input.file_path`), and the documented shape for anything else calling
- * this endpoint is `{tool, file, agent}`. Accept both rather than making the
- * hook command do JSON surgery in the shell.
+ * `tool_input.file_path`); the flatter `{tool, file, agent}` is what anything
+ * else posting here should send. Accept both rather than making the hook
+ * command do JSON surgery in the shell.
  */
 async function recordHookCall(body: unknown, url: URL): Promise<void> {
   if (!isRecord(body)) return;

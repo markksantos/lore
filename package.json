@@ -47,5 +47,8 @@
     "tailwindcss": "^4",
     "typescript": "^5"
   },
-  "main": "electron/main.js"
+  "main": "electron/main.js",
+  "overrides": {
+    "sharp": "^0.34.5"
+  }
 }

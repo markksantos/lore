@@ -2,8 +2,8 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { Radio, Shield, ShieldAlert, Search, PenLine, Check } from "lucide-react";
-import { DemoCard } from "@/components/marketing/motion-bits";
-import { EASE, useCountUp, useLoopSequence } from "@/lib/anim";
+import { Caret, DemoCard, WaterfallText } from "@/components/marketing/motion-bits";
+import { EASE, useCountUp, useLoopSequence, useTyped } from "@/lib/anim";
 import { paletteVars } from "@/lib/palette";
 import { cn } from "@/lib/utils";
 
@@ -136,12 +136,16 @@ export function SignOffDemo() {
       <DemoCard className="h-[15.5rem] justify-between">
         <div>
           <div className="flex h-1.5 overflow-hidden rounded-full bg-[var(--lore-surface-raised)]">
+            {/* Plain CSS transition: a percentage width has no pixel basis for
+                a motion value to animate from, so it would park at zero. */}
             {(["verified", "aging", "lapsed", "unverified"] as const).map((state) => (
-              <motion.div
+              <div
                 key={state}
-                animate={{ width: `${(counts[state] / 12) * 100}%` }}
-                transition={{ duration: 0.45, ease: EASE }}
-                style={{ background: SEGMENT_FILL[state] }}
+                className="transition-[width] duration-500 ease-out"
+                style={{
+                  width: `${(counts[state] / 12) * 100}%`,
+                  background: SEGMENT_FILL[state],
+                }}
               />
             ))}
           </div>
@@ -259,8 +263,9 @@ export function TrustPill({
 
 // ------------------------------------------------------- beat 3: the questions
 
-// 0–2 searches arrive, 3 the one that found nothing becomes a page to write.
-const GAP_STEPS = [1400, 1250, 1450, 2900] as const;
+// 0–1 searches land, 2 the third is typed, 3 it comes back empty and becomes
+// a page to write.
+const GAP_STEPS = [1400, 1250, 1700, 3100] as const;
 
 const QUERIES = [
   { q: "rollback procedure", hits: 3 },
@@ -270,44 +275,55 @@ const QUERIES = [
 
 export function GapsDemo() {
   const { ref, step } = useLoopSequence(GAP_STEPS, GAP_STEPS.length - 1);
+  const typing = step === 2;
+  const typed = useTyped(QUERIES[2].q, typing);
 
   return (
     <div ref={ref} className="w-full">
       <DemoCard className="h-[15.5rem] justify-between">
         <div>
-          <span className="text-[10px] font-semibold uppercase tracking-[0.09em] text-[var(--lore-text-tertiary)]">
-            wiki_search
+          <span
+            className="text-[10.5px] text-[var(--lore-text-tertiary)]"
+            style={{ fontFamily: "var(--font-mono), monospace" }}
+          >
+            wiki_search · last three calls
           </span>
 
           <div className="mt-2 space-y-1.5">
-            {QUERIES.slice(0, step + 1).map((query) => (
-              <motion.div
-                key={query.q}
-                layout
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, ease: EASE }}
-                className="flex items-center gap-2 rounded-lg border border-[var(--lore-border)] bg-[var(--lore-background)] px-2 py-1.5"
-              >
-                <Search size={11} className="shrink-0 text-[var(--lore-text-tertiary)]" />
-                <span
-                  className="min-w-0 flex-1 truncate text-[11.5px] text-[var(--lore-text-primary)]"
-                  style={{ fontFamily: "var(--font-mono), monospace" }}
+            {QUERIES.slice(0, step + 1).map((query, i) => {
+              const pending = i === 2 && typing;
+              return (
+                <motion.div
+                  key={query.q}
+                  layout
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, ease: EASE }}
+                  className="flex items-center gap-2 rounded-lg border border-[var(--lore-border)] bg-[var(--lore-background)] px-2 py-1.5"
                 >
-                  {query.q}
-                </span>
-                <span
-                  className={cn(
-                    "shrink-0 text-[10.5px] tabular-nums",
-                    query.hits === 0
-                      ? "text-[var(--lore-danger)]"
-                      : "text-[var(--lore-text-tertiary)]",
-                  )}
-                >
-                  {query.hits} hits
-                </span>
-              </motion.div>
-            ))}
+                  <Search size={11} className="shrink-0 text-[var(--lore-text-tertiary)]" />
+                  <span
+                    className="min-w-0 flex-1 truncate text-[11.5px] text-[var(--lore-text-primary)]"
+                    style={{ fontFamily: "var(--font-mono), monospace" }}
+                  >
+                    {i === 2 ? typed : query.q}
+                    <Caret on={pending} />
+                  </span>
+                  <span
+                    className={cn(
+                      "shrink-0 text-[10.5px] tabular-nums",
+                      pending
+                        ? "text-[var(--lore-text-tertiary)] opacity-0"
+                        : query.hits === 0
+                          ? "text-[var(--lore-danger)]"
+                          : "text-[var(--lore-text-tertiary)]",
+                    )}
+                  >
+                    {query.hits} hits
+                  </span>
+                </motion.div>
+              );
+            })}
           </div>
         </div>
 
@@ -328,10 +344,23 @@ export function GapsDemo() {
                   <span className="pal-title text-[11.5px] font-semibold">To write</span>
                 </div>
                 <p className="mt-1 text-[11px] leading-relaxed text-[var(--lore-text-secondary)]">
-                  Reseller discount — asked four times this month, answered nowhere in the wiki.
+                  <WaterfallText
+                    text="Reseller discount — asked four times this month, answered nowhere in the wiki."
+                    play={step >= 3}
+                  />
                 </p>
               </motion.div>
-            ) : null}
+            ) : (
+              <motion.p
+                key="idle"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="flex h-full items-center rounded-lg border border-dashed border-[var(--lore-border)] px-2.5 text-[11px] leading-relaxed text-[var(--lore-text-tertiary)]"
+              >
+                A search with no hits is a question the wiki could not answer.
+              </motion.p>
+            )}
           </AnimatePresence>
         </div>
       </DemoCard>
@@ -391,7 +420,7 @@ export function BudgetDemo() {
             </span>
           </div>
           <p className="mt-1.5 text-[11px] leading-relaxed text-[var(--lore-text-tertiary)]">
-            Counted with a real BPE tokenizer, not characters divided by four.
+            The filled block is everything a model can hold at once.
           </p>
         </div>
       </DemoCard>

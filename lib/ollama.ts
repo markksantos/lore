@@ -7,10 +7,10 @@
  * or spend frontier tokens, so Lore talks to whatever Ollama already has.
  *
  * Lore detects Ollama, it never ships it: the runtime is ~1.5 GB and bundling
- * someone else's installer is a support burden Lore has no way to honour. (LM
- * Studio is detect-only for a harder reason — its licence forbids
- * redistribution.) If Ollama is absent, the local features are simply absent;
- * nothing else in the app depends on them.
+ * someone else's installer is a support burden Lore has no way to honour.
+ * Ollama is the only runtime Lore looks for — there is no probe here for LM
+ * Studio or any other local server. If Ollama is absent, the local features are
+ * simply absent; nothing else in the app depends on them.
  */
 
 /** Ollama's fixed loopback address. Not configurable — this is its default. */
@@ -21,17 +21,19 @@ export type OllamaModel = { name: string; size: number };
 type TagsBody = { models?: unknown };
 
 /**
- * Strip an `hf.co/user/` prefix so a community upload cannot pass itself off
- * as an official tag: `hf.co/someone/supergemma4-26b` contains "gemma4" but is
+ * Strip an `hf.co/user/` prefix so the match reads the tag's own name instead
+ * of the whole path: `hf.co/someone/supergemma4-26b` contains "gemma4" but is
  * not Google's Gemma 4, and recommending it on a substring match would put an
- * unknown fine-tune in front of the user under Google's name.
+ * unknown fine-tune in front of the user under Google's name. This is a
+ * name check, not a provenance check — a community upload whose name *starts*
+ * with "gemma4" still matches, and nothing here can tell the two apart.
  */
 function tagBase(name: string): string {
   const slash = name.lastIndexOf("/");
   return (slash === -1 ? name : name.slice(slash + 1)).toLowerCase();
 }
 
-/** True for an official Gemma 4 tag (`gemma4:latest`, `gemma4:12b`, …). */
+/** True when the tag's own name is a Gemma 4 one (`gemma4:latest`, `gemma4:12b`, …). */
 export function isGemmaTag(name: string): boolean {
   return tagBase(name).startsWith("gemma4");
 }
@@ -88,7 +90,7 @@ export async function detectOllama(): Promise<{
       return {
         running: false,
         models: [],
-        error: "Ollama is listening but did not answer within 2.5s.",
+        error: "Nothing answered on the Ollama port within 2.5s.",
       };
     }
     return { running: false, models: [], error: null };

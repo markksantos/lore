@@ -13,7 +13,13 @@ import { APP_PORT } from "@/lib/brand";
  *
  * Claude Code can tell us, via a PostToolUse hook: after every Write/Edit/
  * MultiEdit it runs a command of our choosing and pipes the tool call to it on
- * stdin. One curl back to this app and an anonymous journal entry gains a name.
+ * stdin. One curl back to this app and the write is recorded, with a name, in
+ * `~/.lore/attribution.jsonl`.
+ *
+ * That log is the whole of it today. Nothing reads it back: `attributionByPath`
+ * below exists to join it onto `WriteEvent.relPath` from lib/journal.ts, but no
+ * route or view calls it, so Review still shows every change unattributed. The
+ * honest description of this file is "collects attribution", not "displays" it.
  *
  * Everything in here edits a file the user owns and did not write for us, so
  * the rules are strict and non-negotiable:

@@ -170,8 +170,10 @@ function Gate() {
           label="carry an agent-written confidence: field"
           body="959 of them say high. Two say low. It is self-assessment, and self-assessment passes."
         />
+        {/* Deliberately not the green plate: zero human sign-offs is the bad
+            number in this pair, and a green panel would read as reassurance. */}
         <Stat
-          slot={3}
+          slot={2}
           value="0"
           unit="pages"
           label="carry a human sign-off"
@@ -416,7 +418,7 @@ const FAQ = [
   },
   {
     q: "Does Lore move or reformat my files?",
-    a: "No. It reads the markdown where it sits — your headings, your frontmatter, your [[wikilinks]], your folder names. The verification ledger and the usage log live in ~/.lore, outside the vault, so they never turn up in a git diff of your notes. The only file Lore ever adds to the vault is AGENTS.md, and only when you press the button.",
+    a: "No. It reads the markdown where it sits — your headings, your frontmatter, your [[wikilinks]], your folder names. The verification ledger and the usage log live in ~/.lore, outside the vault, so they never turn up in a git diff of your notes. Lore only writes to the vault when you press something: the AGENTS.md index, a page you create in the sidebar, or an edit you save in Lore's own editor. Nothing is written on its own, and no page is reformatted on the way through.",
   },
   {
     q: "Does it work with my Obsidian vault?",

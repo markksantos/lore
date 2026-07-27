@@ -25,6 +25,9 @@ type Probe = { harnesses: Row[]; snippets: { mcp: string; hook: string } };
 
 type Outcome = { ok: boolean; message: string };
 
+/** Config paths are shown, not opened, and `/Users/name` is noise in all of them. */
+const tilde = (file: string) => file.replace(/^\/Users\/[^/]+/, "~");
+
 /**
  * Connections — where an anonymous change log gains a name.
  *
@@ -85,7 +88,8 @@ export function ConnectionsView({ root, installDir }: { root: string; installDir
         <p className="t-body mt-1.5 text-[var(--lore-text-secondary)]">
           Lore watches the vault folder, so every tool is already covered and none of them
           had to opt in. What a folder can never tell you is <em>who</em> made a change.
-          Connecting a harness adds the name — and hands your agents the wiki over MCP.
+          The Claude Code hook records that name to a log on disk — and connecting over MCP
+          hands your agents the wiki.
         </p>
       </header>
 
@@ -136,7 +140,11 @@ export function ConnectionsView({ root, installDir }: { root: string; installDir
 
         <div className="mt-3.5 space-y-4">
           <CopyBlock
-            label="mcpServers — .mcp.json / claude_desktop_config.json / ~/.cursor/mcp.json"
+            // Deliberately not a list of filenames. Each tool's real config path
+            // is already on its row above, read from disk — naming them a second
+            // time here is how the label ends up pointing at a file Lore never
+            // writes, which is exactly what it used to do.
+            label="mcpServers — into the config path shown on that tool's row above"
             content={
               probe?.snippets.mcp ??
               JSON.stringify(
@@ -169,7 +177,7 @@ export function ConnectionsView({ root, installDir }: { root: string; installDir
 function Consent() {
   const steps = [
     "Reads the file and parses it. If it is not valid JSON, Lore stops and tells you — it will never write over a file it could not read.",
-    "Copies it to the same name with .lore-backup on the end.",
+    "Copies it to the same name with .lore-backup on the end, whenever there is an existing file to copy. If the file does not exist yet, Lore creates it and there is nothing to back up.",
     "Adds one key: a PostToolUse hook, or `lore` under mcpServers. Every other setting is written back exactly as it was.",
     "Skips silently if an equivalent entry is already there, so pressing Connect twice cannot duplicate anything.",
   ];
@@ -242,7 +250,7 @@ function HarnessRow({
 
       <p className="t-meta mt-1.5 text-[var(--lore-text-secondary)]">{row.detail}</p>
       <code className="mt-1 block truncate text-[12px] text-[var(--lore-text-tertiary)]">
-        {row.configPath.replace(/^\/Users\/[^/]+/, "~")}
+        {tilde(row.configPath)}
       </code>
 
       {outcome ? (
@@ -279,8 +287,10 @@ function Attribution() {
         so it never turns up in a diff of your notes.
       </p>
       <p className="t-meta mt-2 text-[var(--lore-text-tertiary)]">
-        Attribution is a name on a change, not a gate. Nothing is blocked, and a change
-        with a name attached still counts as unverified until you sign off on it in Review.
+        Attribution is a record, not a gate: nothing is blocked and nothing is approved. A
+        change with a name on it still counts as unverified until you sign off on it in
+        Review. Review does not display these names yet — for now the hook fills the log and
+        the file is the way to read it.
       </p>
     </section>
   );
@@ -330,7 +340,7 @@ function AgentsFile({ root }: { root: string }) {
           {state === "done" ? "Written" : "Write AGENTS.md"}
         </button>
         <code className="min-w-0 truncate text-[12px] text-[var(--lore-text-tertiary)]">
-          {root.replace(/^\/Users\/[^/]+/, "~")}/AGENTS.md
+          {tilde(root)}/AGENTS.md
         </code>
       </div>
       {error ? <p className="t-meta mt-2 text-[var(--lore-danger)]">{error}</p> : null}
@@ -345,7 +355,7 @@ function CopyBlock({ label, content }: { label: string; content: string }) {
     <div className="overflow-hidden rounded-lg border border-[var(--lore-border)]">
       <div className="flex items-center gap-2 border-b border-[var(--lore-border)] bg-[var(--lore-surface-raised)] px-3 py-1.5">
         {/* Labels here are literal file names, so they are never uppercased —
-            `.mcp.json` has to stay copy-accurate. */}
+            a path has to stay copy-accurate. */}
         <span className="min-w-0 truncate text-[11px] text-[var(--lore-text-tertiary)]">
           {label}
         </span>

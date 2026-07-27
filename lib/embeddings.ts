@@ -51,7 +51,42 @@ const BATCH = 16;
  * sorted by noise is worse than returning nothing — the user reads the top hit
  * as an answer either way.
  */
-const MIN_SCORE = 0.25;
+/**
+ * Relevance floor, chosen from measurement rather than taste.
+ *
+ * all-MiniLM-L6-v2 is a SYMMETRIC similarity model — trained on sentence pairs,
+ * not asymmetric query-to-document retrieval — so its absolute scores are not
+ * calibrated. Scored against a real vault:
+ *
+ *   TRUE  "how do I undo a deploy"    0.454      FALSE "banana pancakes"        0.140
+ *   TRUE  "when do we ship"           0.413      FALSE "my cat is asleep"       0.095
+ *   TRUE  "reverting a release"       0.368      FALSE "photosynthesis in ferns" 0.043
+ *   TRUE  "what database are we on"   0.154 <-- and it ranked the WRONG page first
+ *
+ * 0.30 separates every query the model actually gets right from every one it
+ * does not. The fourth case sits below the floor, and that is the correct
+ * outcome, not a tuning failure: the model genuinely cannot answer it, ranking
+ * an unrelated page above the right one. Returning nothing is a better answer
+ * than returning a confident wrong one — this is a wiki people will trust.
+ *
+ * An earlier attempt used a low floor plus a purely relative cutoff. It matched
+ * "banana pancakes" to a page about weekly scheduling, because a relative gate
+ * always returns something. That is strictly worse than silence.
+ *
+ * CALIBRATION CAVEAT: these numbers come from a nine-page fixture. Nine pages is
+ * enough to show that nonsense is rejected and obvious matches are not, and not
+ * nearly enough to tune a boundary — on a small corpus a stub page can outrank
+ * the right one on noise alone. Re-measure against a few hundred real pages
+ * before moving this number, and prefer leaving it slightly strict: a miss sends
+ * the user to literal search, a false positive sends them to the wrong answer.
+ */
+const MIN_SCORE = 0.3;
+
+/**
+ * Having cleared the floor, drop anything far below the best hit for this
+ * query. Prevents one strong match from dragging a tail of weak ones with it.
+ */
+const RELATIVE_CUTOFF = 0.55;
 const MIN_RELATED = 0.3;
 
 /** Don't re-attempt a failed 23MB download on every keystroke. */
@@ -429,7 +464,14 @@ export async function semanticSearch(
   }
 
   out.sort((a, b) => b.score - a.score);
-  return out.slice(0, limit);
+  if (!out.length) return [];
+
+  // Relative gate: the best hit for THIS query sets the bar for the rest. With
+  // an uncalibrated symmetric model the useful signal is the gap between
+  // candidates, not their absolute value — a top hit of 0.12 with a runner-up
+  // at 0.11 means both are plausible; 0.60 against 0.15 means only one is.
+  const cutoff = out[0].score * RELATIVE_CUTOFF;
+  return out.filter((r) => r.score >= cutoff).slice(0, limit);
 }
 
 /**
@@ -464,5 +506,12 @@ export async function relatedTo(
   }
 
   out.sort((a, b) => b.score - a.score);
-  return out.slice(0, limit);
+  if (!out.length) return [];
+
+  // Relative gate: the best hit for THIS query sets the bar for the rest. With
+  // an uncalibrated symmetric model the useful signal is the gap between
+  // candidates, not their absolute value — a top hit of 0.12 with a runner-up
+  // at 0.11 means both are plausible; 0.60 against 0.15 means only one is.
+  const cutoff = out[0].score * RELATIVE_CUTOFF;
+  return out.filter((r) => r.score >= cutoff).slice(0, limit);
 }

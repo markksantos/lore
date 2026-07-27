@@ -24,7 +24,7 @@ const PULL_COMMAND = "ollama pull gemma4:12b";
 
 const TASKS: { id: Task; label: string; blurb: string }[] = [
   { id: "summarize", label: "Summarise", blurb: "One sentence, twenty words." },
-  { id: "tags", label: "Tags", blurb: "Three to six, reusing your vault's own." },
+  { id: "tags", label: "Tags", blurb: "Three to six, drawn from the text you paste." },
   { id: "title", label: "Title", blurb: "A title that says what the page is." },
 ];
 
@@ -119,9 +119,9 @@ export function AiView() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ task, model, text: draft }),
       });
-      const body = await response.json();
+      const body = (await response.json()) as Result & { error?: string };
       if (!response.ok) setError(body.error ?? "The model did not return anything usable.");
-      else setResult(body as Result);
+      else setResult(body);
     } catch {
       setError("Could not reach the local model.");
     }
@@ -163,7 +163,7 @@ export function AiView() {
           </h2>
           <span className="flex-1" />
           <code
-            className="t-meta truncate text-[var(--lore-text-tertiary)]"
+            className="t-meta min-w-0 truncate text-[var(--lore-text-tertiary)]"
             style={{ fontFamily: "var(--font-mono), monospace" }}
           >
             {data.host}
@@ -252,8 +252,8 @@ export function AiView() {
             <Command command={PULL_COMMAND} />
           </section>
 
-          {/* Proof, not decoration: the only way to see what your machine
-              actually produces before trusting it on a page. */}
+          {/* A scratchpad, and the whole of the feature today: text in, one
+              answer back. Nothing here reads or writes the vault. */}
           <section className="mt-10">
             <h2 className="flex items-center gap-2 text-[18px] font-semibold tracking-[-0.02em] text-[var(--lore-text-primary)]">
               <Sparkles size={16} className="text-[var(--lore-text-tertiary)]" />

@@ -56,6 +56,11 @@ function stripFences(text: string): string {
 
 function clean(raw: string): string {
   let text = stripFences(raw.trim());
+  // Badly-converted GGUF tags leak their chat control tokens into the body —
+  // one installed model here opens every reply with "<|channel>thought". These
+  // are never content, and leaving them in would ship a template artefact as a
+  // page title.
+  text = text.replace(/^(?:<\|?[^<>\n]{0,40}\|?>\s*)+/, "").trim();
   text = text.replace(PREAMBLE, "").trim();
   // Models quote anything they think of as "the answer".
   text = text.replace(/^["'“”‘’]+/, "").replace(/["'“”‘’]+$/, "");
@@ -158,7 +163,7 @@ function whyRecommended(name: string | null, models: OllamaModel[]): string | nu
   if (isGemmaTag(name)) {
     return `Gemma 4 is Apache-2.0 and instruction-tuned, and this tag loads in about ${GB(size)} GB — small enough to run beside everything else on the machine.`;
   }
-  return `The only instruction-tuned model installed (about ${GB(size)} GB). Gemma 4 handles these three jobs more reliably: ollama pull gemma4:12b.`;
+  return `The smallest instruction-tuned model installed (about ${GB(size)} GB) — every job here is one sentence, so smaller is faster. These prompts were written against Gemma 4: ollama pull gemma4:12b.`;
 }
 
 /** GET — what is installed, and what Lore would use. */

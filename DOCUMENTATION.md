@@ -37,6 +37,26 @@ it watches. That is what makes it harness-agnostic: it observes the folder, so i
 captures Claude Code, Cursor, a shell script, Obsidian and a human's own hand
 equally, and nothing has to opt in.
 
+### The desktop shell (`electron/`)
+
+There is no static bundle to load into a window — every route handler is
+`runtime: "nodejs"` and reads the user's filesystem — so `electron/main.js` does
+one job: spawn Next's **standalone** server (`output: "standalone"` in
+`next.config.ts`) as a child process on `127.0.0.1:4646` and point a
+`BrowserWindow` at it once it answers.
+
+Two failures shaped it. Showing the window before the server responds renders a
+connection error and the app looks broken on first launch, so the window is not
+created until a probe of `/api/vault` comes back. And leaving the child alive
+after quit holds the port, so the next launch cannot bind it — every exit path
+kills it.
+
+`electron-builder.yml` ships the standalone build as `extraResources` rather
+than packing it into the asar, because the standalone server is a real Node
+program that reads its chunks and traced `node_modules` from disk. `mcp/` is
+copied alongside it: the Connections screen prints a config pointing at
+`${cwd}/mcp/server.mjs`, and the server chdirs into that directory.
+
 ### Why local-first
 
 Every competitor surveyed either owns your data or owns your folder layout

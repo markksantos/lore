@@ -14,10 +14,7 @@ import {
   Copy,
   FileDown,
   Clock,
-  History,
-  MoreHorizontal,
-  CloudUpload,
-  ChevronDown,
+  Pencil,
   Radio,
   PenLine,
   Flame,
@@ -403,9 +400,11 @@ export function HeroSimulator() {
                   <Icon size={16} className="opacity-80" />
                   {item.label}
                   {item.id === "review" && counts.lapsed > 0 ? (
+                    // Accent, not danger: this is the app's own badge colour, and
+                    // white on the dark-mode danger red is unreadable.
                     <motion.span
                       layout
-                      className="ml-auto flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--lore-danger)] px-1 text-[11px] font-semibold text-white"
+                      className="ml-auto flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--lore-accent)] px-1 text-[11px] font-semibold text-white"
                     >
                       {counts.lapsed}
                     </motion.span>
@@ -468,15 +467,12 @@ export function HeroSimulator() {
                 Reset demo
               </button>
             ) : null}
+            {/* The app's real sidebar foot. No avatar, no name — Lore has no
+                accounts, so a profile chip here would be inventing one. */}
             <div className="border-t border-[var(--lore-border)] pt-3">
-              <div className="flex items-center gap-2.5">
-                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--lore-accent-tint)] text-[12px] font-semibold text-[var(--lore-accent)]">
-                  M
-                </span>
-                <span className="text-[13.5px] font-medium text-[var(--lore-text-primary)]">
-                  Mark
-                </span>
-              </div>
+              <p className="text-[12px] text-[var(--lore-text-tertiary)]">
+                {pages.length} pages · scanned just now
+              </p>
             </div>
           </div>
         </div>
@@ -534,12 +530,6 @@ function ReviewPane({
           <Radio size={10} className="text-[var(--lore-success)]" />
           watching
         </span>
-        <span className="flex-1" />
-        <ToolbarButton icon={CloudUpload} label="Push" muted chevron />
-        <ToolbarButton icon={History} label="Activity" />
-        <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--lore-border)] text-[var(--lore-text-secondary)]">
-          <MoreHorizontal size={15} />
-        </span>
       </div>
 
       <p className="mt-1.5 text-[15px] leading-[1.6] text-[var(--lore-text-secondary)]">
@@ -563,12 +553,17 @@ function ReviewPane({
         </div>
 
         <div className="mt-3.5 flex h-2 overflow-hidden rounded-full bg-[var(--lore-surface-raised)]">
+          {/* Width is a plain CSS transition rather than a motion value: a
+              percentage target has no pixel basis to animate from on mount,
+              which leaves the bar sitting at zero. */}
           {ORDER.map((state) => (
-            <motion.div
+            <div
               key={state}
-              animate={{ width: `${(counts[state] / total) * 100}%` }}
-              transition={{ duration: 0.45, ease: EASE }}
-              style={{ background: SEGMENT_FILL[state] }}
+              className="transition-[width] duration-500 ease-out"
+              style={{
+                width: `${(counts[state] / total) * 100}%`,
+                background: SEGMENT_FILL[state],
+              }}
               title={`${TRUST_LABEL[state]}: ${counts[state]}`}
             />
           ))}
@@ -681,12 +676,6 @@ function WikiPane({ folder, pages }: { folder: string; pages: DemoPage[] }) {
         <h3 className="text-[26px] font-semibold tracking-[-0.035em] text-[var(--lore-text-primary)]">
           {folder}
         </h3>
-        <span className="flex-1" />
-        <ToolbarButton icon={CloudUpload} label="Push" muted chevron />
-        <ToolbarButton icon={History} label="Activity" />
-        <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--lore-border)] text-[var(--lore-text-secondary)]">
-          <MoreHorizontal size={15} />
-        </span>
       </div>
 
       <p className="mt-1.5 flex items-center gap-1.5 text-[13px] text-[var(--lore-text-tertiary)]">
@@ -710,10 +699,11 @@ function WikiPane({ folder, pages }: { folder: string; pages: DemoPage[] }) {
               {TRUST_LABEL[page.trust]}
             </span>
             <span className="flex-1" />
-            <MoreHorizontal
-              size={15}
-              className="text-[var(--lore-text-tertiary)] opacity-0 transition-opacity group-hover:opacity-100"
-            />
+            {/* The one control the real page section carries on hover. */}
+            <span className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-[var(--lore-border)] px-2.5 text-[12.5px] font-medium text-[var(--lore-text-secondary)] opacity-0 transition-opacity group-hover:opacity-100">
+              <Pencil size={12} />
+              Edit
+            </span>
           </div>
           <p
             className="mt-1 text-[12px] text-[var(--lore-text-tertiary)]"
@@ -891,30 +881,5 @@ function ConnectionsPane() {
         </div>
       </div>
     </div>
-  );
-}
-
-function ToolbarButton({
-  icon: Icon,
-  label,
-  muted,
-  chevron,
-}: {
-  icon: typeof History;
-  label: string;
-  muted?: boolean;
-  chevron?: boolean;
-}) {
-  return (
-    <span
-      className={cn(
-        "hidden h-8 items-center gap-1.5 rounded-lg border border-[var(--lore-border)] px-2.5 text-[13px] font-medium md:inline-flex",
-        muted ? "text-[var(--lore-text-tertiary)]" : "text-[var(--lore-text-secondary)]",
-      )}
-    >
-      <Icon size={13} />
-      {label}
-      {chevron ? <ChevronDown size={12} className="opacity-60" /> : null}
-    </span>
   );
 }

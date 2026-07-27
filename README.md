@@ -114,9 +114,10 @@ machine.
 
 **Settings** — the linked folder, a rescan, unlink, the health report (orphans,
 dead links, stale pages, untagged), and the local-model panel: if Ollama is
-running on this machine, Lore will summarise a page, propose tags, or fix a
-title using it. Lore detects Ollama, it never ships it — absent, the panel says
-so and nothing else changes.
+running on this machine, paste a page's text in and a local model will draft a
+summary, a set of tags, or a title. It is a scratchpad — nothing it returns is
+written back to the vault. Lore detects Ollama, it never ships it — absent, the
+panel says so and nothing else changes.
 
 ## Connecting agents
 
