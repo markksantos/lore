@@ -1,6 +1,7 @@
 import { fail, requireVault } from "@/lib/server";
 import { getIndex } from "@/lib/wiki";
 import { buildReport, readEvents } from "@/lib/usage";
+import { clusterGaps, scoreAgents } from "@/lib/gaps";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,9 +21,16 @@ export async function GET(request: Request) {
       readEvents(vault.root),
       getIndex(vault.root),
     ]);
-    return Response.json(
-      buildReport(events, index.pages.map((p) => p.id), Number.isFinite(days) ? days : 30),
-    );
+    const window = Number.isFinite(days) ? days : 30;
+    const recent = events.filter((e) => e.at >= Date.now() - window * 86_400_000);
+
+    return Response.json({
+      ...buildReport(events, index.pages.map((p) => p.id), window),
+      // The flat miss list is already in the report. These two turn it into
+      // something actionable: what to write next, and which client is failing.
+      clusters: clusterGaps(recent),
+      scorecard: scoreAgents(recent),
+    });
   } catch (error) {
     return fail(error, 409);
   }

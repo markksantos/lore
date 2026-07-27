@@ -3,6 +3,8 @@ import { fail, requireVault } from "@/lib/server";
 import { getIndex, readRaw } from "@/lib/wiki";
 import { primeShadow, readJournal, vaultKey, watchVault } from "@/lib/journal";
 import { hubs, readLedger, triage, trustOf, unverifyPage, verifyPage } from "@/lib/verify";
+import { attributionByPath, readAttribution } from "@/lib/harness";
+import { forecast, readPolicy } from "@/lib/policy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -48,10 +50,18 @@ export async function GET(request: Request) {
       ),
     );
 
-    const [events, ledger] = await Promise.all([
-      readJournal(vaultKey(vault.root), Date.now() - days * 86_400_000),
+    const since = Date.now() - days * 86_400_000;
+    const [events, ledger, policy, attributions] = await Promise.all([
+      readJournal(vaultKey(vault.root), since),
       readLedger(vault.root),
+      readPolicy(vault.root),
+      readAttribution(since),
     ]);
+
+    // Which harness made each change. Written by the Claude Code hook since the
+    // beginning and read by nothing until now, so every change in Review showed
+    // as anonymous even when Lore knew exactly who did it.
+    const byPath = attributionByPath(attributions, vault.root);
 
     const pageMap = new Map(
       index.pages.map((p) => [p.id, { id: p.id, title: p.title, relPath: p.relPath }]),
@@ -59,16 +69,28 @@ export async function GET(request: Request) {
 
     const counts = { verified: 0, lapsed: 0, aging: 0, unverified: 0 };
     for (const page of index.pages) {
-      counts[trustOf(ledger, page.id, hashes.get(page.id) ?? "")] += 1;
+      counts[
+        trustOf(ledger, page.id, hashes.get(page.id) ?? "", Date.now(), policy.decayDays)
+      ] += 1;
     }
+
+    const items = triage(events, pageMap, index.backlinks, ledger, hashes).map((item) => ({
+      ...item,
+      agent: byPath[item.relPath]?.agent ?? null,
+      quarantined: policy.quarantined.includes(item.pageId),
+    }));
 
     return Response.json({
       watching: true,
       days,
       events: events.length,
       counts,
-      triage: triage(events, pageMap, index.backlinks, ledger, hashes),
+      triage: items,
       hubs: hubs(index.backlinks, pageMap, ledger, hashes),
+      // What lapses next, so verification is a schedule rather than a discovery.
+      forecast: forecast(ledger, index.pages, policy),
+      quarantined: policy.quarantined,
+      attributed: Object.keys(byPath).length,
     });
   } catch (error) {
     return fail(error, 409);

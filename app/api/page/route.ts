@@ -1,4 +1,5 @@
 import { fail, requireVault, toMeta } from "@/lib/server";
+import { readPolicy } from "@/lib/policy";
 import { createPage, deletePage, getIndex, readRaw, writeRaw } from "@/lib/wiki";
 
 export const runtime = "nodejs";
@@ -18,6 +19,21 @@ export async function GET(request: Request) {
 
     const page = index.pages.find((p) => p.relPath === relPath);
     if (!page) return fail(new Error("Page is not in the vault index."), 404);
+
+    // Withheld rather than 404'd: an agent that gets "not found" concludes the
+    // page does not exist and may helpfully write it again. Saying the page is
+    // quarantined is both true and the only answer that stops that loop.
+    const policy = await readPolicy(vault.root);
+    if (policy.quarantined.includes(page.id)) {
+      return Response.json(
+        {
+          quarantined: true,
+          page: toMeta(page),
+          error: "This page is quarantined pending human review and is not being served.",
+        },
+        { status: 409 },
+      );
+    }
 
     const backlinkIds = index.backlinks[page.id] ?? [];
     return Response.json({

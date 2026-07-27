@@ -2,6 +2,7 @@ import { fail, requireVault, toMeta } from "@/lib/server";
 import { getIndex, search } from "@/lib/wiki";
 import { embeddingStatus, semanticSearch } from "@/lib/embeddings";
 import type { SearchResult } from "@/lib/types";
+import { readPolicy } from "@/lib/policy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -52,7 +53,19 @@ export async function GET(request: Request) {
       }
     }
 
-    return Response.json({ results, semantic: status });
+    // Quarantined pages are withheld from every result. This is the half of
+    // trust Lore can actually enforce: it cannot stop an agent writing, but it
+    // decides what it hands over, and serving a page a human has flagged as
+    // wrong is the one failure the whole product exists to prevent.
+    const policy = await readPolicy(vault.root);
+    const withheld = new Set(policy.quarantined);
+    const visible = results.filter((r) => !withheld.has(r.page.id));
+
+    return Response.json({
+      results: visible,
+      semantic: status,
+      withheld: results.length - visible.length,
+    });
   } catch (error) {
     return fail(error, 409);
   }

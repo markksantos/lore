@@ -90,11 +90,14 @@ export function trustOf(
   pageId: string,
   currentHash: string,
   now = Date.now(),
+  // Overridable per vault (see lib/policy). Defaulting to the measured constant
+  // keeps every existing call site behaving exactly as it did.
+  decayDays = DECAY_DAYS,
 ): TrustState {
   const v = ledger[pageId];
   if (!v) return "unverified";
   if (v.hash !== currentHash) return "lapsed";
-  if (now - v.at > DECAY_DAYS * 86_400_000) return "aging";
+  if (now - v.at > decayDays * 86_400_000) return "aging";
   return "verified";
 }
 

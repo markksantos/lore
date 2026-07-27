@@ -283,6 +283,30 @@ export async function getIndex(root: string, force = false): Promise<WikiIndex> 
     byBasename.set(base, [...(byBasename.get(base) ?? []), page.id]);
   }
 
+  /*
+   * Aliases, from frontmatter `aliases:` (a list, or one string).
+   *
+   * Renaming a page silently breaks every link to it: the target no longer
+   * resolves, so it stops counting as a link at all rather than showing up as
+   * broken. On a wiki where agents rename things this is a slow, invisible
+   * shredding of the link graph.
+   *
+   * An alias is the old name kept as a forwarding address. It loses to a real
+   * page id and to a unique basename, so adopting an alias can never steal a
+   * link from an actual page — the worst case is that a dead link stays dead.
+   */
+  const byAlias = new Map<string, string[]>();
+  for (const page of pages) {
+    const raw = page.frontmatter?.aliases ?? page.frontmatter?.alias;
+    const list = Array.isArray(raw) ? raw : typeof raw === "string" ? [raw] : [];
+    for (const alias of list) {
+      if (typeof alias !== "string") continue;
+      const key = alias.trim().toLowerCase();
+      if (!key || byId.has(key)) continue;
+      byAlias.set(key, [...(byAlias.get(key) ?? []), page.id]);
+    }
+  }
+
   const backlinks: Record<string, string[]> = {};
   for (const page of pages) {
     const resolved: string[] = [];
@@ -290,7 +314,13 @@ export async function getIndex(root: string, force = false): Promise<WikiIndex> 
       const key = raw.toLowerCase();
       const direct = byId.get(key);
       const candidates = byBasename.get(path.basename(key)) ?? [];
-      const target = direct ?? (candidates.length === 1 ? candidates[0] : undefined);
+      const aliased = byAlias.get(key) ?? byAlias.get(path.basename(key)) ?? [];
+      const target =
+        direct ??
+        (candidates.length === 1 ? candidates[0] : undefined) ??
+        // Ambiguous aliases are dropped for the same reason ambiguous basenames
+        // are: a guess here invents a relationship the author never made.
+        (aliased.length === 1 ? aliased[0] : undefined);
       if (!target || target === page.id) continue;
       resolved.push(target);
       backlinks[target] = [...(backlinks[target] ?? []), page.id];
@@ -441,7 +471,13 @@ const STALE_DAYS: { match: RegExp; days: number }[] = [
 ];
 const STALE_DEFAULT_DAYS = 180;
 
-export async function health(root: string): Promise<HealthReport> {
+/**
+ * Optional per-vault override for the staleness windows above (see lib/policy).
+ * Defaulting to the measured constants keeps every existing caller unchanged.
+ */
+export type WindowResolver = (id: string, title: string) => number;
+
+export async function health(root: string, resolveWindow?: WindowResolver): Promise<HealthReport> {
   const index = await getIndex(root);
   const now = Date.now();
   const ids = new Set(index.pages.map((p) => p.id));
@@ -466,6 +502,7 @@ export async function health(root: string): Promise<HealthReport> {
   const stale = index.pages
     .map((page) => {
       const window =
+        resolveWindow?.(page.id, page.title) ??
         STALE_DAYS.find((rule) => rule.match.test(page.id) || rule.match.test(page.title))?.days ??
         STALE_DEFAULT_DAYS;
       const days = Math.floor((now - page.mtime) / 86_400_000);

@@ -4,6 +4,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import chokidar, { type FSWatcher } from "chokidar";
 import { invalidateVault } from "@/lib/wiki";
+import { snapshot } from "@/lib/history";
 
 /**
  * The write journal.
@@ -187,6 +188,11 @@ export async function watchVault(root: string): Promise<void> {
       linesRemoved,
       hash: after === null ? "" : hashOf(after),
     });
+
+    // Keep the version we are about to lose. The shadow holds exactly one copy
+    // and is about to be overwritten, so this is the only moment the previous
+    // text still exists anywhere.
+    if (before !== null) await snapshot(key, relPath, before);
 
     if (after === null) {
       await fs.rm(path.join(shadowDir(key), relPath), { force: true }).catch(() => {});
