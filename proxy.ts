@@ -76,6 +76,8 @@ const FILESYSTEM_ROUTES = [
   "/api/pack",
   "/api/autolink",
   "/api/analysis",
+  "/api/templates",
+  "/api/attachment",
   "/api/changes",
   "/api/mcp-event",
   // Reads and writes ~/.lore/remote.json, and its status payload lists this
