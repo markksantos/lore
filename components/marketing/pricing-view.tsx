@@ -153,9 +153,6 @@ export function PricingView({ scene }: { scene: Scene }) {
 function PlanCard({ plan, cycle }: { plan: Plan; cycle: Cycle }) {
   const price = plan.price[cycle];
   const tone = TONES[plan.tone];
-  /* The top tier's list is all upgrades over the tier below it, so a tick — which
-     reads as "included, same as the others" — undersells every line. */
-  const markUpgrades = plan.tone === "amber";
 
   return (
     <div
@@ -192,12 +189,16 @@ function PlanCard({ plan, cycle }: { plan: Plan; cycle: Cycle }) {
       <ul className="mt-6 flex-1 space-y-3">
         {plan.features.map((feature) => (
           <li key={feature.label} className="flex items-start gap-2.5">
+            {/* A star means "this is more than the tier below gives you". A
+                carried-forward line like "Everything in Personal" is not that,
+                so it keeps the tick — starring it would claim an upgrade that
+                the row itself says is a repeat. */}
             {!feature.included ? (
               <X size={14} className="mt-[3px] shrink-0 text-[var(--lore-danger)]" />
-            ) : markUpgrades ? (
+            ) : feature.upgrade ? (
               <Star size={14} className={cn("mt-[3px] shrink-0 fill-current", tone.tick)} />
             ) : (
-              <Check size={14} className={cn("mt-[3px] shrink-0", tone.tick)} />
+              <Check size={14} className="mt-[3px] shrink-0 text-[var(--lore-success)]" />
             )}
             <span
               className={cn(

@@ -38,7 +38,15 @@ export type Plan = {
   /** External destination — GitHub rather than a checkout. */
   external?: boolean;
   featured?: boolean;
-  features: { label: string; included: boolean }[];
+  features: {
+    label: string;
+    included: boolean;
+    /**
+     * Marks this line as a step up from the tier below, rather than something
+     * carried forward from it. Drives a star instead of a tick.
+     */
+    upgrade?: boolean;
+  }[];
 };
 
 /** Shared by every plan, because the application itself is not the paywall. */
@@ -104,12 +112,22 @@ export const PLANS: Plan[] = [
     cta: "Get started",
     href: "/download",
     features: [
+      // Not an upgrade — it is everything the tier below already has, so it
+      // takes the same tick those lines take there.
       { label: "Everything in Personal", included: true },
-      { label: "A shared vault, with per-member permissions", included: true },
-      { label: "See which pages each member's agents actually read", included: true },
-      { label: "Verification across the team — who checked what, and when", included: true },
-      { label: "Admin controls and audit log", included: true },
-      { label: "Priority support", included: true },
+      { label: "A shared vault, with per-member permissions", included: true, upgrade: true },
+      {
+        label: "See which pages each member's agents actually read",
+        included: true,
+        upgrade: true,
+      },
+      {
+        label: "Verification across the team — who checked what, and when",
+        included: true,
+        upgrade: true,
+      },
+      { label: "Admin controls and audit log", included: true, upgrade: true },
+      { label: "Priority support", included: true, upgrade: true },
     ],
   },
 ];
