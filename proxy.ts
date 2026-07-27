@@ -77,6 +77,8 @@ const FILESYSTEM_ROUTES = [
   "/api/autolink",
   "/api/analysis",
   "/api/templates",
+  "/api/ingest",
+  "/api/git",
   "/api/attachment",
   "/api/changes",
   "/api/mcp-event",
