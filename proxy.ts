@@ -80,6 +80,8 @@ const FILESYSTEM_ROUTES = [
   "/api/ingest",
   "/api/git",
   "/api/collab",
+  "/api/access",
+  "/api/mcp",
   "/api/attachment",
   "/api/changes",
   "/api/mcp-event",
