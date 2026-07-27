@@ -45,7 +45,7 @@ export function Landing({
   const ctaLabel = siteMode ? "Get Lore" : "Link your wiki";
   return (
     <>
-      <MarketingHeader />
+      <MarketingHeader overHero />
       <Hero scene={scene} cta={cta} ctaLabel={ctaLabel} />
 
       {/* The product shot bridges the hero and the first content section:
@@ -139,7 +139,7 @@ function Hero({ scene, cta, ctaLabel }: { scene: Scene; cta: string; ctaLabel: s
               </div>
 
               <p className="mt-4 text-[13px] text-white/70">
-                macOS, Windows, Linux. Runs on your machine — nothing uploaded, no account.
+                Free and open source. macOS, Windows, Linux — runs on your machine, uploads nothing.
               </p>
             </div>
           </div>
@@ -514,7 +514,7 @@ function Steps({ siteMode }: { siteMode: boolean }) {
     <Section
       eyebrow="Get started"
       title="Under two minutes."
-      lede="There is no account to create, because there is no server to create it on."
+      lede="Nothing to sign up for. The free build has no account step because it has no server behind it — you point it at a folder and it starts reading."
     >
       <div className="mt-11 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
         {steps.map((step) => (

@@ -219,9 +219,15 @@ it.)
 
 ## Privacy
 
-None of your wiki is uploaded. Lore is a local Next.js server talking to your own
-filesystem; there is no account, no database, and no telemetry. The MCP server
-talks to the app over `127.0.0.1`.
+None of your wiki is uploaded by this build. Lore is a local Next.js server talking
+to your own filesystem; there is no account, no database, and no telemetry, and no
+code in this repository that could send a page anywhere. The MCP server talks to the
+app over `127.0.0.1`.
+
+Hosted plans (sync, backups, a remote MCP endpoint) are a separate opt-in service,
+described on the site's `/pricing` page. Turning sync on is the one action that puts
+an encrypted copy of your wiki on a server; self-hosting stays free and unrestricted,
+with no licence check to remove.
 
 One exception, stated plainly: semantic search runs a small model on this machine,
 and the first time it is used it downloads roughly 23MB of model weights into

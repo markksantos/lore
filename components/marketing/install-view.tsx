@@ -30,8 +30,13 @@ export function InstallView({ siteMode }: { siteMode: boolean }) {
         </h1>
         <p className="t-lede mt-4 max-w-2xl text-[var(--lore-text-secondary)]">
           It reads the folder your wiki already lives in, so it has to run where that
-          folder is. There is no hosted version and there will not be one — a web app that
-          could read your notes would have to be given your notes.
+          folder is. Nothing you install here uploads anything — there is no code in the
+          local build that could. If you later want the same wiki on a second machine, a{" "}
+          <Link href="/pricing" className="text-[var(--lore-accent)] hover:underline">
+            hosted plan
+          </Link>{" "}
+          adds encrypted sync as a deliberate opt-in. It is off until you choose it, and it
+          changes nothing about the copy running here.
         </p>
 
         {siteMode ? (

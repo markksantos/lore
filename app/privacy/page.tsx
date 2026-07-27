@@ -4,7 +4,7 @@ import { Clause, ProsePage } from "@/components/marketing/prose-page";
 export const metadata: Metadata = {
   title: "Privacy",
   description:
-    "Lore has no server, no account and no telemetry. This page says exactly what that means and where the two exceptions are.",
+    "The Lore you run has no account and no telemetry, and cannot upload your wiki. Hosted plans are opt-in and this page draws the line between them.",
 };
 
 export default function PrivacyPage() {
@@ -12,15 +12,35 @@ export default function PrivacyPage() {
     <ProsePage
       eyebrow="Privacy"
       title="Nothing leaves your machine."
-      lede="Most privacy policies describe what a company does with your data. This one mostly describes an absence, because Lore has nowhere to send anything."
+      lede="Lore comes in two shapes, and they have completely different answers. This page keeps them apart rather than averaging them into something vague."
       updated="27 July 2026"
     >
-      <Clause title="There is no account and no server">
+      <Clause title="The version you download">
         <p>
           Lore runs as a local process on your own computer, bound to{" "}
-          <code>127.0.0.1</code>. There is no sign-up, no login, no hosted backend and no
-          database anywhere but your disk. Nobody operating Lore can see your wiki, because
-          there is no operator — the copy you run answers only to you.
+          <code>127.0.0.1</code>. There is no sign-up, no login and no database anywhere but
+          your disk. Nobody operating Lore can see your wiki, because for this version there
+          is no operator — the copy you run answers only to you.
+        </p>
+        <p>
+          This is not a promise about what we choose to do with your files. It is that the
+          local build contains no code that could upload them. Everything below describes
+          that build unless it says otherwise.
+        </p>
+      </Clause>
+
+      <Clause title="Hosted plans, and what changes">
+        <p>
+          A <a href="/pricing">hosted plan</a> exists for people who want their wiki on more
+          than one machine, backed up somewhere the machine is not, and reachable by an agent
+          when that machine is asleep. Those are the only things it adds, and none of them
+          are possible without a copy of your wiki living on a server.
+        </p>
+        <p>
+          So: if you turn sync on, your wiki leaves your machine. It is encrypted in transit
+          and at rest, but it leaves. That is the whole trade, stated plainly, and it is
+          off until you deliberately switch it on. Nothing about the free build changes when
+          hosted plans exist — it has no sync code in it at all.
         </p>
       </Clause>
 

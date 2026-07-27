@@ -8,19 +8,24 @@ import { useTheme } from "@/components/lore/theme-provider";
 import { GITHUB_URL, ORG, ORG_URL, TAGLINE } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 
-export function MarketingHeader() {
+/**
+ * @param overHero Only the landing page puts art behind the header. Everywhere
+ * else the page starts on the ordinary background, and the transparent state —
+ * which paints the nav white for legibility against a photograph — renders white
+ * text on a near-white page. Defaulting to `false` means a new page has a
+ * readable header without having to know this exists.
+ */
+export function MarketingHeader({ overHero = false }: { overHero?: boolean }) {
   const { theme, toggle } = useTheme();
-  const [scrolled, setScrolled] = useState(false);
+  const [scrolled, setScrolled] = useState(!overHero);
 
-  // The header floats transparent over the sky art, then takes a surface once
-  // the page scrolls past it — otherwise the nav sits on the page background
-  // with no separation.
   useEffect(() => {
+    if (!overHero) return;
     const onScroll = () => setScrolled(window.scrollY > 24);
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
-  }, []);
+  }, [overHero]);
 
   return (
     <header
@@ -44,6 +49,17 @@ export function MarketingHeader() {
         </Link>
 
         <nav className="flex items-center gap-1">
+          <Link
+            href="/pricing"
+            className={cn(
+              "hidden rounded-md px-2.5 py-1.5 text-[13.5px] font-medium transition-colors sm:block",
+              scrolled
+                ? "text-[var(--lore-text-secondary)] hover:text-[var(--lore-text-primary)]"
+                : "text-white/85 hover:text-white",
+            )}
+          >
+            Pricing
+          </Link>
           <Link
             href="/download"
             className={cn(
@@ -108,6 +124,7 @@ const COLUMNS: { heading: string; links: { label: string; href: string; ext?: bo
     heading: "Product",
     links: [
       { label: "Download", href: "/download" },
+      { label: "Pricing", href: "/pricing" },
       { label: "Install guide", href: "/install" },
       { label: "Open Lore", href: "/vault" },
     ],
@@ -142,12 +159,13 @@ export function MarketingFooter() {
               {TAGLINE}
             </p>
 
-            {/* Where a hosted product puts an uptime badge. Lore has no service
-                to report on, and saying so is the more interesting claim. */}
+            {/* Where a hosted product puts an uptime badge. Hosted plans exist,
+                but the build you run yourself is the whole application and costs
+                nothing — which is the more useful thing to say here. */}
             <div className="mt-7 inline-flex items-center gap-2 rounded-full bg-[var(--lore-surface-raised)] px-3 py-1.5">
               <span className="h-1.5 w-1.5 rounded-full bg-[var(--lore-success)]" />
               <span className="text-[13px] text-[var(--lore-text-secondary)]">
-                No server to go down
+                Open source · free to self-host
               </span>
             </div>
           </div>
