@@ -1,5 +1,10 @@
 import type { Metadata } from "next";
 import { PricingView } from "@/components/marketing/pricing-view";
+import { pickScene } from "@/lib/scenery";
+
+// The sky is rolled per request, like the landing page's, so the two pages are
+// always the same world on any given visit.
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Pricing",
@@ -8,5 +13,5 @@ export const metadata: Metadata = {
 };
 
 export default function PricingPage() {
-  return <PricingView />;
+  return <PricingView scene={pickScene()} />;
 }

@@ -29,6 +29,8 @@ export type Price = { amount: string; unit: string; caption: string };
 export type Plan = {
   id: string;
   name: string;
+  /** The plan's own hue, used on its name, its button and its feature ticks. */
+  tone: "neutral" | "accent" | "amber";
   blurb: string;
   price: Record<Cycle, Price>;
   cta: string;
@@ -51,6 +53,7 @@ export const PLANS: Plan[] = [
   {
     id: "open",
     name: "Open",
+    tone: "neutral",
     blurb: "Self-host the open source build. Not a trial — the entire application.",
     price: {
       monthly: { amount: "$0", unit: "", caption: "forever" },
@@ -70,6 +73,7 @@ export const PLANS: Plan[] = [
   {
     id: "personal",
     name: "Personal",
+    tone: "accent",
     blurb: "Your wiki on every machine you use, and reachable when none of them are on.",
     price: {
       monthly: { amount: "$12", unit: "/mo", caption: "billed monthly" },
@@ -90,6 +94,7 @@ export const PLANS: Plan[] = [
   {
     id: "team",
     name: "Team",
+    tone: "amber",
     blurb: "Ten seats, then $12 each. One shared wiki your whole team's agents read from.",
     price: {
       monthly: { amount: "$129", unit: "/mo", caption: "10 seats, billed monthly" },

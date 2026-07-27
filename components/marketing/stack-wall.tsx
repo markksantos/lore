@@ -28,6 +28,7 @@ const TINTS = {
   blue: "bg-[#EFF6FF] dark:bg-[#102341]/60",
   violet: "bg-[#F5F3FF] dark:bg-[#2a1f47]/60",
   slate: "bg-[#F3F4F6] dark:bg-[#252932]/70",
+  red: "bg-[#FEF2F2] dark:bg-[#3F1212]/50",
 } as const;
 
 const LABELS = {
@@ -36,6 +37,7 @@ const LABELS = {
   blue: "text-[#1D4ED8] dark:text-[#60A5FA]",
   violet: "text-[#6D28D9] dark:text-[#A78BFA]",
   slate: "text-[#4B5563] dark:text-[#D1D5DB]",
+  red: "text-[#DC2626] dark:text-[#F87171]",
 } as const;
 
 type Tool = {
@@ -53,23 +55,31 @@ type Tool = {
   scale?: string;
 };
 
+/**
+ * Fourteen, in two rows of seven.
+ *
+ * Ordered so the coloured marks are spread rather than clustered — a run of
+ * black glyphs in adjacent cells makes the whole grid read as monochrome even
+ * when it is not.
+ */
 const TOOLS: Tool[] = [
   { name: "Claude Code", slug: "claude-code", tint: "amber", scale: "scale-[0.92]" },
-  { name: "Claude Desktop", slug: "claude", tint: "amber", scale: "scale-[0.92]" },
   { name: "ChatGPT", slug: "chatgpt", tint: "neutral", mono: true, scale: "scale-[0.9]" },
   { name: "Codex", slug: "codex", tint: "blue", scale: "scale-[0.92]" },
   { name: "Cursor", slug: "cursor", tint: "neutral", mono: true, scale: "scale-[0.88]" },
+  { name: "Claude Desktop", slug: "claude", tint: "amber", scale: "scale-[0.92]" },
+  { name: "Grok", slug: "grok", tint: "neutral", mono: true, scale: "scale-[0.84]" },
+  { name: "Gemini CLI", slug: "gemini", tint: "violet", scale: "scale-[0.9]" },
+
+  { name: "OpenClaw", slug: "openclaw", tint: "red", scale: "scale-[1.02]" },
   // Zed's blue is dark enough to sit at roughly 2:1 against the dark card, which
   // reads as muddy rather than as a logo. Zed itself shows the mark white on
   // dark, so treat it as mono and keep the blue for light mode only.
   { name: "Zed", slug: "zed", tint: "blue", mono: true, scale: "scale-[0.9]" },
-  { name: "Windsurf", slug: "windsurf", tint: "neutral", mono: true, scale: "scale-[0.86]" },
-  { name: "Cline", slug: "cline", tint: "neutral", mono: true, scale: "scale-[0.86]" },
-  { name: "Continue", slug: "continue", tint: "neutral", mono: true, scale: "scale-[1.06]" },
-  { name: "Gemini CLI", slug: "gemini", tint: "violet", scale: "scale-[0.9]" },
+  { name: "Hermes", slug: "hermes", tint: "amber", scale: "scale-[1.02]" },
   { name: "Copilot", slug: "copilot", tint: "neutral", mono: true, scale: "scale-[0.88]" },
   { name: "Obsidian", slug: "obsidian", tint: "violet", scale: "scale-[0.92]" },
-  { name: "curl", slug: "curl", tint: "neutral", mono: true, scale: "scale-[0.88]" },
+  { name: "OpenCode", slug: "opencode", tint: "neutral", mono: true, scale: "scale-[0.9]" },
   { name: "Any MCP client", slug: "mcp", tint: "slate", mono: true, scale: "scale-[0.86]" },
 ];
 
@@ -130,7 +140,7 @@ export function StackWall({ logos = [], className }: { logos?: string[]; classNa
 
   return (
     <div
-      className={cn("grid grid-cols-3 gap-3 sm:grid-cols-5 md:grid-cols-7", className)}
+      className={cn("mx-auto grid max-w-[46rem] grid-cols-3 gap-3 sm:grid-cols-5 md:grid-cols-7", className)}
     >
       {TOOLS.map((tool, i) => (
         <motion.div

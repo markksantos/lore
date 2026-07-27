@@ -369,23 +369,25 @@ function Stack({ logos }: { logos: string[] }) {
   return (
     <section className="border-y border-[var(--lore-border)] bg-[var(--lore-background)] py-16 md:py-20">
       <div className="mx-auto max-w-5xl px-6 md:px-8">
-        <Reveal>
+        {/* Centred, unlike the argument sections either side of it. Those are
+            read left to right as prose; this is a wall of marks scanned for the
+            one you recognise, and centring lets the eye start in the middle
+            rather than tracking from an edge. */}
+        <Reveal className="text-center">
           <p className="t-meta font-medium uppercase tracking-[0.1em] text-[var(--lore-accent)]">
             Works with
           </p>
-          <h2 className="t-section mt-3 max-w-3xl text-[var(--lore-text-primary)]">
+          <h2 className="t-section mt-3 text-[var(--lore-text-primary)]">
             Anything that speaks MCP.
           </h2>
-          <p className="t-lede mt-4 max-w-2xl text-[var(--lore-text-secondary)]">
+          <p className="t-lede mx-auto mt-4 max-w-2xl text-[var(--lore-text-secondary)]">
             Four read tools over MCP, or a plain <code>AGENTS.md</code> for agents that only
             open files. Both point at the same folder, and the watcher covers whatever else
             you run.
           </p>
         </Reveal>
 
-        {/* Inside the same container as the heading, so the grid's left edge
-            lines up with the type rather than floating centred under it. */}
-        <StackWall logos={logos} className="mt-11" />
+        <StackWall logos={logos} className="mt-12" />
       </div>
     </section>
   );
