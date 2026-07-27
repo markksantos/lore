@@ -171,6 +171,13 @@ export async function generate(
         prompt,
         system: opts?.system,
         stream: false,
+        // Reasoning off. Measured on gemma4:12b: a one-sentence summary took
+        // 2,591 tokens and 86 seconds with thinking on, and 20 tokens and 0.7
+        // seconds with it off — for the same sentence. These jobs have nothing
+        // to reason about. Ollama accepts `think: false` on models that cannot
+        // think at all (verified against a completion-only tag), so this is
+        // safe to send unconditionally.
+        think: false,
         // Near-greedy. Every job here extracts something already present in
         // the page; sampling temperature is what makes a small model invent a
         // tag the document never mentions.

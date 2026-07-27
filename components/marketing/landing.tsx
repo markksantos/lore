@@ -2,11 +2,17 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { ArrowRight, FolderOpen, Plug, ShieldCheck, ChevronDown } from "lucide-react";
+import { ArrowRight, Radio, Plug, ShieldCheck, ChevronDown } from "lucide-react";
 import { SceneryImage } from "@/components/marketing/scenery-image";
 import { MarketingFooter, MarketingHeader } from "@/components/marketing/site-chrome";
 import { HeroSimulator } from "@/components/marketing/hero-simulator";
-import { LinkDemo, ReadDemo, ProposeDemo, HealthDemo } from "@/components/marketing/demos";
+import {
+  WriteFeedDemo,
+  SignOffDemo,
+  GapsDemo,
+  BudgetDemo,
+  TrustPill,
+} from "@/components/marketing/demos";
 import { StackWall } from "@/components/marketing/stack-wall";
 import { Reveal } from "@/components/marketing/motion-bits";
 import { paletteVars } from "@/lib/palette";
@@ -28,9 +34,11 @@ export function Landing({ scene, logos }: { scene: Scene; logos: string[] }) {
         </div>
       </div>
 
-      <Problem />
+      <Measured />
+      <Gate />
       <HowItWorks />
-      <Trust />
+      <States />
+      <Budget />
       <Stack logos={logos} />
       <Steps />
       <Faq />
@@ -71,15 +79,15 @@ function Hero({ scene }: { scene: Scene }) {
           <div className="flex flex-1 items-start justify-center pt-[14vh] text-center md:pt-[13vh]">
             <div className="w-full max-w-3xl">
               {/* The two-line lockup is held on tablet and up; below that the
-                  clamp alone isn't enough to keep "for all your agents" on one
-                  line at 375px, so it is allowed to wrap rather than overflow. */}
+                  clamp alone isn't enough to keep the second line intact at
+                  375px, so it is allowed to wrap rather than overflow. */}
               <h1 className="t-hero text-white">
-                <span className="block">Your wiki,</span>
-                <span className="block md:whitespace-nowrap">for all your agents</span>
+                <span className="block">Your agents are already</span>
+                <span className="block md:whitespace-nowrap">writing to your wiki</span>
               </h1>
 
               <p className="mx-auto mt-5 max-w-xl text-[15px] font-semibold text-white/90 md:mt-6 md:text-[18px]">
-                Point it at the markdown folder you already have.
+                Lore keeps the record of which of it a human has actually checked.
               </p>
 
               <div className="mt-7 flex justify-center">
@@ -106,34 +114,68 @@ function Hero({ scene }: { scene: Scene }) {
   );
 }
 
-function Problem() {
+function Measured() {
   return (
     <Section
-      eyebrow="The problem"
-      title="You already wrote it down. Your agents still ask."
-      lede="Everything an agent needs to stop guessing is sitting in a folder on your disk. It just has no way in — and no way to give anything back."
+      eyebrow="Measured"
+      title="303 pages changed in a week."
+      lede="That is one vault, seven days, one person's agents doing ordinary work. Not one of those diffs was read by a human, and the wiki has no idea which of them to trust."
     >
       <Reveal className="mt-12 grid gap-4 sm:grid-cols-3">
         <Stat
           slot={0}
-          value="150"
-          unit="+ pages"
-          label="where an agent stops coping"
-          body="Past roughly a hundred and fifty notes, an index no longer fits in context. The agent stops finding the right page and starts writing a duplicate."
+          value="303"
+          unit="pages"
+          label="changed in seven days"
+          body="Written by agents, across four folders, while the person who owns the wiki was working on something else."
         />
         <Stat
           slot={1}
-          value="1"
-          unit="of 9"
-          label="wiki tools that speak MCP"
-          body="Almost every notes app in this space assumes a human at a keyboard. Your agents are locked outside the thing you built for them."
+          value="60"
+          unit="of 75"
+          label="modified files rewritten in place"
+          body="Rewritten rather than appended to, so the previous wording is gone unless git happened to catch it."
         />
         <Stat
           slot={2}
+          value="1,450"
+          unit="lines"
+          label="of prose deleted unreviewed"
+          body="Removed in the same week, without anyone reading what was removed or why it went."
+        />
+      </Reveal>
+    </Section>
+  );
+}
+
+function Gate() {
+  return (
+    <Section
+      eyebrow="The gate we removed"
+      title="A queue of 300 resolves to Accept All."
+      lede="Lore shipped with a propose_edit tool that parked agent changes for approval. It is gone. Agents write through their own file tools, so the gate only ever caught the one harness that agreed to ask — and at three hundred changes a week, an approval queue is a Friday afternoon of clicking."
+    >
+      <Reveal>
+        <p className="t-body mt-8 max-w-2xl text-[var(--lore-text-secondary)]">
+          There is a second problem underneath the first. Ask a page how reliable it is and
+          the agent that wrote it will happily answer, in the page itself.
+        </p>
+      </Reveal>
+
+      <Reveal className="mt-8 grid gap-4 sm:grid-cols-2">
+        <Stat
+          slot={6}
+          value="1,156"
+          unit="pages"
+          label="carry an agent-written confidence: field"
+          body="959 of them say high. Two say low. It is self-assessment, and self-assessment passes."
+        />
+        <Stat
+          slot={3}
           value="0"
-          unit="clocks"
-          label="on anything going stale"
-          body="Nothing tells you the pricing page you wrote in March stopped being true in May. The agent quotes it anyway, with total confidence."
+          unit="pages"
+          label="carry a human sign-off"
+          body="The vault records every machine write and has never once recorded a person confirming one. Every page looks equally true."
         />
       </Reveal>
     </Section>
@@ -143,33 +185,33 @@ function Problem() {
 function HowItWorks() {
   const items = [
     {
-      icon: FolderOpen,
+      icon: Radio,
       slot: 3,
-      demo: <LinkDemo />,
-      title: "Point it at the folder you already have",
-      body: "No import, no migration, no new format. Lore reads the markdown where it sits — your headings, your frontmatter, your [[wikilinks]], your folder names. It infers the structure you already chose instead of imposing one. Delete Lore tomorrow and the wiki is byte-for-byte what it was.",
-    },
-    {
-      icon: Plug,
-      slot: 0,
-      demo: <ReadDemo />,
-      title: "Every agent gets a map of the whole wiki",
-      body: "Lore writes one AGENTS.md at your vault root — every page, folder, tag, and a one-line summary — and serves the same map over MCP with search and read. An agent skims the map, opens the two pages that matter, and answers. It never has to read your whole wiki or grep blind.",
+      demo: <WriteFeedDemo />,
+      title: "Lore watches the folder, not the agent",
+      body: "Every write lands in a journal — Claude Code, Codex, Cursor, a sync script, you in your editor at midnight. Reading the filesystem instead of intercepting a tool call is what makes that possible: no harness has to opt in, so none of them can quietly opt out. What comes back is a ranked list of what changed, how much prose it deleted, and how many pages link to the thing it touched.",
     },
     {
       icon: ShieldCheck,
+      slot: 0,
+      demo: <SignOffDemo />,
+      title: "Sign off on the page you actually read",
+      body: "A sign-off is pinned to the content hash of the page as you saw it. Rewrite that page and the hash stops matching, the sign-off lapses on its own, and the page comes back to the top of Review wearing the label that says why. Trust that can never lapse is a sticker, not a signal — and it is the reason the ledger sits outside your vault, where an agent cannot edit its own grade.",
+    },
+    {
+      icon: Plug,
       slot: 6,
-      demo: <ProposeDemo />,
-      title: "Agents propose. You accept.",
-      body: "There is no write tool. When an agent learns something durable it files a proposal, and the diff appears inside the page it would change, with a reason and a risk tier, right where you are already reading. The wiki changes when you say so — because the edit that hurts is never the obviously wrong one, it's the plausible one you'd have missed.",
+      demo: <GapsDemo />,
+      title: "Being the MCP server makes Lore a sensor",
+      body: "Your agents read the wiki through Lore. That is a poor place to stand if you want to block a write, and an excellent one if you want to hear the questions. Lore logs which pages actually get opened and every search that came back with nothing. The empty ones are a to-write list assembled out of real demand instead of a planning session.",
     },
   ];
 
   return (
     <Section
       eyebrow="How it works"
-      title="Three moving parts."
-      lede="Link a folder, hand your agents the map, keep the pen."
+      title="Promotion, not permission."
+      lede="Nothing is blocked, because nothing local can block it. Everything lands unverified and you promote what you have read."
     >
       {/* Each module sits in a thick colour frame — the pattern that carries
           most of the page's colour. */}
@@ -211,52 +253,81 @@ function HowItWorks() {
   );
 }
 
-function Trust() {
+const STATES = [
+  {
+    slot: 3,
+    state: "verified" as const,
+    body: "A person confirmed this page against the world, and nothing has touched it since.",
+  },
+  {
+    slot: 6,
+    state: "aging" as const,
+    body: "Signed off long enough ago that it has earned a second look. Pricing rots faster than tooling does.",
+  },
+  {
+    slot: 2,
+    state: "lapsed" as const,
+    body: "It was verified, then an agent rewrote it. The hash moved, so the sign-off came off with it.",
+  },
+  {
+    slot: 4,
+    state: "unverified" as const,
+    body: "Where every page starts, including the ones that read as authoritative because they are well written.",
+  },
+];
+
+function States() {
   return (
     <Section
-      eyebrow="Health"
-      title="It tells you where the wiki has rotted."
-      lede="Orphaned pages, links pointing at notes you never wrote, and anything past its review window — scored, so you can watch the number move."
+      eyebrow="Trust states"
+      title="Only one of the four is yours to set."
+      lede="You mark a page verified. Everything else follows from the clock and from what your agents do next."
     >
-      <div className="mt-11 grid min-w-0 gap-8 lg:grid-cols-[22rem_1fr] lg:items-center">
-        <Reveal><HealthDemo /></Reveal>
-        <div className="grid gap-4 sm:grid-cols-2">
-        {[
-          {
-            slot: 0,
-            head: "Orphans",
-            body: "Pages nothing links to and that link nowhere. An agent walking your links will never reach them.",
-          },
-          {
-            slot: 2,
-            head: "Dead links",
-            body: "Every [[link]] pointing at a page that doesn't exist yet. Each one is a page you meant to write.",
-          },
-          {
-            slot: 6,
-            head: "Staleness clocks",
-            body: "Pricing gets 30 days, tooling 90, clients 60, everything else 180. One global threshold catches nothing.",
-          },
-          {
-            slot: 3,
-            head: "Untagged",
-            body: "Tags are the cheapest way to make a page findable by an agent that doesn't know its title.",
-          },
-        ].map((card) => (
-          <div key={card.head} style={paletteVars(card.slot)} className="frame">
-            <div className="h-full px-5 py-5">
-              <h3 className="pal-title text-[14.5px] font-semibold">{card.head}</h3>
-              <p className="t-body mt-1.5 text-[var(--lore-text-secondary)]">{card.body}</p>
+      <div className="mt-11 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {STATES.map((card, i) => (
+          <Reveal key={card.state} delay={i * 0.05} className="h-full">
+            <div style={paletteVars(card.slot)} className="frame h-full">
+              <div className="h-full px-5 py-5">
+                <TrustPill state={card.state} />
+                <p className="t-body mt-3 text-[var(--lore-text-secondary)]">{card.body}</p>
+              </div>
             </div>
-            </div>
-          ))}
-        </div>
+          </Reveal>
+        ))}
       </div>
     </Section>
   );
 }
 
-/** The compatibility wall — its own section, between health and the steps. */
+function Budget() {
+  return (
+    <Section
+      eyebrow="Context"
+      title="2.3 million tokens."
+      lede="That is the reference vault: 1,424 pages, counted with a real BPE tokenizer rather than characters divided by four. A 200k context window holds about a twelfth of it."
+    >
+      <div className="mt-11 grid min-w-0 gap-8 lg:grid-cols-[22rem_1fr] lg:items-center">
+        <Reveal>
+          <BudgetDemo />
+        </Reveal>
+        <Reveal delay={0.06}>
+          <p className="t-body max-w-xl text-[var(--lore-text-secondary)]">
+            Nothing will ever read your wiki whole. Every answer an agent gives you is
+            assembled out of the handful of pages a search happened to surface, which is
+            precisely why it matters whether those pages are still true.
+          </p>
+          <p className="t-body mt-4 max-w-xl text-[var(--lore-text-secondary)]">
+            Lore measures the same budget folder by folder and page by page, so the corner
+            of the vault that is too heavy to hand to anything is a number you can look at
+            rather than a surprise you hit mid-task.
+          </p>
+        </Reveal>
+      </div>
+    </Section>
+  );
+}
+
+/** The compatibility wall — its own section, between the argument and the steps. */
 function Stack({ logos }: { logos: string[] }) {
   return (
     <section className="border-y border-[var(--lore-border)] bg-[var(--lore-background)] py-16 md:py-20">
@@ -269,8 +340,9 @@ function Stack({ logos }: { logos: string[] }) {
             Anything that speaks MCP.
           </h2>
           <p className="t-lede mt-4 max-w-2xl text-[var(--lore-text-secondary)]">
-            Five tools over MCP, or a plain <code>AGENTS.md</code> for agents that only read
-            files. Both point at the same folder.
+            Four read tools over MCP, or a plain <code>AGENTS.md</code> for agents that only
+            open files. Both point at the same folder, and the watcher covers whatever else
+            you run.
           </p>
         </Reveal>
       </div>
@@ -285,18 +357,27 @@ function Steps() {
   const steps = [
     {
       n: "1",
+      slot: 0,
       title: "Link your folder",
-      body: "Paste a path, or pick one Lore already found on your Mac. It scans in under a second.",
+      body: "Paste a path, or pick one Lore already found on your Mac. It scans in under a second and starts watching.",
     },
     {
       n: "2",
+      slot: 3,
       title: "Write the index",
       body: "One click drops AGENTS.md into your vault. Every file-reading agent finds it without being told.",
     },
     {
       n: "3",
+      slot: 2,
       title: "Connect over MCP",
-      body: "Copy the config — the path is already filled in — restart your client, and the tools are live.",
+      body: "Copy the config — the path is already filled in — restart your client, and the four read tools are live.",
+    },
+    {
+      n: "4",
+      slot: 6,
+      title: "Sign off on something",
+      body: "Open Review, read the page at the top, press the button. That is the first human mark your wiki has ever carried.",
     },
   ];
 
@@ -306,9 +387,9 @@ function Steps() {
       title="Under two minutes."
       lede="There is no account to create, because there is no server to create it on."
     >
-      <div className="mt-11 grid gap-6 sm:grid-cols-3">
-        {steps.map((step, i) => (
-          <div key={step.n} style={paletteVars(i === 0 ? 0 : i === 1 ? 3 : 2)}>
+      <div className="mt-11 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        {steps.map((step) => (
+          <div key={step.n} style={paletteVars(step.slot)}>
             <span
               className="flex h-8 w-8 items-center justify-center rounded-xl text-[13px] font-bold text-white"
               style={{ background: "var(--plate)" }}
@@ -326,24 +407,28 @@ function Steps() {
 
 const FAQ = [
   {
+    q: "Does Lore stop an agent from writing?",
+    a: "No, and it could not. Agents write with their own file tools, and a folder on your disk has a dozen other write paths besides. Lore watches the folder instead: every write is journaled and left exactly where it landed. What it gates is not the edit — it is the claim that a human has checked it.",
+  },
+  {
+    q: "What happens when an agent rewrites a page I signed off on?",
+    a: "The sign-off lapses. It was pinned to the content hash of the page as you read it, so a rewrite breaks the match, the page drops to Lapsed, and it comes back to the top of Review with that label on it. Nothing is silently inherited by the new text.",
+  },
+  {
     q: "Does Lore move or reformat my files?",
-    a: "No. It reads the folder in place and writes only when you save a page or accept a proposal. The single file it ever adds is AGENTS.md at the vault root, and only when you press the button. Uninstall it and your wiki is untouched.",
+    a: "No. It reads the markdown where it sits — your headings, your frontmatter, your [[wikilinks]], your folder names. The verification ledger and the usage log live in ~/.lore, outside the vault, so they never turn up in a git diff of your notes. The only file Lore ever adds to the vault is AGENTS.md, and only when you press the button.",
   },
   {
     q: "Does it work with my Obsidian vault?",
-    a: "Yes — that's the intended case. Lore reads [[wikilinks]], inline #tags, and YAML frontmatter, and skips .obsidian and .trash. Keep using Obsidian for writing; Lore is the layer that makes the same folder legible to your agents.",
+    a: "Yes — that's the intended case. Lore reads [[wikilinks]], inline #tags and YAML frontmatter, and skips .obsidian and .trash. Keep writing in Obsidian; Lore is the layer that makes the same folder legible to your agents and keeps score of what you have confirmed.",
   },
   {
-    q: "What can an agent actually do?",
-    a: "Five tools: read the index, search, read a page, report health, and propose an edit. That's it. There is no write tool, no delete tool, and no shell.",
+    q: "What can an agent do through Lore?",
+    a: "Four tools: read the index, search, read a page, report health. All four are reads. There is no write tool, not as a safety measure but because withholding one would achieve nothing — the agent already has a filesystem.",
   },
   {
     q: "Is anything uploaded?",
-    a: "Nothing. Lore is a local Next.js app talking to your own filesystem. The only state it keeps outside your wiki is ~/.lore/config.json, which holds the folder path, and the pending proposal queue.",
-  },
-  {
-    q: "Why can't agents just write directly?",
-    a: "Because the edit that costs you isn't the obviously wrong one you'd catch — it's the confident, plausible one you'd never look at twice. A diff and a reason takes five seconds to read and is the only thing standing between a useful wiki and a subtly false one.",
+    a: "Nothing. Lore is a local Next.js app talking to your own filesystem. Outside your vault it keeps three things in ~/.lore: the folder path, the ledger of what you have signed off, and an append-only log of what your agents read and searched for.",
   },
 ];
 
@@ -409,20 +494,20 @@ function Finale({ scene }: { scene: Scene }) {
           style={{ backgroundImage: "var(--scenery-fade-band)" }}
         />
 
-        {/* Centre wash. The art is now a saturated sky rather than the muted
-            plate this band used to carry, so the closing type is white over a
-            darkening middle — the same treatment as the hero. Sits above the
-            fade so the band still melts into the page at both edges. */}
+        {/* Centre wash. The art is a saturated sky rather than a muted plate, so
+            the closing type is white over a darkening middle — the same
+            treatment as the hero. Sits above the fade so the band still melts
+            into the page at both edges. */}
         <div className="pointer-events-none absolute inset-x-0 top-1/4 h-1/2 bg-[radial-gradient(ellipse_at_center,rgba(10,26,52,0.42)_0%,rgba(10,26,52,0.22)_45%,rgba(10,26,52,0)_75%)]" />
 
         <div className="relative flex min-h-[62svh] flex-col items-center justify-center px-6 text-center">
           <h2 className="t-section max-w-2xl text-white [text-shadow:0_1px_18px_rgba(10,26,52,0.35)]">
             Everything you know,
             <br />
-            already in context.
+            and which of it you checked.
           </h2>
           <p className="t-lede mt-4 max-w-md font-medium text-white/90">
-            Stop re-explaining what you already wrote down.
+            Your agents will keep writing. Nobody was recording this part.
           </p>
           <Link
             href="/vault"

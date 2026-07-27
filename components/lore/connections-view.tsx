@@ -344,7 +344,9 @@ function CopyBlock({ label, content }: { label: string; content: string }) {
   return (
     <div className="overflow-hidden rounded-lg border border-[var(--lore-border)]">
       <div className="flex items-center gap-2 border-b border-[var(--lore-border)] bg-[var(--lore-surface-raised)] px-3 py-1.5">
-        <span className="min-w-0 truncate text-[11px] uppercase tracking-[0.05em] text-[var(--lore-text-tertiary)]">
+        {/* Labels here are literal file names, so they are never uppercased —
+            `.mcp.json` has to stay copy-accurate. */}
+        <span className="min-w-0 truncate text-[11px] text-[var(--lore-text-tertiary)]">
           {label}
         </span>
         <span className="flex-1" />

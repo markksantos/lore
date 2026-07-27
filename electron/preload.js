@@ -3,7 +3,7 @@
 /**
  * The entire bridge between the desktop shell and Lore's UI.
  *
- * It exposes three things and no generic `ipcRenderer` passthrough: a page that
+ * It exposes four members and no generic `ipcRenderer` passthrough: a page that
  * can send arbitrary IPC is a page that can drive the main process, which is
  * the whole reason contextIsolation and sandbox are on.
  *

@@ -30,6 +30,13 @@ const MAX_INPUT_CHARS = 6_000;
 /** Existing tags are a menu, not a corpus; a huge list crowds out the page. */
 const MAX_EXISTING_TAGS = 80;
 
+/**
+ * Longer than the library default because the first request of a session pays
+ * for reading the weights off disk — about a minute for a 10 GB model — before
+ * a single token is generated. Generation itself takes under a second.
+ */
+const TIMEOUT_MS = 150_000;
+
 const GB = (bytes: number) => (bytes / 1e9).toFixed(1);
 
 /**
@@ -208,6 +215,7 @@ export async function POST(request: Request) {
         {
           system:
             "You summarise documents. Reply with exactly one sentence of at most 20 words, in plain text. No preamble, no quotes, no markdown, no lists.",
+          timeoutMs: TIMEOUT_MS,
         },
       );
       const summary = toSummary(raw);
@@ -222,6 +230,7 @@ export async function POST(request: Request) {
         {
           system:
             "You title wiki pages. Reply with one title of at most eight words, in plain text. No preamble, no quotes, no trailing punctuation, no explanation.",
+          timeoutMs: TIMEOUT_MS,
         },
       );
       const title = toTitle(raw);
@@ -241,6 +250,7 @@ export async function POST(request: Request) {
       {
         system:
           'You tag documents for a wiki. Reply with a JSON array of 3 to 6 lowercase tags and nothing else, for example ["billing","architecture"]. No preamble, no code fences, no explanation.',
+        timeoutMs: TIMEOUT_MS,
       },
     );
     const tags = toTags(raw, existing);

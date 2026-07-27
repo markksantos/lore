@@ -245,6 +245,10 @@ function createWindow() {
 }
 
 function fatal(error) {
+  // A dying child fires its own 'exit' handler *and* trips waitForServer's
+  // "already exited" check, so without this guard one failure shows two error
+  // boxes. First reason wins; it is the accurate one.
+  if (quitting) return;
   quitting = true;
   stopServer();
   dialog.showErrorBox("Lore could not start", error instanceof Error ? error.message : String(error));

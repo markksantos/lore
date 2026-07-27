@@ -21,8 +21,9 @@ import { vaultKey, type WriteEvent } from "@/lib/journal";
  * hash, so the moment an agent rewrites a verified page the verification lapses
  * automatically. Trust that cannot lapse is not trust, it is a sticker.
  *
- * The ledger lives outside the vault so it never pollutes a `git diff`, with an
- * opt-in mirror into frontmatter for people who want it travelling with the file.
+ * The ledger lives outside the vault so it never pollutes a `git diff`. It is
+ * the only copy: nothing is mirrored into frontmatter, so the vault's files are
+ * byte-identical whether or not a page has been verified.
  */
 
 const DIR = path.join(os.homedir(), ".lore");

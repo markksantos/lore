@@ -108,11 +108,15 @@ table), Graph (d3-force link graph), Map (squarified treemap by size), Timeline
 Duplicates (near-duplicate prose via MinHash + LSH), Schema (frontmatter drift
 against your own `SCHEMA.md`).
 
-**Connections** — how agents get in: write `AGENTS.md` into the vault, or copy a
-ready-made MCP config with the path already filled in for this machine.
+**Connections** — how agents get in: write `AGENTS.md` into the vault, or wire up
+an MCP client from a config generated with the paths already filled in for this
+machine.
 
-**Settings** — the linked folder, a rescan, unlink, and the health report
-(orphans, dead links, stale pages, untagged).
+**Settings** — the linked folder, a rescan, unlink, the health report (orphans,
+dead links, stale pages, untagged), and the local-model panel: if Ollama is
+running on this machine, Lore will summarise a page, propose tags, or fix a
+title using it. Lore detects Ollama, it never ships it — absent, the panel says
+so and nothing else changes.
 
 ## Connecting agents
 
@@ -148,7 +152,7 @@ spends its budget choosing:
 | --- | --- |
 | `wiki_index` | The whole map: every page with path, folder, tags, one-line summary. Call it first |
 | `wiki_search` | Keyword search with a snippet around each match |
-| `wiki_read` | One page in full, plus its backlinks, outgoing links, and whether a human verified it |
+| `wiki_read` | One page in full, plus the pages that link to it and the pages it links to |
 | `wiki_health` | Orphans, dead links, pages past their review window |
 
 **There is no write tool, no delete tool, no shell, and no `propose_edit`.** Not
@@ -162,7 +166,7 @@ zero-result searches are the valuable half.
 ### Anything else
 
 Every surface the MCP server uses is a plain local HTTP endpoint. Full reference
-in [DOCUMENTATION.md](./DOCUMENTATION.md#4-http-api).
+in [DOCUMENTATION.md](./DOCUMENTATION.md#10-http-api).
 
 ```bash
 curl -s localhost:4646/api/agent                    # the map, as markdown
@@ -183,9 +187,15 @@ your vault — so a journal entry or a pending verification never shows up in a
 | `~/.lore/journal-<key>.jsonl` | Append-only write journal per vault: path, kind, lines added/removed |
 | `~/.lore/shadow/<key>/` | A copy of each page as Lore last saw it, so the next write can be diffed and classified |
 | `~/.lore/verified-<key>.json` | The verification ledger: page → hash, timestamp, who, optional note |
+| `~/.lore/attribution.jsonl` | Which agent wrote which file. Only exists if you install the optional Claude Code hook |
+| `~/.lore/models/`, `~/.lore/embeddings-<key>.json` | The local embedding model and the vectors built from your pages |
 
 `<key>` is a short hash of the vault's absolute path, so two linked wikis never
 share a journal or a ledger.
+
+A filesystem watcher can see *what* changed but never *who* changed it. The
+journal is therefore harness-agnostic and author-blind; attribution is a separate,
+opt-in, single-harness addition, and everything in Review works without it.
 
 Inside your vault, Lore writes exactly two things, both only when you ask:
 `AGENTS.md` when you press the button, and pages you create or edit in the app
@@ -193,10 +203,16 @@ itself.
 
 ## Privacy
 
-Nothing is uploaded. Lore is a local Next.js server talking to your own
-filesystem; there is no account, no database, no telemetry endpoint, and no
-network call that leaves the machine. The MCP server talks to the app over
-`127.0.0.1`.
+None of your wiki is uploaded. Lore is a local Next.js server talking to your own
+filesystem; there is no account, no database, and no telemetry. The MCP server
+talks to the app over `127.0.0.1`.
+
+One exception, stated plainly: semantic search runs a small model on this machine,
+and the first time it is used it downloads roughly 23MB of model weights into
+`~/.lore/models`. Weights come down; no page content goes up. Everything after
+that is offline, which is the whole reason the model is local — a corpus with
+client names in it should not be shipped to an embedding API for a "related
+pages" list.
 
 Path traversal is blocked at the filesystem layer: every read and write resolves
 against the vault root and is rejected if it escapes.
@@ -223,8 +239,13 @@ lib/
   schema-check.ts  Frontmatter conformance against your own SCHEMA.md
   palette.ts    The eight-slot colour assignment
   markdown.ts   Rendering, wikilink and tag resolution
+  embeddings.ts Local MiniLM vectors for semantic search and related pages
+  ollama.ts     Detects a local Ollama and runs the three extraction tasks
+  harness.ts    Reads and writes agent config files (MCP entry, Claude hook)
 mcp/server.mjs  The MCP server (stdio, no dependencies)
-docs/           Build log, competitive research, colour options
+electron/       Desktop shell — spawns the Next standalone server and frames it
+                in a window. Packaging config in electron-builder.yml
+docs/           Build log, competitive research, style options
 ```
 
 ## Credits

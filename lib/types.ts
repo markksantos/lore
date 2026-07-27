@@ -29,4 +29,6 @@ export type SearchResult = {
   page: PageMeta;
   score: number;
   snippet: string | null;
+  /** Found by meaning rather than by matching text. Ranked below every literal hit. */
+  semantic?: boolean;
 };

@@ -44,7 +44,11 @@ export type WriteEvent = {
   kind: WriteKind;
   linesAdded: number;
   linesRemoved: number;
-  /** Content hash after the write, for the verification ledger to pin against. */
+  /**
+   * Content hash of the raw file after the write. Recorded but not currently
+   * read: the trust ledger pins its own hash of the page's plain-text body,
+   * computed at verify time, so the two are not comparable.
+   */
   hash: string;
 };
 

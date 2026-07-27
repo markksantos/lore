@@ -1,7 +1,7 @@
 # Lore — technical documentation
 
-Everything a maintainer needs: architecture, data model, API surface, design
-system, and the constraints that shaped each.
+Everything a maintainer needs: architecture, the trust model, the data model,
+the API surface, the design system, and the constraints that shaped each.
 
 ---
 
@@ -14,58 +14,341 @@ no database, no auth, no cloud, and no build-time content step.
 ```
 ┌──────────────┐   HTTP    ┌────────────────────┐   fs    ┌─────────────┐
 │  Browser UI  │ ────────► │  Next.js API route │ ──────► │ Your wiki   │
-│  (/vault)    │           │  (node runtime)    │         │ (markdown)  │
-└──────────────┘           └────────────────────┘         └─────────────┘
+│  (/vault)    │           │  (node runtime)    │ ◄────── │ (markdown)  │
+└──────────────┘           └────────────────────┘  watch  └─────────────┘
                                      ▲
                               JSON-RPC over stdio
                                      │
                            ┌─────────────────────┐
                            │  mcp/server.mjs     │ ◄── Claude Code, Cursor,
-                           │  (5 tools)          │     Claude Desktop, Codex
+                           │  (4 read tools)     │     Claude Desktop, Codex
                            └─────────────────────┘
 ```
 
-The MCP server is a **client of the app**, not a second implementation. It holds
-no filesystem logic of its own — it calls the same HTTP endpoints the UI does.
-That is deliberate: two code paths to the same files is how a read tool and a
-write tool end up disagreeing about what "the vault root" means.
+Two arrows matter more than the boxes.
+
+**The MCP server is a client of the app**, not a second implementation. It holds
+no filesystem logic — it calls the same HTTP endpoints the UI does. Two code
+paths to the same files is how two tools end up disagreeing about what "the vault
+root" means.
+
+**The filesystem arrow points both ways.** Lore does not only write when asked;
+it watches. That is what makes it harness-agnostic: it observes the folder, so it
+captures Claude Code, Cursor, a shell script, Obsidian and a human's own hand
+equally, and nothing has to opt in.
 
 ### Why local-first
 
-Every competitor surveyed either owns your data (Capacities, Bamboo) or owns your
-folder layout (llm_wiki, llm-wiki-manager impose a `raw/` → `wiki/` skeleton).
-Lore's wedge is that it adapts to the folder you already have. That forces
-local-first: the moment there's a server, there's a sync story, an account, and a
-reason to move your files.
+Every competitor surveyed either owns your data or owns your folder layout
+(`raw/` → `wiki/` skeletons). Lore's wedge is that it adapts to the folder you
+already have. That forces local-first: the moment there's a server, there's a
+sync story, an account, and a reason to move your files.
 
 ---
 
-## 2. Data model
+## 2. Why the approval gate was removed
+
+Lore shipped, briefly, as an approval queue: an MCP `propose_edit` tool wrote to
+a pending list, a human accepted, and only then did the file change. That design
+is gone. This section exists so it does not come back.
+
+### What the measurement showed
+
+Against a real vault at `~/Documents/wiki`:
+
+| | |
+| --- | --- |
+| Pages | 1,424 |
+| Tokens | ~2.3M — 12× a 200k context window |
+| Changed in 7 days | 303 |
+| Changed in 24h | 56 |
+| Modified files that were in-place rewrites, not appends | 60 of 75 |
+| Prose deleted, unreviewed | ~1,450 lines in 15 days |
+| Pages carrying an agent-written `confidence:` | 1,156 → 959 high, 202 medium, **2 low** |
+| Pages carrying any human `reviewed` / `verified` field | **0** |
+
+### Three independent failures
+
+1. **Unenforceable.** Proved directly: a plain `Write` to a page bypassed
+   `propose_edit` entirely and Lore did not notice. The gate competed with every
+   agent's built-in file-write tool and lost. A local folder has a hundred write
+   paths and Lore controls one of them.
+2. **Redundant.** Claude Code already asks before editing files. The gate was a
+   second, weaker permission layer stacked on a working one.
+3. **Fails even when it works.** 303 changes a week through a gate is a 303-item
+   queue. A 303-item queue resolves to "Accept All", which manufactures
+   confidence — strictly worse than no gate, because now you believe something.
+
+The self-reported `confidence:` numbers are the same failure in miniature.
+Agents grade their own homework and pass 83% of the time, so the field carries no
+information at all.
+
+### What replaced it: promotion, not permission
+
+- Agents write freely. Nothing is blocked, and no tool asks permission.
+- Everything lands `unverified`. That is the honest default, because it is true.
+- A human promotes what they have actually checked.
+- The promotion is **pinned to a content hash**, so an agent rewriting a verified
+  page lapses it automatically and it returns to the top of the list.
+
+Trust that cannot lapse is not trust, it is a sticker.
+
+The corollary is that Lore's position in the MCP path is worthless as a *gate*
+but unique as a *sensor*. It is the only place that sees what agents ask of the
+wiki, which is where the Insights reports come from.
+
+---
+
+## 3. The write journal (`lib/journal.ts`)
+
+### What it records
+
+One JSONL line per content change, in `~/.lore/journal-<vaultKey>.jsonl`:
+
+```ts
+type WriteEvent = {
+  at: number;
+  relPath: string;
+  kind: "created" | "appended" | "rewritten" | "deleted";
+  linesAdded: number;
+  linesRemoved: number;
+  hash: string;
+};
+```
+
+`vaultKey` is the first 10 hex chars of a SHA-1 of the vault's absolute path, so
+two linked wikis never share a journal.
+
+The fields are chosen to answer one question — *did an agent quietly delete
+something I cared about?* — so removals are tracked as carefully as additions,
+and rewrites are classified separately from appends.
+
+### Classification
+
+Each write is diffed against a **shadow copy** of the file as Lore last saw it,
+kept under `~/.lore/shadow/<vaultKey>/`.
+
+- Every prior line still present, in order, at the top → `appended`. The safe
+  kind.
+- Anything that alters or drops prior lines → `rewritten`. The kind worth a
+  human's attention. Added/removed counts come from a common prefix/suffix trim.
+- No shadow → `created`. No file → `deleted`.
+
+### Hash-authoritative, with a reconcile sweep
+
+**A filesystem event is treated as a hint to go and re-hash, never as a fact
+about what happened.** Nothing is journalled unless the content hash actually
+changed — agents and editors rewrite files with identical bytes surprisingly
+often, and a journal full of no-op entries is a journal nobody reads.
+
+That design is not defensive programming; the events genuinely lie:
+
+- **chokidar throttles `change` at 50ms with no trailing event.** The last write
+  in a fast burst can simply be dropped — and a burst is exactly the shape of an
+  agent's edits.
+- **On Windows, libuv's watcher uses a 4KB buffer** whose overflow surfaces only
+  as a `null` filename. You are told something happened, not what.
+
+So a **reconcile sweep runs every 90 seconds**: walk the vault, hash every page,
+journal anything that differs from its shadow. Hashing a 1,400-page corpus is
+well under a second, so this is cheap enough to run on a timer and is the only
+reason the journal does not silently miss the bursts an agent produces. The
+interval is a deliberate trade — frequent enough that a missed burst surfaces
+while you still remember causing it, rare enough that the cost is invisible.
+
+`awaitWriteFinish` (400ms stability, 100ms poll) absorbs atomic saves. Most
+editors write a temp file and rename, firing add/unlink/add in milliseconds;
+without debouncing the journal fills with phantom delete-recreate pairs.
+
+### Cache invalidation
+
+Every journalled change calls `invalidateVault(root)`. The scan cache (4s TTL)
+has no other way to learn about a write Lore did not make, and a stale index
+means reporting a page as verified after an agent has already rewritten it — the
+precise failure the whole feature exists to catch.
+
+### Lifecycle
+
+Watching starts on the first `GET /api/review` rather than at boot: there is no
+point journalling a vault nobody has opened, and it keeps startup instant. The
+shadow directory is primed from the current vault on that same request, so the
+first real edit produces a meaningful diff instead of reporting every page as
+newly created.
+
+Journal writes are wrapped in `try/catch` and swallowed. Observation must never
+break the thing being observed.
+
+### Attribution (optional)
+
+The journal knows *what* changed but not *who* changed it — a filesystem watcher
+cannot know. `lib/harness.ts` closes that gap for one harness: a Claude Code
+`PostToolUse` hook matching `Write|Edit|MultiEdit` POSTs to `/api/harness`, which
+appends to `~/.lore/attribution.jsonl` (`{ at, file, agent, tool }`).
+
+It is opt-in, single-harness, and deliberately non-load-bearing. The hook runs
+inside the user's agent loop, so that endpoint returns 204 on every path —
+including malformed bodies — and never blocks or fails loudly. Everything in
+Review works with attribution absent.
+
+---
+
+## 4. The trust model (`lib/verify.ts`)
+
+### The ledger
+
+`~/.lore/verified-<vaultKey>.json`, a flat map of page id → verification:
+
+```ts
+type Verification = { hash: string; at: number; by: string; note?: string };
+```
+
+It lives outside the vault so a verification never shows up in a `git diff` of
+the user's notes.
+
+### The four states
+
+| State | Meaning |
+| --- | --- |
+| `unverified` | No human has ever signed this page off. The default, and the honest one |
+| `verified` | Signed off, and the content still hashes to what was signed |
+| `lapsed` | Signed off, then rewritten. The hash no longer matches |
+| `aging` | Signed off more than **120 days** ago and untouched since |
+
+`lapsed` is the state the product exists for. `aging` exists because a
+verification with no clock quietly becomes a lie about a page nobody has looked
+at in a year.
+
+### What the hash covers
+
+The ledger pins a SHA-1 (first 16 hex chars) of the page's **plain-text body**,
+not the raw file. That is deliberate: a verification survives an agent bumping
+`updated:` in frontmatter, but lapses the moment the actual prose changes.
+Otherwise every automated metadata rewrite would silently invalidate work you
+did check.
+
+Trust is always computed from a **forced, uncached** index scan. A trust verdict
+computed from a stale cache is worse than no verdict, because it says "verified"
+about content that has already changed.
+
+---
+
+## 5. Triage — ranking 300 changes down to five
+
+`triage()` scores every page written in the window and returns the top 12.
+Repeated writes to the same page collapse into a single item carrying its most
+severe numbers, so an agent that saved eight times does not occupy eight slots.
+
+| Term | Weight | What it encodes |
+| --- | --- | --- |
+| Lines removed | `× 3` | Deletion is the risk. Agents rewrite in place far more than they append, and deleted prose is the only truly unrecoverable outcome |
+| Lines added | `× 0.2` | Additions are usually fine. Present so a large new page is not invisible, small so it cannot dominate |
+| Inbound links | `log₂(n + 1) × 8` | Blast radius. A bad edit to a hub propagates into every answer that walks the graph. Log-damped because 2 → 20 inbound links matters far more than 200 → 400 |
+| Trust: `lapsed` | `+25` | You had checked this and an agent has since rewritten it. You are carrying a belief that may no longer hold |
+| Trust: `unverified` | `+10` | Never checked — worth attention, but less alarming than a belief that has quietly gone stale |
+| Kind: `rewritten` | `+12` | In-place rewrites are the dangerous shape, independent of size |
+
+Pure additions to pages nobody links to score near zero. That is correct: it is
+the bulk of the 300 weekly changes, and none of it needs a human.
+
+Each item carries a plain-English `why` built from the same signals ("42 lines
+removed · 11 pages link here · you had verified this"), because a score with no
+explanation is a number people learn to ignore.
+
+### Hubs
+
+`hubs()` returns the ten most-linked pages with their trust state, independent of
+whether anything touched them this week. They deserve verification as a standing
+policy rather than by accident.
+
+---
+
+## 6. The usage sensor (`lib/usage.ts`)
+
+Every MCP tool call is reported to `/api/mcp-event` and appended to
+`~/.lore/usage.jsonl`. Four event shapes: `read`, `search` (with hit count),
+`index`, `health`.
+
+Two signals matter, and neither exists anywhere else:
+
+- **Reads** — which pages actually get opened. On a 1,400-page wiki most pages
+  are never read again after they are written. Knowing which carry the weight
+  tells you what to keep sharp. Pages with no reads in the window are reported as
+  *cold*.
+- **Misses** — searches that returned nothing. Each one is a question the wiki
+  could not answer, which is a page worth writing: a to-do list from real demand
+  instead of guesswork.
+
+**A miss is `hits === 0`, nothing else.** Low-hit searches are deliberately not
+counted as near-misses: a one-result search that answered the question is a
+success, and treating it as a miss would bury the real gaps under noise. Queries
+are lowercased and trimmed before grouping, so `"Pricing"` and `"pricing "`
+collapse into one gap.
+
+The log is append-only JSONL, trimmed to the most recent 50,000 events on read.
+A torn final line from a killed process is skipped, never fatal. Recording is
+fire-and-forget in both directions — the MCP server does not await the POST, and
+the route returns 204 unconditionally. An agent's answer must never be delayed by
+bookkeeping.
+
+Default report window is 30 days.
+
+---
+
+## 7. Context budget (`lib/tokens.ts`)
+
+A 1,400-page wiki is roughly 2.3M tokens — 12× a 200k window. Almost nobody knows
+that number about their own notes, because nothing measures it.
+
+Counting uses a **real BPE tokenizer** (`gpt-tokenizer`), not chars ÷ 4. The
+estimate is fine in aggregate and wrong exactly where it matters: markdown is
+dense with punctuation, paths and code, all of which tokenize far worse than
+prose. Being told a folder fits when it does not is the one failure this exists
+to prevent. The tokenizer can reject pathological input (lone surrogates from a
+mangled paste), so `countTokens` falls back to `length / 4` rather than failing
+the whole report.
+
+The counts are GPT-family. Claude's tokenizer differs by a few percent, which is
+immaterial against a 200k window when the answer is "this folder is 1.1M tokens".
+
+`indexTokens` is what an agent pays just to orient — the size of the generated
+map from `/api/agent`.
+
+**Outliers are relative, not absolute:** a page counts as an outlier above
+`max(mean × 6, 2000)` tokens. A 4k-token page is unremarkable in a wiki of essays
+and alarming in a wiki of one-liners.
+
+---
+
+## 8. Data model
 
 ### `WikiPage` (server, `lib/wiki.ts`)
 
 | Field | Notes |
 | --- | --- |
-| `id` | Vault-relative path, no extension, POSIX separators. The stable key. |
-| `relPath` | Vault-relative path with extension. |
-| `title` | `frontmatter.title` → first `# H1` → filename, in that order. |
-| `folder` | Vault-relative directory; `""` for root-level pages. |
-| `tags` | Frontmatter `tags`/`tag` plus inline `#tags` found outside code. |
-| `frontmatter` | Parsed YAML. Server-only — stripped before the client. |
-| `excerpt` | First 240 chars of plain text. |
-| `words`, `mtime` | For the health report and list rows. |
-| `links` | Outgoing links **resolved to real page ids**. |
-| `rawLinks` | Link targets exactly as written, pre-resolution. Server-only. |
-| `plain` | Whole body as plain text. Server-only; search reads it. |
+| `id` | Vault-relative path, no extension, POSIX separators. The stable key |
+| `relPath` | Vault-relative path with extension |
+| `title` | `frontmatter.title` → first `# H1` → filename, in that order |
+| `folder` | Vault-relative directory; `""` for root-level pages |
+| `tags` | Frontmatter `tags`/`tag` plus inline `#tags` found outside code |
+| `frontmatter` | Parsed YAML. Server-only — stripped before the client |
+| `excerpt` | First 240 chars of plain text |
+| `words`, `mtime` | For the health report and list rows |
+| `links` | Outgoing links **resolved to real page ids** |
+| `rawLinks` | Link targets exactly as written, pre-resolution. Server-only |
+| `plain` | Whole body as plain text. Server-only; search and hashing read it |
 
 `rawLinks` exists because `links` is overwritten with resolved ids during
 indexing. Without keeping the originals, a link that resolved to nothing would be
 indistinguishable from no link at all — and the dead-link check would silently
-always pass. (It did, until it was caught in QA. See the build log.)
+always pass. It did, until QA caught it.
 
 `plain` is held in the index so search never re-reads the disk. A personal wiki
 is a few MB of prose; paying that once per scan beats a file read per page per
 keystroke.
+
+Malformed YAML never hides a note: the parse is wrapped, and a failure treats the
+whole file as body. Files that cannot be read at all land in `index.errors` and
+are surfaced in the UI rather than dropped.
 
 ### Link resolution
 
@@ -74,23 +357,15 @@ resolves — this is how Obsidian's short `[[Page]]` form works. An ambiguous
 basename is left unresolved rather than guessed, and shows up in the health
 report as a dead link.
 
-### `Proposal` (server, `lib/proposals.ts`)
+### Scan scope
 
-Stored in `~/.lore/proposals.json`, namespaced per vault by a hash of the root so
-two linked wikis never share a queue.
-
-- `kind`: `create` | `append` | `replace`
-- `risk`: `low` | `medium` | `high` — inferred from `kind` when the agent doesn't
-  state it, and never inferred as benign: `replace` defaults to `high`.
-- `base`: file content at proposal time, `null` for creates.
-
-`base` powers a conflict check on accept: if the file changed on disk after the
-proposal was made, accepting is refused rather than silently discarding whatever
-the user wrote in between.
+`.md` / `.mdx` only. `.git`, `.obsidian`, `.trash`, `.smart-env`, `node_modules`,
+`.next`, `__pycache__` and dot-directories are skipped — the point is to sit on
+top of an existing Obsidian vault without indexing its config or its bin.
 
 ---
 
-## 3. Path safety
+## 9. Path safety
 
 Lore is an HTTP server with filesystem write access, so `resolveInVault()` is the
 security boundary. Every read and write resolves the requested path against the
@@ -107,12 +382,17 @@ Verified: `GET /api/page?path=../../../../../etc/passwd` and
 `PUT /api/page {"path":"../../../../../tmp/pwned.md"}` both return
 `{"error":"Path escapes the vault."}` and write nothing.
 
+The MCP install endpoint takes the server path from `process.cwd()` rather than
+from the request body, so a stray caller cannot write an arbitrary command into
+an agent's config file.
+
 ---
 
-## 4. HTTP API
+## 10. HTTP API
 
 All routes are `runtime: "nodejs"`, `dynamic: "force-dynamic"`. Errors return
-`{ "error": "message" }` with a non-2xx status.
+`{ "error": "message" }` with a non-2xx status. A request that needs a vault when
+none is linked returns 409.
 
 ### Vault
 
@@ -121,17 +401,24 @@ All routes are `runtime: "nodejs"`, `dynamic: "force-dynamic"`. Errors return
 | `GET` | `/api/vault` | — | `{ vaults, activeVault, suggestions }` |
 | `POST` | `/api/vault` | `{ action: "link", path }` | `{ vault }` |
 | `POST` | `/api/vault` | `{ action: "activate" \| "unlink", root }` | `{ ok }` |
+| `POST` | `/api/pick` | — | `{ path }`, `{ cancelled: true }`, or 501 |
 
-`suggestions` is only computed on first run (no vault linked). It probes seven
-common locations and reports only those that exist *and* already contain
-markdown — a suggestion the user has to verify is worse than no suggestion.
+`suggestions` is only computed on first run. It probes seven common locations and
+reports only those that exist *and* already contain markdown — a suggestion the
+user has to verify is worse than no suggestion.
+
+`/api/pick` shells out to `osascript` for a native folder picker and returns 501
+(not an error) off macOS, so the UI can fall back to the text field without
+treating it as a failure. The browser cannot do this job: the File System Access
+API is Chrome/Edge-only, and its handles expose no path — so a vault chosen that
+way could not be handed to the MCP server or written to Lore's config.
 
 ### Pages
 
 | Method | Route | Body / query | Returns |
 | --- | --- | --- | --- |
-| `GET` | `/api/pages` | `?refresh=1` to force a rescan | full `VaultIndex` |
-| `GET` | `/api/folder` | `?path=` (empty = vault root) | `{ folder, sections, incoming, totals }` |
+| `GET` | `/api/pages` | `?refresh=1` forces a rescan | full `VaultIndex` |
+| `GET` | `/api/folder` | `?path=` `?offset=` `?limit=` | `{ folder, sections, total, offset, limit, hasMore, … }` |
 | `GET` | `/api/page` | `?path=` | `{ page, frontmatter, raw, backlinks, outgoing }` |
 | `PUT` | `/api/page` | `{ path, content }` | `{ ok, savedAt }` |
 | `POST` | `/api/page` | `{ path, content }` | `{ ok, path }` — 409 if it exists |
@@ -139,36 +426,86 @@ markdown — a suggestion the user has to verify is worse than no suggestion.
 
 `POST` opens with the `wx` flag, so creating never clobbers an existing note.
 
+`/api/folder` returns pages *with their full source* in one request, because the
+folder is the unit the user reads — fetching bodies lazily while they scroll
+would make the document assemble itself in front of them. It is paginated
+(default 40, max 200, newest-edited first) because one measured vault keeps 654
+pages in a single folder and returning all of them would be a multi-megabyte
+response rendering thousands of DOM nodes.
+
+### Review and trust
+
+| Method | Route | Body / query | Returns |
+| --- | --- | --- | --- |
+| `GET` | `/api/review` | `?days=` (default 7) | `{ watching, days, events, counts, triage, hubs }` |
+| `POST` | `/api/review` | `{ action: "verify", pageId, note? }` | `{ ok, trust: "verified" }` |
+| `POST` | `/api/review` | `{ action: "unverify", pageId }` | `{ ok, trust: "unverified" }` |
+
+`GET` is also what starts the filesystem watcher and primes the shadow copies.
+`counts` is the whole-corpus trust split; `triage` is the ranked list; `hubs` is
+the standing blast-radius list.
+
+### Insights
+
+| Method | Route | Query | Returns |
+| --- | --- | --- | --- |
+| `GET` | `/api/usage` | `?days=` (default 30) | the usage report — hot, cold, gaps, daily, agents |
+| `GET` | `/api/budget` | — | the context budget — totals, per-folder, outliers |
+| `POST` | `/api/mcp-event` | `{ t, agent, … }` | always 204 |
+
+`/api/budget` tokenizes the whole vault, so it is the one endpoint that may take
+a second on a large corpus. It is a page the user opens deliberately, never
+polled, which makes that an acceptable trade for an accurate number.
+
 ### Search, health, agents
 
 | Method | Route | Returns |
 | --- | --- | --- |
 | `GET` | `/api/search?q=` | `{ results: [{ page, score, snippet }] }` |
+| `GET` | `/api/semantic?q=` or `?related=` | `{ results, status }` — local embeddings, empty when unavailable |
+| `POST` | `/api/semantic` | schedules an index refresh; returns current `status` |
 | `GET` | `/api/health` | the health report (below) |
 | `GET` | `/api/agent` | the vault map as `text/markdown` |
-| `POST` | `/api/agent` | writes that map to `AGENTS.md` at the vault root |
+| `POST` | `/api/agent` | writes that map into `AGENTS.md`; `?force=1` replaces the whole file |
+| `GET` | `/api/harness` | what is wired up on this machine, plus the exact config snippets |
+| `POST` | `/api/harness` | `{ action: "install-hook" \| "install-mcp", target }`, or a hook payload (204) |
+| `GET` | `/api/ai` | `{ host, running, models, error, recommended, reason }` — what Ollama has locally |
+| `POST` | `/api/ai` | `{ task: "summarize" \| "tags" \| "title", text, model?, existing? }` → `{ model, task, text \| tags }`; 503 when no local model |
 
-### Proposals
+`/api/ai` is the only route that talks to something other than the filesystem,
+and it talks to `127.0.0.1:11434`. Lore detects Ollama and never ships it; when
+it is absent the feature is absent and nothing else in the app depends on it.
+The three tasks are extraction, not authorship — they compress what the page
+already says, which is what a small local model is actually good at.
 
-| Method | Route | Body | Returns |
-| --- | --- | --- | --- |
-| `GET` | `/api/proposals` | — | `{ proposals: [...with diff stats] }` |
-| `POST` | `/api/proposals` | `{ path, kind, content, reason, agent, risk }` | `{ proposal }` |
-| `POST` | `/api/proposals` | `{ action: "accept" \| "reject", id }` | `{ proposal }` |
-| `POST` | `/api/proposals` | `{ action, ids: [...] }` | `{ resolved, failures }` — the bulk form |
+`POST /api/agent` fences its output between `<!-- lore:begin -->` and
+`<!-- lore:end -->`. Everything outside the fence is preserved verbatim; a file
+with no fence gets the map appended below what is already there. This was a
+data-loss bug aimed squarely at the target user — anyone following the llm-wiki
+pattern already keeps a hand-written `AGENTS.md`, and the button used to destroy
+it.
 
-`/api/folder` returns every page in a folder *with its full source* in one
-request, because the folder is the unit the user reads. Fetching bodies lazily
-while they scroll would make the document assemble itself in front of them.
+### Residual: the removed gate
 
-Bulk resolve runs sequentially, not in parallel: two accepts touching the same
-file concurrently would both pass the conflict check and then race on the write.
-Failures are collected rather than thrown, so one conflicting proposal doesn't
-block the other nine.
+`lib/proposals.ts` and `/api/proposals` are still in the tree, `/api/folder`
+still attaches pending proposals to each section, and the folder document still
+renders them — including a header bar with **Accept all** and **Reject all**
+buttons, which is precisely the affordance §2 argues against.
+
+**Nothing in the product creates one.** `propose_edit` is gone, no MCP tool
+writes a proposal, and nothing in Review or Insights reads one — so in normal
+use the list is empty and the bar never renders. `POST /api/proposals` with a
+`{ path, content, agent, reason }` body still creates one, and the same route
+with `{ action: "accept" | "reject", id | ids }` resolves it; that hand-made
+path is the only way to see any of this UI.
+
+It is dead weight pending removal, not a feature. Documented here so the next
+person to find an accept/reject button in the Wiki view knows it is a leftover
+rather than a second, contradictory trust model.
 
 ---
 
-## 5. Search ranking
+## 11. Search ranking
 
 Deliberately **not** fuzzy. On a personal wiki an exact-ish title match is almost
 always the thing you meant, and fuzzy ranking buries it under coincidental body
@@ -184,18 +521,19 @@ hits.
 | Body contains query | +10 |
 
 Ties break on `mtime`, newest first. Snippets are centred on the match, not taken
-from the top of the page.
+from the top of the page, so the user sees the hit rather than the first 200
+characters of an unrelated intro.
 
 ---
 
-## 6. Health report
+## 12. Health report
 
 | Check | What it means |
 | --- | --- |
-| **Orphans** | No backlinks *and* no outgoing links. An agent walking your links never reaches them. |
-| **Dead links** | A `[[link]]` target that matches no page. Each one is a page you meant to write. |
-| **Stale** | Past its review window. |
-| **Untagged** | The cheapest findability signal, missing. |
+| **Orphans** | No backlinks *and* no outgoing links. An agent walking your links never reaches them |
+| **Dead links** | A `[[link]]` target that matches no page. Each one is a page you meant to write |
+| **Stale** | Past its review window |
+| **Untagged** | The cheapest findability signal, missing |
 
 ### Staleness windows
 
@@ -225,24 +563,25 @@ orphans and dead links — cost more than a missing tag.
 
 ---
 
-## 7. Markdown rendering
+## 13. Markdown rendering
 
 `marked` with GFM, plus two pre-passes for syntax markdown doesn't own.
 
 **Order matters.** Fenced blocks and code spans are masked out *first*, so a
 `[[` inside a code sample isn't rewritten into a link and stops being the thing
 it documents. The mask token is prefixed (`LOREMASK<n>`) rather than a bare
-number, because an unprefixed numeric placeholder would also match a year or a
-version in the prose and get corrupted on the way back out.
+number, because an unprefixed numeric placeholder also matches a year or a
+version in the prose and corrupts it on the way back out.
 
-- **Wikilinks** resolve to the target's *title*, not its path — `[[stack/deploy-pipeline]]`
-  reading as "Deploy pipeline" mid-sentence is the difference between a wiki and
-  a file listing. An explicit `|alias` always wins. Unresolved links render with
-  a dashed border: an unbuilt page is a to-do, not an error.
+- **Wikilinks** resolve to the target's *title*, not its path —
+  `[[stack/deploy-pipeline]]` reading as "Deploy pipeline" mid-sentence is the
+  difference between a wiki and a file listing. An explicit `|alias` always wins.
+  Unresolved links render with a dashed border: an unbuilt page is a to-do, not
+  an error.
 - **Inline tags** render as pills, matched only when preceded by whitespace or
-  `(` so a `# heading` is never mistaken for one.
+  `(`, so a `# heading` is never mistaken for one.
 - **A leading `# H1` that repeats the page title is dropped**, since the title is
-  already in the page header and rendering both makes every page look broken.
+  already in the section header and rendering both makes every page look broken.
 
 Raw HTML passes through, matching Obsidian. These are the user's own local files
 rendered in their own browser — there is no untrusted author to sanitise against,
@@ -250,7 +589,7 @@ and stripping it would break every note that embeds a table or `<details>`.
 
 ---
 
-## 8. Design system
+## 14. Design system
 
 Adapted from Creed (MIT). Tokens live in `app/globals.css` under `--lore-*`.
 
@@ -259,13 +598,13 @@ hairline borders — light mode on warm near-white (`#f9f9f8`), dark on near-bla
 (`#0e0e0d`) with foreground pulled off pure white so long reading stays easy.
 
 **Action colour** is `#2563eb`, held constant across both themes — primary CTAs,
-accept buttons, focus rings. Holding it fixed is what makes it read as *the*
+sign-off buttons, focus rings. Holding it fixed is what makes it read as *the*
 brand colour rather than a theme variable.
 
-**Plates** carry the product's colour identity. Eight slots (`--pal-1` … `--pal-8`)
-— Creed's five plate hues plus three from the same family — assigned by stable
-index in `lib/palette.ts`. Every folder and every page owns one, so a wiki reads
-as a set of coloured objects rather than a grey file list.
+**Plates** carry the product's colour identity. Eight slots (`--pal-1` …
+`--pal-8`) — Creed's five plate hues plus three from the same family — assigned
+by stable index in `lib/palette.ts`. Every folder and every page owns one, so a
+wiki reads as a set of coloured objects rather than a grey file list.
 
 Each slot has three values, because one colour cannot do all three jobs:
 
@@ -276,28 +615,20 @@ Each slot has three values, because one colour cannot do all three jobs:
 | `--pal-N-ink` | darker companion that stays legible *on* that tint |
 
 Components set them as inline custom properties (`--plate`, `--plate-tint`,
-`--plate-ink`) rather than class names, so one stylesheet rule serves all eight
-slots and Tailwind never sees a dynamically-built class it would purge.
+`--plate-ink`) via `paletteVars(i)` rather than class names, so one stylesheet
+rule serves all eight slots and Tailwind never sees a dynamically-built class it
+would purge.
 
-Folders take their slot by **position** (adjacent folders in the sidebar are
-never the same colour); pages take theirs by **position within the folder**, for
-the same reason. An earlier version hashed the page id, and two adjacent sections
-promptly collided on the same colour — which is precisely what the colour exists
-to prevent.
+Folders take their slot by **position** in the sidebar, and pages by **position
+within the folder** — adjacent items are therefore never the same colour. An
+earlier version hashed the page id, and two adjacent sections promptly collided,
+which is precisely what the colour exists to prevent. `slotForKey()` (hashed)
+survives for views where there is no meaningful position, such as the two panes
+of Compare.
 
-**Scenery fades** are the signature. Sky art is never cropped hard against the
-page; it melts through a multi-stop eased gradient:
-
-- `--scenery-fade-down` — melts art downward into the page (hero, onboarding).
-- `--scenery-fade-band` — a matched pair of fades around a clear centre, framing
-  the closing band so it joins both the section above and the footer below with
-  no visible seam.
-
-Stops are densely sampled along an ease curve; a naive three-stop gradient bands
-visibly against a photographic sky.
-
-**Type scale**: `.t-hero`, `.t-section`, `.t-step`, `.t-lede`, `.t-body`,
-`.t-meta`. Nothing sets an ad-hoc font-size.
+**App type scale**: 26px view titles, 18px section titles, 15px body, 13px meta,
+11px labels. The landing page has its own scale in `.t-hero` / `.t-section` /
+`.t-step` / `.t-lede` / `.t-body` / `.t-meta`. Nothing sets an ad-hoc font-size.
 
 **Squircle bullets, never round dots** (`border-radius: 0.13em` on a `0.4em`
 square) — the one detail that stops a markdown list reading as browser default.
@@ -307,7 +638,14 @@ square) — the one detail that stops a markdown list reading as browser default
 page into a stack of bracketed blocks; the pill marks the heading and lets the
 body align flush with it.
 
-### Art
+### Scenery
+
+Sky art is never cropped hard against the page; it melts through a multi-stop
+eased gradient. `--scenery-fade-down` melts art downward into the page (hero,
+onboarding); `--scenery-fade-band` is a matched pair of fades around a clear
+centre, framing the closing band so it joins both the section above and the
+footer below with no visible seam. Stops are densely sampled along an ease curve;
+a naive three-stop gradient bands visibly against a photographic sky.
 
 Twelve assets in `public/assets/landing/scenery/` — six scenes, each a
 `hero-N.png` / `hero-N-dark.png` pair. The dark version of each is the *same
@@ -315,19 +653,14 @@ composition at night*, produced by editing the light original rather than
 generating separately, so the theme toggle reads as a change in time of day
 rather than a swap between two unrelated pictures.
 
-**One scene is picked per request** (`lib/scenery.ts`, `pickScene()`), so the
-page greets you differently every visit without ever looking like a different
-product. The roll happens on the server and is passed down as a prop: a
-client-side roll would either mismatch the server's HTML during hydration or
-leave the hero blank until after first paint. This is why `app/page.tsx` is
-`force-dynamic` — the rotation is its only dynamic input.
-
-The closing band **reuses whichever scene the hero drew**, anchored to the foot
-of the image (`position="bottom"`) instead of its centre. The page therefore
-always opens and closes in the same world, and there is no second set of assets
-to keep in sync. Because that art is a saturated sky rather than the muted plate
-the band used to carry, the closing headline is white over a radial wash — the
-same treatment as the hero.
+**One scene is picked per request** (`lib/scenery.ts`), so the page greets you
+differently every visit without ever looking like a different product. The roll
+happens on the server and is passed down as a prop: a client-side roll would
+either mismatch the server's HTML during hydration or leave the hero blank until
+after first paint. This is why `app/page.tsx` is `force-dynamic` — the rotation is
+its only dynamic input. The closing band reuses whichever scene the hero drew,
+anchored to the foot of the image, so the page opens and closes in the same world
+with no second set of assets to keep in sync.
 
 `SceneryImage` self-heals: if a file 404s it renders a labelled placeholder
 naming the exact path to drop the art into, so a half-finished fork never ships a
@@ -335,11 +668,10 @@ silent blank band.
 
 ---
 
-## 9. Motion
+## 15. Motion
 
-Four primitives in `lib/anim.ts` drive everything that moves. Nothing on the
-page animates outside them, so the whole site shares one easing curve
-(`EASE = [0.22, 1, 0.36, 1]`).
+Four primitives in `lib/anim.ts` drive everything that moves, so the whole site
+shares one easing curve (`EASE = [0.22, 1, 0.36, 1]`).
 
 | Primitive | Job |
 | --- | --- |
@@ -354,56 +686,22 @@ Two rules they all obey:
   element has actually scrolled away. A demo frozen on frame zero because an
   IntersectionObserver callback never fired reads as a broken page — far worse
   than one that plays off-screen.
-- **A resting frame, not frame zero.** Every looping demo declares a `restStep`
-  — the frame that best explains the idea as a still. Under
+- **A resting frame, not frame zero.** Every looping demo declares a `restStep` —
+  the frame that best explains the idea as a still. Under
   `prefers-reduced-motion` it parks there and never advances.
 
-### The hero simulator
+The landing page's product shot is a working replica of the app, not a picture,
+and is rendered at the app's **real type scale** rather than shrunk to fit. An
+earlier version squeezed the same content into 11–14px and the result read as a
+*diagram of* a product rather than the product. If the shot needs to be smaller,
+the card gets smaller — the type does not. The document measure inside it is a
+centred 700px column; letting the body run the full width of the pane makes every
+screen look airy and unresolved.
 
-`components/marketing/hero-simulator.tsx` is a working replica, not a picture.
-Folders switch, tabs switch, proposals accept and reject, accepted lines merge
-into the page, counters decrement, and a Reset appears when the queue empties.
-It runs entirely on local state — the marketing page demonstrates the review
-loop instead of describing it.
-
-**It is rendered at the app's real type scale**, not shrunk to fit: 26px folder
-title, 18px section titles, 15px body, 14px sidebar. An earlier version squeezed
-the same content into 11–14px and the result read as a *diagram of* a product
-rather than the product. If the shot needs to be smaller, the card gets smaller
-— the type does not.
-
-Box metrics are fixed, and they matter as much as the type did:
-
-| | Value |
-| --- | --- |
-| Card | `max-w-6xl` (1152px) |
-| Height | `h-[540px] sm:h-[580px] lg:h-[620px]` |
-| Chrome bar | `h-11` (44px) |
-| Sidebar | `w-[212px]`, `px-5 py-5` |
-| Document measure | `mx-auto max-w-[700px] px-4 md:px-7 pb-10` |
-| Section spacing | `mt-9` (36px) |
-
-The document measure is the one people skip. Letting the body run the full width
-of the pane makes every screen look airy and unresolved — a 700px column centred
-in the remaining space is what makes it read as a document.
-
-`components/marketing/browser-chrome.tsx` frames it. Real traffic-light colours,
-navigation affordances and a centred address pill, because three flat grey
-circles read as a placeholder and the window frame is the first thing anyone
-looks at. It is entirely decorative and `aria-hidden`, so a screen reader is
+`components/marketing/browser-chrome.tsx` frames it with real traffic-light
+colours and a centred address pill, because three flat grey circles read as a
+placeholder. It is entirely decorative and `aria-hidden`, so a screen reader is
 never offered a browser toolbar that does nothing.
-
-### The compatibility wall
-
-Which chips have a real brand mark is resolved **on the server**
-(`lib/agents.ts` reads `public/assets/agents/`) and passed down. Letting each
-chip probe with an `<img>` and fall back on error costs a 404 per tool per page
-load and fills the console with failures that look like bugs.
-
-Tools without an SVG render a palette-tinted monogram. That is deliberate: a
-hand-drawn near-miss of someone's brand mark reads as broken, not as shorthand.
-Drop a real SVG into `public/assets/agents/<slug>.svg` and the chip picks it up
-with no code change.
 
 ### Layout note
 
@@ -413,52 +711,116 @@ happened, and cost 27px of horizontal overflow at 375px. Demo cards therefore
 carry `min-w-0 overflow-hidden`, and every grid that holds one carries
 `min-w-0`.
 
-## 10. MCP server
+---
+
+## 16. MCP server
 
 `mcp/server.mjs` — stdio JSON-RPC 2.0, zero dependencies. The protocol surface
 needed is four methods (`initialize`, `tools/list`, `tools/call`, `ping`), so a
 dependency would cost more than it saves.
 
+Four tools: `wiki_index`, `wiki_search`, `wiki_read`, `wiki_health`. **No write
+tool, no delete tool, no shell, no `propose_edit`.** Four rather than twenty-one
+because an agent that has to choose between twenty-one overlapping tools spends
+its budget choosing.
+
+One detail in the tool surface is load-bearing:
+
+- A zero-result `wiki_search` returns *"No pages match … This gap has been logged
+  for the human to fill."* The wording nudges the agent to say so out loud instead
+  of quietly inventing an answer, and the miss is the most valuable thing the
+  server can observe.
+
 Tool failures return a `result` with `isError: true` rather than a protocol
 error, so the agent sees the message and can recover. The error text names the
 likely cause — "Is Lore running?" — because a dead local server is the failure
-mode 90% of the time.
-
-`propose_edit`'s success message is written for the agent, not the human:
-
-> The file has NOT been changed. Do not assume it was accepted.
-
-Without that sentence, models reliably report the wiki as updated.
+mode most of the time.
 
 ### Environment
 
 | Var | Default | Purpose |
 | --- | --- | --- |
 | `LORE_URL` | `http://127.0.0.1:4646` | Where the app is listening |
-| `LORE_AGENT_NAME` | `MCP agent` | Name shown on proposals in the queue |
+| `LORE_AGENT_NAME` | `MCP agent` | The name this client is logged under in Insights |
 
 ---
 
-## 11. Known limitations
+## 17. Known limitations
 
-Stated plainly rather than discovered later:
+Stated plainly rather than discovered later.
+
+**Watching**
+
+- **Nothing is journalled while Lore is not running.** Writes made with the app
+  closed are caught by the next reconcile sweep, but they are timestamped at
+  *detection* time, not at write time, so their position in the timeline is
+  wrong.
+- **Watching starts on the first Review load**, not at boot. In a session where
+  Review is never opened, the journal does not advance.
+- **The journal has no author.** A filesystem watcher cannot know who wrote a
+  file. Attribution exists only where the optional Claude Code hook is installed,
+  and only for that harness.
+- **`WriteEvent.hash` is recorded but never read.** It hashes the raw file; the
+  ledger pins a hash of the plain-text body, computed separately at verify time.
+  The two are not comparable, and the field is currently vestigial.
+
+**Trust**
+
+- **Verification is whole-page and binary.** There is no section-level sign-off,
+  so a one-line fix to a long verified page lapses the whole page.
+- **`by` is always `"me"`.** There are no accounts, so the ledger's author field
+  carries no information in a multi-person setting.
+- **The `note` field is stored but the UI never sets it.** The API accepts it.
+- **Trust does not reach the agent.** Neither `/api/page` nor `wiki_read`'s
+  output carries a trust state — `PageMeta` has no such field — so an agent
+  cannot prefer verified pages or flag unverified ones. `wiki_read`'s
+  description used to tell the model to do both; the sentence was removed rather
+  than left promising something the payload does not deliver. Trust is a
+  human-facing signal only, until the field ships.
+- **Decay is a fixed 120 days for every page**, even though the health report
+  already knows that different kinds of content rot at different rates. Those two
+  clocks should agree and do not.
+
+**Scale**
+
+- **Health and budget scan the whole vault per request.** Fine to a few thousand
+  pages; beyond that it wants incremental indexing.
+- **The Duplicates and Schema lenses fetch page bodies from the browser**, a
+  folder or a page at a time. They are throttled and yield between chunks, but on
+  a very large vault they are the slowest things in the app.
+- **A folder document loads full source for up to 200 pages at once.** The right
+  unit for a personal wiki; a folder with many hundreds of pages wants
+  virtualising.
+- **The diff is a common-prefix/suffix trim, not Myers.** Correct and free for
+  small, mostly-additive edits; a large reordering renders as one big remove
+  followed by one big add.
+
+**Scope**
 
 - **The vault UI is desktop-only.** The sidebar is a fixed 15.5rem with no mobile
-  drawer. Lore runs on the machine that holds the wiki, so a phone layout would
-  be scaffolding for a scenario that doesn't exist. The landing page *is* fully
+  drawer. Lore runs on the machine that holds the wiki, so a phone layout would be
+  scaffolding for a scenario that does not exist. The landing page *is* fully
   responsive and verified free of horizontal overflow at 375/414/768px.
-- **No file watcher.** The index caches for 4s and rescans on demand. Edits made
-  in Obsidian while Lore is open appear on the next navigation, not instantly.
+- **The native folder picker is macOS-only.** Everywhere else, paste a path.
 - **No image or attachment handling.** Markdown only.
-- **Rename/move isn't exposed in the UI.** Create, edit, and delete are.
-- **The diff is a common-prefix/suffix trim, not Myers.** Correct and free for
-  the small, mostly-additive edits agents propose; a large reordering will render
-  as one big remove followed by one big add.
-- **Health scans the whole vault on every request.** Fine to a few thousand pages;
-  it would need incremental indexing beyond that.
-- **A folder document loads every page in that folder at once.** That is the
-  right unit for a personal wiki, but a single folder holding many hundreds of
-  pages would want virtualising.
+- **Rename and move are not exposed in the UI.** Create, edit and delete are.
 - **The palette repeats after eight.** A folder with more than eight pages reuses
   colours further down the document. Adjacent sections still differ, which is
   what the colour is for.
+
+**Loose ends**
+
+- **Token counts are GPT-family**, a few percent off Claude's. The `index` usage
+  event additionally logs a crude chars ÷ 4 estimate; only the Insights budget
+  uses the real tokenizer.
+- **Semantic search is not offline on first use.** The model weights (~23MB) are
+  fetched once into `~/.lore/models`; everything after that is local. Page content
+  never leaves the machine, but "no network at all" is not true on a cold start.
+- **The desktop build is unsigned.** `electron/main.js`, `electron/preload.js`
+  and `electron-builder.yml` are all present and `npm run electron` works, but
+  `electron-builder.yml` sets `identity: null` for macOS, so `dist:mac` produces
+  a DMG that is neither signed nor notarised. `dist:mac` / `dist:win` also
+  require `npm run build` to have produced `.next/standalone` first — the shell
+  spawns that server rather than loading a static bundle.
+- **The removed approval gate still has residual code** (`lib/proposals.ts`,
+  `/api/proposals`, and proposal rendering inside the folder document). See §10.

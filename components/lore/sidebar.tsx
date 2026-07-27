@@ -248,8 +248,19 @@ function SearchResults({
           onClick={() => onOpenPage(result.page.id)}
           className="block w-full rounded-lg px-2 py-2 text-left transition-colors hover:bg-[var(--lore-surface-raised)]"
         >
-          <span className="block truncate text-[13px] font-medium text-[var(--lore-text-primary)]">
-            {result.page.title}
+          <span className="flex items-center gap-1.5">
+            <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-[var(--lore-text-primary)]">
+              {result.page.title}
+            </span>
+            {result.semantic ? (
+              <span
+                className="shrink-0 rounded px-1 text-[9px] font-bold uppercase tracking-[0.05em] text-[var(--lore-accent)]"
+                style={{ background: "var(--lore-accent-tint)" }}
+                title="Found by meaning, not by matching text"
+              >
+                related
+              </span>
+            ) : null}
           </span>
           {result.snippet ? (
             <span className="mt-0.5 line-clamp-2 block text-[11.5px] leading-snug text-[var(--lore-text-tertiary)]">

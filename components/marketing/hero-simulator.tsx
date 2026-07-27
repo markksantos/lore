@@ -4,21 +4,24 @@ import { useCallback, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   BookText,
+  ShieldCheck,
+  BarChart3,
   Plug,
-  Settings,
   Search,
+  Shield,
   Check,
-  X,
   RotateCcw,
-  FileDown,
   Copy,
+  FileDown,
   Clock,
   History,
-  LockOpen,
   MoreHorizontal,
   CloudUpload,
   ChevronDown,
-  Activity,
+  Radio,
+  PenLine,
+  Flame,
+  HelpCircle,
 } from "lucide-react";
 import { BrandMark } from "@/components/marketing/brand-mark";
 import { BrowserChrome } from "@/components/marketing/browser-chrome";
@@ -29,10 +32,11 @@ import { cn } from "@/lib/utils";
 /**
  * The hero product shot — a working replica of the app, not a picture of one.
  *
- * Folders switch, tabs switch, proposals accept and reject, accepted lines
- * merge into the page, counters decrement, and the whole thing resets. Local
- * state only, no backend: the marketing page demonstrates the review loop
- * rather than describing it.
+ * It demonstrates the loop the product actually runs: nothing is blocked,
+ * everything lands unverified, a human signs off on what they checked, and a
+ * later agent rewrite drops that sign-off. The rewrite is on a button because
+ * this is a demo page with no filesystem behind it; in the app the watcher
+ * fires it.
  *
  * Type is sized at roughly the app's real scale rather than shrunk to fit. A
  * miniaturised UI reads as a diagram of a product; a full-size one reads as the
@@ -42,223 +46,325 @@ import { cn } from "@/lib/utils";
  * realistic screenshot is worth nothing if it leaks a real client or rate.
  */
 
-type DemoProposal = {
-  id: string;
+type Trust = "verified" | "aging" | "lapsed" | "unverified";
+
+type WriteEvent = {
   agent: string;
-  risk: "low" | "medium" | "high";
-  kind: "append" | "replace";
-  reason: string;
-  add: string[];
-  /** Index of the line this would replace, if any. */
-  replaces?: number;
+  kind: "created" | "appended" | "rewritten";
+  added: number;
+  removed: number;
+  when: string;
+  why: string;
+  /** Ranking weight. A lapsed sign-off outranks everything else. */
+  weight: number;
 };
 
 type DemoPage = {
   id: string;
   title: string;
   path: string;
+  folder: string;
+  slot: number;
+  inbound: number;
   lines: string[];
-  proposals: DemoProposal[];
+  trust: Trust;
+  event?: WriteEvent;
+  /** What a simulated agent rewrite would put in place of the first line. */
+  rewrite?: string;
 };
 
-type DemoFolder = { name: string; pages: DemoPage[] };
+const FOLDERS = ["stack", "operating", "clients", "projects"] as const;
 
-const INITIAL: DemoFolder[] = [
+const INITIAL: DemoPage[] = [
   {
-    name: "stack",
-    pages: [
-      {
-        id: "deploy",
-        title: "Deploy pipeline",
-        path: "stack/deploy-pipeline.md",
-        lines: [
-          "Push to main deploys to production. There is no staging step.",
-          "A red build blocks the deploy — never override it.",
-        ],
-        proposals: [
-          {
-            id: "p1",
-            agent: "Claude Code",
-            risk: "medium",
-            kind: "append",
-            reason: "Rollbacks came up twice this week and the answer isn't written down.",
-            add: ["Rollback is a revert commit, not a dashboard button."],
-          },
-        ],
-      },
-      {
-        id: "postgres",
-        title: "Postgres notes",
-        path: "stack/postgres-notes.md",
-        lines: [
-          "Running Postgres 16. Connection pooling handled at the edge.",
-          "Migrations are forward-only. There is no down migration.",
-        ],
-        proposals: [
-          {
-            id: "p2",
-            agent: "Codex",
-            risk: "high",
-            kind: "replace",
-            reason: "The deploy log shows Postgres 17 in production, but this page still says 16.",
-            add: ["Running Postgres 17. Connection pooling handled at the edge."],
-            replaces: 0,
-          },
-        ],
-      },
-      {
-        id: "auth",
-        title: "Auth decisions",
-        path: "stack/auth-decisions.md",
-        lines: [
-          "Session cookies over JWTs. Revocation was the deciding factor.",
-          "Sessions live 30 days and refresh on use.",
-        ],
-        proposals: [],
-      },
+    id: "deploy",
+    title: "Deploy pipeline",
+    path: "stack/deploy-pipeline.md",
+    folder: "stack",
+    slot: 0,
+    inbound: 14,
+    trust: "unverified",
+    lines: [
+      "Push to main deploys to production. There is no staging step.",
+      "A red build blocks the deploy — never override it.",
+    ],
+    rewrite: "Push to main deploys to production behind a five-minute canary.",
+    event: {
+      agent: "Claude Code",
+      kind: "rewritten",
+      added: 12,
+      removed: 31,
+      when: "2h ago",
+      why: "Rewritten in place. Thirty-one lines of prose are gone and fourteen pages link here.",
+      weight: 96,
+    },
+  },
+  {
+    id: "postgres",
+    title: "Postgres notes",
+    path: "stack/postgres-notes.md",
+    folder: "stack",
+    slot: 0,
+    inbound: 6,
+    trust: "unverified",
+    lines: [
+      "Running Postgres 17. Connection pooling handled at the edge.",
+      "Migrations are forward-only. There is no down migration.",
+    ],
+    rewrite: "Running Postgres 18. Pooling moved into the application layer.",
+    event: {
+      agent: "Codex",
+      kind: "rewritten",
+      added: 4,
+      removed: 18,
+      when: "5h ago",
+      why: "The version line moved. No other page in the vault agrees with it yet.",
+      weight: 71,
+    },
+  },
+  {
+    id: "auth",
+    title: "Auth decisions",
+    path: "stack/auth-decisions.md",
+    folder: "stack",
+    slot: 0,
+    inbound: 9,
+    trust: "aging",
+    lines: [
+      "Session cookies over JWTs. Revocation was the deciding factor.",
+      "Sessions live 30 days and refresh on use.",
     ],
   },
   {
-    name: "operating",
-    pages: [
-      {
-        id: "rhythm",
-        title: "Weekly rhythm",
-        path: "operating/weekly-rhythm.md",
-        lines: [
-          "Deep work 7–11am, no meetings before noon.",
-          "Ship Monday through Thursday only.",
-          "Friday afternoon is for review, not for shipping.",
-        ],
-        proposals: [],
-      },
-      {
-        id: "review",
-        title: "Review checklist",
-        path: "operating/review-checklist.md",
-        lines: ["Read the diff before the description."],
-        proposals: [
-          {
-            id: "p3",
-            agent: "Cursor",
-            risk: "low",
-            kind: "append",
-            reason: "You have asked for this check on the last four reviews.",
-            add: ["Confirm the test actually fails without the fix."],
-          },
-        ],
-      },
+    id: "glossary",
+    title: "Glossary",
+    path: "stack/glossary.md",
+    folder: "stack",
+    slot: 0,
+    inbound: 11,
+    trust: "unverified",
+    lines: ["Shared vocabulary for everything under stack."],
+  },
+  {
+    id: "rhythm",
+    title: "Weekly rhythm",
+    path: "operating/weekly-rhythm.md",
+    folder: "operating",
+    slot: 1,
+    inbound: 3,
+    trust: "unverified",
+    lines: [
+      "Deep work 7–11am, no meetings before noon.",
+      "Ship Monday through Thursday only.",
     ],
   },
   {
-    name: "projects",
-    pages: [
-      {
-        id: "atlas",
-        title: "Atlas",
-        path: "projects/atlas.md",
-        lines: [
-          "Internal mapping tool. Paused pending a decision on auth.",
-          "Owner is unassigned while it is paused.",
-        ],
-        proposals: [],
-      },
-      {
-        id: "beacon",
-        title: "Beacon",
-        path: "projects/beacon.md",
-        lines: ["Status page. Ships behind a flag until the incident feed is real."],
-        proposals: [],
-      },
+    id: "checklist",
+    title: "Review checklist",
+    path: "operating/review-checklist.md",
+    folder: "operating",
+    slot: 1,
+    inbound: 5,
+    trust: "unverified",
+    lines: ["Read the diff before the description."],
+    rewrite: "Read the description first, then skim the diff.",
+    event: {
+      agent: "Cursor",
+      kind: "appended",
+      added: 6,
+      removed: 0,
+      when: "yesterday",
+      why: "Appended, nothing removed. Cheap to read and hard to get wrong.",
+      weight: 34,
+    },
+  },
+  {
+    id: "postmortems",
+    title: "Postmortems",
+    path: "operating/postmortems.md",
+    folder: "operating",
+    slot: 1,
+    inbound: 2,
+    trust: "unverified",
+    lines: ["One page per incident. No blame, no summary paragraph."],
+  },
+  {
+    id: "pricing",
+    title: "Pricing policy",
+    path: "clients/pricing.md",
+    folder: "clients",
+    slot: 2,
+    inbound: 21,
+    trust: "verified",
+    lines: [
+      "Retainers bill on the first. Project work bills half up front.",
+      "A discount attaches to the subscription, never to a single job.",
     ],
+    rewrite: "Retainers bill on the fifteenth. Project work bills on delivery.",
+  },
+  {
+    id: "onboarding",
+    title: "Client onboarding",
+    path: "clients/onboarding.md",
+    folder: "clients",
+    slot: 2,
+    inbound: 4,
+    trust: "unverified",
+    lines: ["Kickoff call, then a written scope before any work starts."],
+    rewrite: "Written scope first, kickoff call once it is signed.",
+    event: {
+      agent: "sync script",
+      kind: "created",
+      added: 22,
+      removed: 0,
+      when: "3d ago",
+      why: "A new page. Nothing links to it yet, so nothing depends on it being right.",
+      weight: 18,
+    },
+  },
+  {
+    id: "vendors",
+    title: "Vendors",
+    path: "clients/vendors.md",
+    folder: "clients",
+    slot: 2,
+    inbound: 3,
+    trust: "unverified",
+    lines: ["Who we buy from, on what terms, and who owns the relationship."],
+  },
+  {
+    id: "atlas",
+    title: "Atlas",
+    path: "projects/atlas.md",
+    folder: "projects",
+    slot: 3,
+    inbound: 2,
+    trust: "unverified",
+    lines: ["Internal mapping tool. Paused pending a decision on auth."],
+  },
+  {
+    id: "beacon",
+    title: "Beacon",
+    path: "projects/beacon.md",
+    folder: "projects",
+    slot: 3,
+    inbound: 1,
+    trust: "unverified",
+    lines: ["Status page. Ships behind a flag until the incident feed is real."],
   },
 ];
 
-const RISK_STYLE: Record<DemoProposal["risk"], string> = {
-  low: "text-[var(--lore-text-tertiary)] border-[var(--lore-border-strong)]",
-  medium: "text-[#b45309] border-[#b45309]/45 dark:text-[#fbbf24] dark:border-[#fbbf24]/40",
-  high: "text-[var(--lore-danger)] border-[var(--lore-danger)]/45",
+const INITIAL_WRITES = 41;
+
+const TRUST_LABEL: Record<Trust, string> = {
+  verified: "Verified",
+  lapsed: "Lapsed",
+  aging: "Aging",
+  unverified: "Unverified",
 };
 
-type Tab = "wiki" | "connections" | "settings";
+/**
+ * Aging borrows the amber plate ink rather than a one-off hex, so the badge
+ * survives the light/dark flip with the rest of the palette.
+ */
+const TRUST_TONE: Record<Trust, string> = {
+  verified: "text-[var(--lore-success)] border-[var(--lore-success)]/45",
+  lapsed: "text-[var(--lore-danger)] border-[var(--lore-danger)]/50",
+  aging: "text-[var(--pal-7-ink)] border-[var(--pal-7-ink)]/45",
+  unverified: "text-[var(--lore-text-tertiary)] border-[var(--lore-border-strong)]",
+};
+
+const SEGMENT_FILL: Record<Trust, string> = {
+  verified: "var(--lore-success)",
+  aging: "var(--pal-7)",
+  lapsed: "var(--lore-danger)",
+  unverified: "var(--lore-border-strong)",
+};
+
+const ORDER: Trust[] = ["verified", "aging", "lapsed", "unverified"];
+
+type Tab = "review" | "wiki" | "insights" | "connections";
 
 export function HeroSimulator() {
-  const [folders, setFolders] = useState(INITIAL);
-  const [active, setActive] = useState("stack");
-  const [tab, setTab] = useState<Tab>("wiki");
-  /** Keys of lines that just landed, so they flash rather than pop. */
-  const [justAdded, setJustAdded] = useState<string[]>([]);
+  const [pages, setPages] = useState(INITIAL);
+  const [writes, setWrites] = useState(INITIAL_WRITES);
+  const [tab, setTab] = useState<Tab>("review");
+  const [folder, setFolder] = useState<string>("stack");
+  /** The page a simulated rewrite just landed on, so the row flashes. */
+  const [struck, setStruck] = useState<string | null>(null);
 
-  const folder = folders.find((f) => f.name === active)!;
+  const counts = useMemo(() => {
+    const tally: Record<Trust, number> = { verified: 0, aging: 0, lapsed: 0, unverified: 0 };
+    for (const page of pages) tally[page.trust] += 1;
+    return tally;
+  }, [pages]);
 
-  const pendingIn = useCallback(
-    (name: string) =>
-      folders.find((f) => f.name === name)!.pages.reduce((n, p) => n + p.proposals.length, 0),
-    [folders],
+  const triage = useMemo(
+    () =>
+      pages
+        .filter((page): page is DemoPage & { event: WriteEvent } => page.event !== undefined)
+        .sort((a, b) => b.event.weight - a.event.weight),
+    [pages],
   );
 
-  const totals = useMemo(() => {
-    let count = 0;
-    let added = 0;
-    let removed = 0;
-    for (const page of folder.pages) {
-      for (const p of page.proposals) {
-        count += 1;
-        added += p.add.length;
-        removed += p.replaces !== undefined ? 1 : 0;
-      }
-    }
-    return { count, added, removed };
-  }, [folder]);
-
-  const totalPending = folders.reduce(
-    (n, f) => n + f.pages.reduce((m, p) => m + p.proposals.length, 0),
-    0,
-  );
-
-  const resolve = useCallback((pageId: string, proposalId: string, action: "accept" | "reject") => {
-    setFolders((current) =>
-      current.map((f) => ({
-        ...f,
-        pages: f.pages.map((page) => {
-          if (page.id !== pageId) return page;
-          const proposal = page.proposals.find((p) => p.id === proposalId);
-          if (!proposal) return page;
-
-          let lines = page.lines;
-          if (action === "accept") {
-            lines =
-              proposal.replaces !== undefined
-                ? page.lines.map((l, i) => (i === proposal.replaces ? proposal.add[0] : l))
-                : [...page.lines, ...proposal.add];
-          }
-          return {
-            ...page,
-            lines,
-            proposals: page.proposals.filter((p) => p.id !== proposalId),
-          };
-        }),
-      })),
+  const toggleSignOff = useCallback((pageId: string) => {
+    setPages((current) =>
+      current.map((page) =>
+        page.id === pageId
+          ? { ...page, trust: page.trust === "verified" ? "unverified" : "verified" }
+          : page,
+      ),
     );
-
-    if (action === "accept") {
-      const source = INITIAL.flatMap((f) => f.pages).find((p) => p.id === pageId)!;
-      const keys = source
-        .proposals.find((p) => p.id === proposalId)!
-        .add.map((line) => `${pageId}:${line}`);
-      setJustAdded((k) => [...k, ...keys]);
-      window.setTimeout(() => setJustAdded((k) => k.filter((x) => !keys.includes(x))), 1800);
-    }
   }, []);
 
-  const resolveAll = useCallback(
-    (action: "accept" | "reject") => {
-      for (const page of folder.pages) {
-        for (const proposal of [...page.proposals]) resolve(page.id, proposal.id, action);
-      }
-    },
-    [folder, resolve],
-  );
+  /**
+   * A rewrite goes after something you signed off on, because that is the case
+   * worth showing. With nothing signed off it hits the highest-ranked page
+   * instead, which is what a real agent would be editing anyway.
+   */
+  const simulateRewrite = useCallback(() => {
+    const target =
+      pages.find((page) => page.trust === "verified" && page.rewrite) ??
+      pages.find((page) => page.rewrite);
+    if (!target) return;
+
+    const lapsing = target.trust === "verified";
+    setPages((current) =>
+      current.map((page) =>
+        page.id !== target.id
+          ? page
+          : {
+              ...page,
+              trust: lapsing ? "lapsed" : page.trust,
+              lines: page.rewrite ? [page.rewrite, ...page.lines.slice(1)] : page.lines,
+              rewrite: undefined,
+              event: {
+                agent: "Claude Code",
+                kind: "rewritten",
+                added: 9,
+                removed: 27,
+                when: "just now",
+                why: lapsing
+                  ? "You signed this off. It has been rewritten since, so the sign-off came off."
+                  : "Rewritten in place while you were reading this page.",
+                weight: 999,
+              },
+            },
+      ),
+    );
+    setWrites((n) => n + 1);
+    setStruck(target.id);
+    window.setTimeout(() => setStruck(null), 1800);
+  }, [pages]);
+
+  const reset = useCallback(() => {
+    setPages(INITIAL);
+    setWrites(INITIAL_WRITES);
+    setStruck(null);
+  }, []);
+
+  const dirty = pages !== INITIAL;
+  const folderPages = pages.filter((page) => page.folder === folder);
 
   return (
     <div className="overflow-hidden rounded-2xl border border-[var(--lore-border)] bg-[var(--lore-surface)] shadow-[0_40px_100px_-45px_rgba(15,23,42,0.55)]">
@@ -275,9 +381,10 @@ export function HeroSimulator() {
           <div className="mt-4 space-y-0.5">
             {(
               [
+                { id: "review", label: "Review", icon: ShieldCheck },
                 { id: "wiki", label: "Wiki", icon: BookText },
+                { id: "insights", label: "Insights", icon: BarChart3 },
                 { id: "connections", label: "Connections", icon: Plug },
-                { id: "settings", label: "Settings", icon: Settings },
               ] as const
             ).map((item) => {
               const Icon = item.icon;
@@ -295,6 +402,14 @@ export function HeroSimulator() {
                 >
                   <Icon size={16} className="opacity-80" />
                   {item.label}
+                  {item.id === "review" && counts.lapsed > 0 ? (
+                    <motion.span
+                      layout
+                      className="ml-auto flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--lore-danger)] px-1 text-[11px] font-semibold text-white"
+                    >
+                      {counts.lapsed}
+                    </motion.span>
+                  ) : null}
                 </button>
               );
             })}
@@ -314,48 +429,39 @@ export function HeroSimulator() {
             Folders
           </p>
           <div className="space-y-0.5">
-            {folders.map((f, i) => {
-              const pending = pendingIn(f.name);
+            {FOLDERS.map((name, i) => {
+              const pageCount = pages.filter((page) => page.folder === name).length;
               return (
                 <button
-                  key={f.name}
+                  key={name}
                   type="button"
                   onClick={() => {
-                    setActive(f.name);
+                    setFolder(name);
                     setTab("wiki");
                   }}
                   style={paletteVars(i)}
                   className={cn(
                     "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[14px] transition-colors",
-                    active === f.name && tab === "wiki"
+                    folder === name && tab === "wiki"
                       ? "bg-[var(--lore-surface-selected)] font-medium text-[var(--lore-text-primary)]"
                       : "text-[var(--lore-text-secondary)] hover:bg-[var(--lore-surface-raised)]",
                   )}
                 >
                   <span className="pal-dot" />
-                  <span className="truncate">{f.name}</span>
-                  {pending > 0 ? (
-                    <motion.span
-                      layout
-                      className="ml-auto flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--lore-accent)] px-1 text-[11px] font-semibold text-white"
-                    >
-                      {pending}
-                    </motion.span>
-                  ) : (
-                    <span className="ml-auto text-[12px] text-[var(--lore-text-tertiary)]">
-                      {f.pages.length}
-                    </span>
-                  )}
+                  <span className="truncate">{name}</span>
+                  <span className="ml-auto text-[12px] text-[var(--lore-text-tertiary)]">
+                    {pageCount}
+                  </span>
                 </button>
               );
             })}
           </div>
 
           <div className="mt-auto">
-            {totalPending === 0 ? (
+            {dirty ? (
               <button
                 type="button"
-                onClick={() => setFolders(INITIAL)}
+                onClick={reset}
                 className="mb-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-[var(--lore-border)] py-2 text-[12.5px] font-medium text-[var(--lore-text-secondary)] transition-colors hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)]"
               >
                 <RotateCcw size={12} />
@@ -378,228 +484,19 @@ export function HeroSimulator() {
         {/* ----------------------------------------------------------- main */}
         <div className="lore-scrollbar flex-1 overflow-y-auto">
           <div className="mx-auto max-w-[700px] px-4 pb-10 pt-6 md:px-7">
-          {tab === "connections" ? <ConnectionsPane /> : null}
-          {tab === "settings" ? <SettingsPane /> : null}
-
-          {tab === "wiki" ? (
-            <>
-              {/* Title row with the app's real toolbar, not just a heading. */}
-              <div className="flex flex-wrap items-center gap-2">
-                <h3 className="text-[26px] font-semibold tracking-[-0.035em] text-[var(--lore-text-primary)]">
-                  {folder.name}
-                </h3>
-                <span className="flex-1" />
-                <ToolbarButton icon={CloudUpload} label="Push" muted chevron />
-                <ToolbarButton icon={History} label="Activity" />
-                <ToolbarButton icon={LockOpen} label="Unlocked" />
-                <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--lore-border)] text-[var(--lore-text-secondary)]">
-                  <MoreHorizontal size={15} />
-                </span>
-              </div>
-
-              <p className="mt-1.5 flex items-center gap-1.5 text-[13px] text-[var(--lore-text-tertiary)]">
-                <Clock size={12} />
-                {folder.pages.length} pages · saved just now
-              </p>
-
-              <AnimatePresence initial={false}>
-                {totals.count > 0 ? (
-                  <motion.div
-                    key="bar"
-                    layout
-                    initial={{ opacity: 0, y: -6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -6 }}
-                    transition={{ duration: 0.28, ease: EASE }}
-                    className="mt-4 flex flex-wrap items-center gap-2.5 rounded-xl border border-[var(--lore-border)] bg-[var(--lore-surface)] py-2 pl-4 pr-2 shadow-[0_6px_20px_-12px_rgba(15,23,42,0.3)]"
-                  >
-                    <span
-                      className="text-[14px] font-semibold tabular-nums text-[var(--lore-success)]"
-                      style={{ fontFamily: "var(--font-mono), monospace" }}
-                    >
-                      +{totals.added}
-                    </span>
-                    <span
-                      className="text-[14px] font-semibold tabular-nums text-[var(--lore-danger)]"
-                      style={{ fontFamily: "var(--font-mono), monospace" }}
-                    >
-                      −{totals.removed}
-                    </span>
-                    <span className="text-[13.5px] text-[var(--lore-text-tertiary)]">·</span>
-                    <span className="text-[13.5px] text-[var(--lore-text-secondary)]">
-                      {totals.count} {totals.count === 1 ? "proposal" : "proposals"}
-                    </span>
-                    <span className="flex-1" />
-                    <button
-                      type="button"
-                      onClick={() => resolveAll("reject")}
-                      className="rounded-lg px-2.5 py-1.5 text-[13.5px] font-medium text-[var(--lore-text-secondary)] transition-colors hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)]"
-                    >
-                      Reject all
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => resolveAll("accept")}
-                      className="rounded-lg bg-[var(--lore-accent)] px-3.5 py-1.5 text-[13.5px] font-semibold text-white transition-colors hover:bg-[var(--lore-accent-hover)]"
-                    >
-                      Accept all
-                    </button>
-                  </motion.div>
-                ) : (
-                  <motion.p
-                    key="clear"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="mt-4 rounded-xl border border-dashed border-[var(--lore-border)] px-4 py-2.5 text-[13px] text-[var(--lore-text-tertiary)]"
-                  >
-                    Nothing waiting in this folder.
-                  </motion.p>
-                )}
-              </AnimatePresence>
-
-              {folder.pages.map((page, i) => (
-                <motion.div key={page.id} layout style={paletteVars(i)} className="group mt-9">
-                  <div className="flex items-center gap-2.5">
-                    <span className="pal-bar" />
-                    <h4 className="pal-title text-[18px] font-semibold tracking-[-0.02em]">
-                      {page.title}
-                    </h4>
-                    {page.proposals.length > 0 ? (
-                      <span className="pal-chip rounded-md px-2 py-0.5 text-[11px] font-semibold">
-                        {page.proposals.length}{" "}
-                        {page.proposals.length === 1 ? "proposal" : "proposals"}
-                      </span>
-                    ) : null}
-                    <span className="flex-1" />
-                    <MoreHorizontal
-                      size={15}
-                      className="text-[var(--lore-text-tertiary)] opacity-0 transition-opacity group-hover:opacity-100"
-                    />
-                  </div>
-                  <p
-                    className="mt-1 text-[12px] text-[var(--lore-text-tertiary)]"
-                    style={{ fontFamily: "var(--font-mono), monospace" }}
-                  >
-                    {page.path}
-                  </p>
-
-                  <ul className="pal-bullets mt-3 space-y-2">
-                    {page.lines.map((line) => {
-                      const flash = justAdded.includes(`${page.id}:${line}`);
-                      return (
-                        <motion.li
-                          key={line}
-                          layout
-                          initial={{ opacity: 0, x: -6 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ duration: 0.35, ease: EASE }}
-                          className={cn(
-                            "rounded text-[15px] leading-[1.7] transition-colors duration-700",
-                            flash
-                              ? "bg-[var(--lore-success)]/14 text-[var(--lore-text-primary)]"
-                              : "text-[var(--lore-text-primary)]",
-                          )}
-                        >
-                          {line}
-                        </motion.li>
-                      );
-                    })}
-                  </ul>
-
-                  <AnimatePresence initial={false}>
-                    {page.proposals.map((proposal) => (
-                      <motion.div
-                        key={proposal.id}
-                        layout
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        exit={{ opacity: 0, height: 0, marginTop: 0 }}
-                        transition={{ duration: 0.32, ease: EASE }}
-                        className="mt-3.5 overflow-hidden"
-                      >
-                        <div className="overflow-hidden rounded-xl border border-[var(--lore-border)]">
-                          <div className="flex flex-wrap items-center gap-2 border-b border-[var(--lore-border)] bg-[var(--lore-surface-raised)] px-3.5 py-2">
-                            <ChevronDown size={14} className="text-[var(--lore-text-tertiary)]" />
-                            <AgentGlyph name={proposal.agent} />
-                            <span className="text-[13.5px] font-semibold text-[var(--lore-text-primary)]">
-                              {proposal.agent}
-                            </span>
-                            <span className="text-[13px] text-[var(--lore-text-tertiary)]">
-                              proposed {proposal.kind === "replace" ? "a rewrite" : "an update"}
-                            </span>
-                            <span
-                              className={cn(
-                                "rounded-full border px-1.5 py-px text-[10px] font-bold uppercase tracking-[0.05em]",
-                                RISK_STYLE[proposal.risk],
-                              )}
-                            >
-                              {proposal.risk}
-                            </span>
-                            <span
-                              className="text-[13px] tabular-nums"
-                              style={{ fontFamily: "var(--font-mono), monospace" }}
-                            >
-                              <span className="text-[var(--lore-success)]">
-                                +{proposal.add.length}
-                              </span>{" "}
-                              <span className="text-[var(--lore-danger)]">
-                                −{proposal.replaces !== undefined ? 1 : 0}
-                              </span>
-                            </span>
-                            <span className="flex-1" />
-                            <button
-                              type="button"
-                              onClick={() => resolve(page.id, proposal.id, "reject")}
-                              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[13px] font-medium text-[var(--lore-text-secondary)] transition-colors hover:bg-[var(--lore-surface)]"
-                            >
-                              <X size={12} />
-                              Reject
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => resolve(page.id, proposal.id, "accept")}
-                              className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--lore-accent)] px-3 py-1 text-[13px] font-semibold text-white transition-colors hover:bg-[var(--lore-accent-hover)]"
-                            >
-                              <Check size={12} />
-                              Accept
-                            </button>
-                          </div>
-
-                          <p className="px-3.5 py-2.5 text-[13.5px] leading-relaxed text-[var(--lore-text-secondary)]">
-                            {proposal.reason}
-                          </p>
-
-                          <div
-                            className="border-t border-[var(--lore-border)] bg-[var(--lore-background)] px-3.5 py-2.5 text-[12.5px] leading-[1.75]"
-                            style={{ fontFamily: "var(--font-mono), monospace" }}
-                          >
-                            {proposal.replaces !== undefined ? (
-                              <div className="rounded bg-[var(--lore-danger)]/10 px-1.5 text-[var(--lore-danger)]">
-                                − {page.lines[proposal.replaces]}
-                              </div>
-                            ) : (
-                              <div className="px-1.5 text-[var(--lore-text-tertiary)]">
-                                {page.lines[page.lines.length - 1]}
-                              </div>
-                            )}
-                            {proposal.add.map((line) => (
-                              <div
-                                key={line}
-                                className="rounded bg-[var(--lore-success)]/12 px-1.5 text-[var(--lore-success)]"
-                              >
-                                + {line}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </motion.div>
-                    ))}
-                  </AnimatePresence>
-                </motion.div>
-              ))}
-            </>
+            {tab === "review" ? (
+              <ReviewPane
+                counts={counts}
+                triage={triage}
+                writes={writes}
+                struck={struck}
+                onSignOff={toggleSignOff}
+                onRewrite={simulateRewrite}
+              />
             ) : null}
+            {tab === "wiki" ? <WikiPane folder={folder} pages={folderPages} /> : null}
+            {tab === "insights" ? <InsightsPane /> : null}
+            {tab === "connections" ? <ConnectionsPane /> : null}
           </div>
         </div>
       </div>
@@ -607,47 +504,329 @@ export function HeroSimulator() {
   );
 }
 
-function ToolbarButton({
-  icon: Icon,
-  label,
-  muted,
-  chevron,
+// ------------------------------------------------------------------- review
+
+function ReviewPane({
+  counts,
+  triage,
+  writes,
+  struck,
+  onSignOff,
+  onRewrite,
 }: {
-  icon: typeof History;
-  label: string;
-  muted?: boolean;
-  chevron?: boolean;
+  counts: Record<Trust, number>;
+  triage: (DemoPage & { event: WriteEvent })[];
+  writes: number;
+  struck: string | null;
+  onSignOff: (pageId: string) => void;
+  onRewrite: () => void;
 }) {
+  const total = ORDER.reduce((sum, state) => sum + counts[state], 0);
+  const checked = counts.verified + counts.aging;
+
   return (
-    <span
-      className={cn(
-        "hidden h-8 items-center gap-1.5 rounded-lg border border-[var(--lore-border)] px-2.5 text-[13px] font-medium md:inline-flex",
-        muted ? "text-[var(--lore-text-tertiary)]" : "text-[var(--lore-text-secondary)]",
-      )}
-    >
-      <Icon size={13} />
-      {label}
-      {chevron ? <ChevronDown size={12} className="opacity-60" /> : null}
-    </span>
+    <>
+      <div className="flex flex-wrap items-center gap-2">
+        <h3 className="text-[26px] font-semibold tracking-[-0.035em] text-[var(--lore-text-primary)]">
+          Review
+        </h3>
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--lore-border)] px-2 py-0.5 text-[11px] font-medium text-[var(--lore-text-tertiary)]">
+          <Radio size={10} className="text-[var(--lore-success)]" />
+          watching
+        </span>
+        <span className="flex-1" />
+        <ToolbarButton icon={CloudUpload} label="Push" muted chevron />
+        <ToolbarButton icon={History} label="Activity" />
+        <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--lore-border)] text-[var(--lore-text-secondary)]">
+          <MoreHorizontal size={15} />
+        </span>
+      </div>
+
+      <p className="mt-1.5 text-[15px] leading-[1.6] text-[var(--lore-text-secondary)]">
+        Nothing is blocked. This ranks what your agents changed, and records what you
+        actually checked.
+      </p>
+
+      <section className="mt-5 rounded-xl border border-[var(--lore-border)] bg-[var(--lore-surface)] px-5 py-4">
+        <div className="flex items-baseline gap-2">
+          <motion.span
+            key={checked}
+            initial={{ opacity: 0.4 }}
+            animate={{ opacity: 1 }}
+            className="text-[30px] font-bold leading-none tabular-nums text-[var(--lore-text-primary)]"
+          >
+            {Math.round((checked / total) * 100)}%
+          </motion.span>
+          <span className="text-[15px] leading-[1.6] text-[var(--lore-text-secondary)]">
+            of {total} pages have ever been checked by a human
+          </span>
+        </div>
+
+        <div className="mt-3.5 flex h-2 overflow-hidden rounded-full bg-[var(--lore-surface-raised)]">
+          {ORDER.map((state) => (
+            <motion.div
+              key={state}
+              animate={{ width: `${(counts[state] / total) * 100}%` }}
+              transition={{ duration: 0.45, ease: EASE }}
+              style={{ background: SEGMENT_FILL[state] }}
+              title={`${TRUST_LABEL[state]}: ${counts[state]}`}
+            />
+          ))}
+        </div>
+
+        <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1">
+          {ORDER.map((state) => (
+            <span key={state} className="text-[13px] text-[var(--lore-text-tertiary)]">
+              {TRUST_LABEL[state]} {counts[state]}
+            </span>
+          ))}
+        </div>
+      </section>
+
+      <div style={paletteVars(0)} className="mt-8 flex items-center gap-2.5">
+        <span className="pal-bar" />
+        <h4 className="text-[18px] font-semibold tracking-[-0.02em] text-[var(--lore-text-primary)]">
+          Worth your attention
+        </h4>
+      </div>
+      <p className="mt-1 text-[13px] text-[var(--lore-text-tertiary)]">
+        {writes} writes in the last 7 days. Ranked by lines deleted, how many pages link
+        here, and whether you had signed it off.
+      </p>
+
+      <div className="mt-4 space-y-2.5">
+        <AnimatePresence initial={false}>
+          {triage.map((page, i) => (
+            <motion.article
+              key={page.id}
+              layout
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, ease: EASE }}
+              style={paletteVars(i)}
+              className={cn(
+                "rounded-xl border bg-[var(--lore-surface)] px-4 py-3.5 transition-colors duration-700",
+                struck === page.id
+                  ? "border-[var(--lore-danger)]/50"
+                  : "border-[var(--lore-border)]",
+              )}
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[15px] font-semibold text-[var(--lore-text-primary)]">
+                  {page.title}
+                </span>
+                <span
+                  className={cn(
+                    "rounded-full border px-1.5 py-px text-[10px] font-bold uppercase tracking-[0.05em]",
+                    TRUST_TONE[page.trust],
+                  )}
+                >
+                  {TRUST_LABEL[page.trust]}
+                </span>
+                <span className="text-[13px] text-[var(--lore-text-tertiary)]">
+                  {page.event.kind} · {page.event.when}
+                </span>
+                <span className="flex-1" />
+                <span
+                  className="text-[12.5px] tabular-nums"
+                  style={{ fontFamily: "var(--font-mono), monospace" }}
+                >
+                  <span className="text-[var(--lore-success)]">+{page.event.added}</span>{" "}
+                  <span className="text-[var(--lore-danger)]">−{page.event.removed}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onSignOff(page.id)}
+                  className={cn(
+                    "inline-flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[12.5px] font-semibold transition-colors",
+                    page.trust === "verified"
+                      ? "border border-[var(--lore-border)] text-[var(--lore-text-secondary)] hover:bg-[var(--lore-surface-raised)]"
+                      : "bg-[var(--lore-accent)] text-white hover:bg-[var(--lore-accent-hover)]",
+                  )}
+                >
+                  {page.trust === "verified" ? <Check size={12} /> : <Shield size={12} />}
+                  {page.trust === "verified" ? "Signed off" : "Sign off"}
+                </button>
+              </div>
+              <p className="mt-1.5 text-[13px] leading-[1.55] text-[var(--lore-text-secondary)]">
+                {page.event.why}
+              </p>
+            </motion.article>
+          ))}
+        </AnimatePresence>
+      </div>
+
+      <button
+        type="button"
+        onClick={onRewrite}
+        className="mt-5 inline-flex items-center gap-2 rounded-lg border border-[var(--lore-border)] px-3 py-2 text-[13px] font-medium text-[var(--lore-text-secondary)] transition-colors hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)]"
+      >
+        <PenLine size={13} />
+        Simulate an agent rewrite
+      </button>
+      <p className="mt-2 text-[13px] leading-[1.55] text-[var(--lore-text-tertiary)]">
+        Sign a page off, then run a rewrite over it. The sign-off is pinned to the content
+        hash, so the page lapses and comes straight back to the top.
+      </p>
+    </>
   );
 }
 
-/**
- * A monogram stand-in for the proposing agent. Deliberately not an
- * approximation of a real brand mark — a near-miss reads as broken.
- */
-function AgentGlyph({ name }: { name: string }) {
-  const slot = name.length % 8;
+// --------------------------------------------------------------------- wiki
+
+function WikiPane({ folder, pages }: { folder: string; pages: DemoPage[] }) {
   return (
-    <span
-      style={paletteVars(slot)}
-      className="pal-chip flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[10px] font-bold"
-      aria-hidden
-    >
-      {name[0]}
-    </span>
+    <div className="lore-fade-up">
+      <div className="flex flex-wrap items-center gap-2">
+        <h3 className="text-[26px] font-semibold tracking-[-0.035em] text-[var(--lore-text-primary)]">
+          {folder}
+        </h3>
+        <span className="flex-1" />
+        <ToolbarButton icon={CloudUpload} label="Push" muted chevron />
+        <ToolbarButton icon={History} label="Activity" />
+        <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--lore-border)] text-[var(--lore-text-secondary)]">
+          <MoreHorizontal size={15} />
+        </span>
+      </div>
+
+      <p className="mt-1.5 flex items-center gap-1.5 text-[13px] text-[var(--lore-text-tertiary)]">
+        <Clock size={12} />
+        {pages.length} pages · read straight off disk
+      </p>
+
+      {pages.map((page, i) => (
+        <div key={page.id} style={paletteVars(i)} className="group mt-9">
+          <div className="flex items-center gap-2.5">
+            <span className="pal-bar" />
+            <h4 className="pal-title text-[18px] font-semibold tracking-[-0.02em]">
+              {page.title}
+            </h4>
+            <span
+              className={cn(
+                "rounded-full border px-1.5 py-px text-[10px] font-bold uppercase tracking-[0.05em]",
+                TRUST_TONE[page.trust],
+              )}
+            >
+              {TRUST_LABEL[page.trust]}
+            </span>
+            <span className="flex-1" />
+            <MoreHorizontal
+              size={15}
+              className="text-[var(--lore-text-tertiary)] opacity-0 transition-opacity group-hover:opacity-100"
+            />
+          </div>
+          <p
+            className="mt-1 text-[12px] text-[var(--lore-text-tertiary)]"
+            style={{ fontFamily: "var(--font-mono), monospace" }}
+          >
+            {page.path} · {page.inbound} inbound
+          </p>
+
+          <ul className="pal-bullets mt-3 space-y-2">
+            {page.lines.map((line) => (
+              <motion.li
+                key={line}
+                initial={{ opacity: 0, x: -6 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.35, ease: EASE }}
+                className="text-[15px] leading-[1.7] text-[var(--lore-text-primary)]"
+              >
+                {line}
+              </motion.li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
   );
 }
+
+// ----------------------------------------------------------------- insights
+
+const HOT = [
+  { path: "stack/deploy-pipeline.md", reads: 148, slot: 0 },
+  { path: "clients/pricing.md", reads: 96, slot: 2 },
+  { path: "operating/weekly-rhythm.md", reads: 61, slot: 1 },
+];
+
+const GAPS = [
+  { query: "reseller discount", asks: 4 },
+  { query: "refund window", asks: 3 },
+  { query: "vendor payment terms", asks: 2 },
+];
+
+function InsightsPane() {
+  return (
+    <div className="lore-fade-up">
+      <h3 className="text-[26px] font-semibold tracking-[-0.035em] text-[var(--lore-text-primary)]">
+        Insights
+      </h3>
+      <p className="mt-1.5 text-[15px] leading-[1.6] text-[var(--lore-text-secondary)]">
+        Your agents read the wiki through Lore, so Lore can answer two questions nothing
+        else can.
+      </p>
+
+      <div style={paletteVars(3)} className="mt-7 flex items-center gap-2.5">
+        <span className="pal-bar" />
+        <h4 className="flex items-center gap-2 text-[18px] font-semibold tracking-[-0.02em] text-[var(--lore-text-primary)]">
+          <Flame size={15} className="text-[var(--lore-text-tertiary)]" />
+          Pages your agents actually open
+        </h4>
+      </div>
+      <div className="mt-3 divide-y divide-[var(--lore-border)] overflow-hidden rounded-xl border border-[var(--lore-border)]">
+        {HOT.map((page) => (
+          <div key={page.path} style={paletteVars(page.slot)} className="flex items-center gap-2.5 px-4 py-2.5">
+            <span className="pal-dot" />
+            <span
+              className="min-w-0 flex-1 truncate text-[13.5px] text-[var(--lore-text-primary)]"
+              style={{ fontFamily: "var(--font-mono), monospace" }}
+            >
+              {page.path}
+            </span>
+            <span className="shrink-0 text-[13px] tabular-nums text-[var(--lore-text-tertiary)]">
+              {page.reads} reads
+            </span>
+          </div>
+        ))}
+      </div>
+      <p className="mt-2 text-[13px] text-[var(--lore-text-tertiary)]">
+        Nine of these twelve pages were not opened once this month.
+      </p>
+
+      <div style={paletteVars(6)} className="mt-8 flex items-center gap-2.5">
+        <span className="pal-bar" />
+        <h4 className="flex items-center gap-2 text-[18px] font-semibold tracking-[-0.02em] text-[var(--lore-text-primary)]">
+          <HelpCircle size={15} className="text-[var(--lore-text-tertiary)]" />
+          Searches that returned nothing
+        </h4>
+      </div>
+      <div className="mt-3 space-y-2">
+        {GAPS.map((gap) => (
+          <div
+            key={gap.query}
+            className="flex items-center gap-2.5 rounded-xl border border-[var(--lore-border)] px-4 py-2.5"
+          >
+            <Search size={13} className="shrink-0 text-[var(--lore-text-tertiary)]" />
+            <span
+              className="min-w-0 flex-1 truncate text-[13.5px] text-[var(--lore-text-primary)]"
+              style={{ fontFamily: "var(--font-mono), monospace" }}
+            >
+              {gap.query}
+            </span>
+            <span className="shrink-0 text-[13px] tabular-nums text-[var(--lore-text-tertiary)]">
+              asked {gap.asks}×
+            </span>
+          </div>
+        ))}
+      </div>
+      <p className="mt-2 text-[13px] leading-[1.55] text-[var(--lore-text-tertiary)]">
+        Every line here is a page your wiki was asked for and did not have.
+      </p>
+    </div>
+  );
+}
+
+// -------------------------------------------------------------- connections
 
 function ConnectionsPane() {
   return (
@@ -688,6 +867,11 @@ function ConnectionsPane() {
               Connect over MCP
             </h4>
           </div>
+          <p className="mt-2 text-[13.5px] leading-relaxed text-[var(--lore-text-secondary)]">
+            Four tools, all of them reads: <code>wiki_index</code>, <code>wiki_search</code>,{" "}
+            <code>wiki_read</code>, <code>wiki_health</code>. Your agents keep writing with
+            their own file tools — Lore watches the folder for that.
+          </p>
           <div className="mt-3 overflow-hidden rounded-lg border border-[var(--lore-border)]">
             <div className="flex items-center justify-between border-b border-[var(--lore-border)] bg-[var(--lore-surface-raised)] px-3 py-1.5">
               <span className="text-[11.5px] text-[var(--lore-text-tertiary)]">.mcp.json</span>
@@ -710,43 +894,27 @@ function ConnectionsPane() {
   );
 }
 
-function SettingsPane() {
-  const stats = [
-    { slot: 3, value: "88", label: "Health" },
-    { slot: 4, value: "412", label: "Pages" },
-    { slot: 5, value: "6", label: "Orphans" },
-    { slot: 2, value: "3", label: "Dead links" },
-  ];
-
+function ToolbarButton({
+  icon: Icon,
+  label,
+  muted,
+  chevron,
+}: {
+  icon: typeof History;
+  label: string;
+  muted?: boolean;
+  chevron?: boolean;
+}) {
   return (
-    <div className="lore-fade-up">
-      <h3 className="text-[26px] font-semibold tracking-[-0.035em] text-[var(--lore-text-primary)]">
-        Settings
-      </h3>
-      <p className="mt-1.5 text-[13px] text-[var(--lore-text-tertiary)]">
-        The folder Lore reads, and what an agent would trip over in it.
-      </p>
-
-      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {stats.map((s) => (
-          <div key={s.label} style={paletteVars(s.slot)} className="plate px-4 py-3.5">
-            <div className="text-[26px] font-bold leading-none tracking-[-0.04em] tabular-nums">
-              {s.value}
-            </div>
-            <div className="plate-muted mt-2 text-[12px] font-semibold">{s.label}</div>
-          </div>
-        ))}
-      </div>
-
-      <div className="mt-4 flex items-center gap-2.5 rounded-xl border border-[var(--lore-border)] px-4 py-3">
-        <Activity size={14} className="text-[var(--lore-text-tertiary)]" />
-        <span
-          className="truncate text-[13px] text-[var(--lore-text-secondary)]"
-          style={{ fontFamily: "var(--font-mono), monospace" }}
-        >
-          ~/Documents/wiki
-        </span>
-      </div>
-    </div>
+    <span
+      className={cn(
+        "hidden h-8 items-center gap-1.5 rounded-lg border border-[var(--lore-border)] px-2.5 text-[13px] font-medium md:inline-flex",
+        muted ? "text-[var(--lore-text-tertiary)]" : "text-[var(--lore-text-secondary)]",
+      )}
+    >
+      <Icon size={13} />
+      {label}
+      {chevron ? <ChevronDown size={12} className="opacity-60" /> : null}
+    </span>
   );
 }

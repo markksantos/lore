@@ -52,8 +52,12 @@ const TOOLS = [
   },
   {
     name: "wiki_read",
+    // Deliberately does NOT promise trust state. `/api/page` carries no
+    // verification field, so a description telling the model to "prefer
+    // verified pages" would describe a capability the payload does not deliver
+    // and the model could only comply by guessing.
     description:
-      "Read one page in full, plus the pages that link to it and the pages it links to, and whether a human has verified it. Prefer verified pages when sources disagree, and say so when you rely on an unverified one. Use the exact `path` from wiki_index or wiki_search.",
+      "Read one page in full, plus the pages that link to it and the pages it links to. Use the exact `path` from wiki_index or wiki_search.",
     inputSchema: {
       type: "object",
       properties: {
