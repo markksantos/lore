@@ -1,11 +1,18 @@
 # Build log
 
-A record of what was built, what was decided, and what went wrong — written
-during the build, not reconstructed after it.
+A record of what was built, what was decided, and what went wrong. The three
+rounds were written during the build, not reconstructed after it; the closing
+section is explicitly marked as the exception.
 
-Built 2026-07-26.
+Built 2026-07-26 and 2026-07-27.
 
 ---
+
+# Round one — the first build
+
+Everything in this section describes the **original** design. Rounds two and
+three replaced most of it. It is kept because the reasoning is the record, but
+nothing here should be read as how Lore works now.
 
 ## Brief
 
@@ -36,7 +43,7 @@ move the user's files.
 ## Naming
 
 **Lore** — one syllable, a noun meaning the accumulated body of what is known.
-Parallel to Creed (a body of belief) without echoing it. Brand file: `lore.md`.
+Parallel to Creed (a body of belief) without echoing it.
 
 ## Research
 
@@ -215,10 +222,16 @@ obvious structure instead of translating theirs.
 
 ## The one decision I couldn't make alone
 
-Creed has ten sections; Mark's wiki has 579 pages. "One scrolling document"
-doesn't survive that without deciding what "the document" is. Three options went
-back with ASCII previews. Mark picked **a folder is the document** — the sidebar
-lists folders, each opens as one continuous scroll of its pages.
+Creed has ten sections; Mark's wiki has well over a thousand pages. "One
+scrolling document" doesn't survive that without deciding what "the document"
+is. Three options went back with ASCII previews. Mark picked **a folder is the
+document** — the sidebar lists folders, each opens as one continuous scroll of
+its pages.
+
+Round two made that call from a page count of 579, which was low: the
+round-three audit walked the tree properly and measured 1,424. The decision
+holds either way — both numbers are far past ten sections — but the figure this
+round reasoned from was wrong.
 
 For colour he asked to see the options rather than read descriptions of them, so
 `docs/style-options.html` renders three treatments over identical content
@@ -297,11 +310,18 @@ Against the real vault at `~/Documents/wiki`:
 | Changed in 24h | 56 |
 | In-place rewrites | 60 of 75 modified files |
 | Prose deleted, unreviewed | ~1,450 lines in 15 days |
-| Pages with agent `confidence:` | 1,156 → 959 high, 202 medium, **2 low** |
+| Pages with agent `confidence:` | 1,156 — 83% graded `high`, the rest `medium`, **none `low`** |
 | Pages with any human `reviewed`/`verified` | **0** |
 
 Agents rewrite ~300 pages a week, grade their own work "high" 83% of the time,
 and nothing in the corpus has ever recorded a human confirmation.
+
+That row originally read "2 low", which was a miscounting artifact worth naming
+because it is the same shape of error as the `find -newermt` one below. A naive
+`grep '^confidence:'` matches the line `confidence: high | medium | low` inside
+`SCHEMA.md` and `content/youtube/SCHEMA.md` — those are the field's *documented
+values*, not two pages graded low. Re-run against the vault, the count of pages
+carrying `confidence: low` is zero. No agent has ever graded its own work low.
 
 ## Three things I got wrong
 
@@ -359,23 +379,59 @@ pages and the endpoint returned all of them with full source. Now paginated,
 
 ## Research corrections worth keeping
 
-- **Gemma 4 exists** (2 Apr 2026, now Apache 2.0). I nearly asserted it did not.
-  Mark already had `gemma4:12b` pulled locally.
+- **Gemma 4 exists** (April 2026, Apache 2.0). I nearly asserted it did not.
+  Mark already had it pulled locally — `gemma4:latest`, `gemma4:12b-nothink`
+  and `gemma4:12b-mlx`, though not the plain `gemma4:12b` tag `lib/ollama.ts`
+  prefers first.
 - **Electron over Tauri** — Lore is a Node server app; all route handlers are
   `runtime: "nodejs"`. Tauri has no Node, and 8 sourced Tauri→Electron
   migrations blame webview divergence.
-- **`osascript` is an 80% folder picker today**, without packaging anything. The
-  File System Access API is Chrome-only, Safari never, and its handles expose no
-  path — so it could not feed the MCP server anyway.
+- **`osascript` is an 80% folder picker today**, without packaging anything.
+  `/api/pick` shells out to it and returns 501 elsewhere, so the browser build is
+  macOS-only. The File System Access API is Chromium-only, Safari will not ship
+  it, and its handles expose no path — so it could not feed the MCP server
+  anyway.
 - **Licence trap avoided:** `@cosmograph/*` is CC-BY-NC. The graph uses d3-force.
-- **Obsidian ships no semantic search and no local model.** The only plugin that
-  does went commercial in Dec 2025. That gap is real.
+- **Obsidian ships no first-party semantic search and no local model**, and no
+  official MCP server either. Everything past the core is a community plugin,
+  independently maintained. That gap is real.
 
 ## What the team built
 
-Eight modules in parallel, sixteen agents, zero errors: graph, markdown editor,
-coverage treemap, faceted explorer, near-duplicate detection (MinHash + LSH),
-schema conformance grid, timeline, split compare.
+Eight modules, built in parallel: graph (d3-force on one canvas), markdown
+editor, coverage treemap (squarified), faceted explorer, near-duplicate
+detection (MinHash + LSH banding), schema conformance grid, timeline, split
+compare.
 
 `propose_edit` is gone. The MCP server is four read tools that journal every
 call — a sensor, not a gate.
+
+---
+
+# After round three
+
+Unlike everything above, this section was reconstructed from the commit history
+rather than written during the build. It exists because the log stops before the
+code does, and the last nav shape it actually states is round two's three items —
+which was already wrong by the end of round three.
+
+- **Six destinations, not three.** Wiki, Review, Insights, Explore, Connections,
+  Settings. This landed in round three itself; the round-three write-up just
+  never said so.
+
+Shipped after the round-three commit:
+
+- **Two deployment shapes.** `LORE_MODE=site` builds the marketing page with
+  every filesystem route dead; local is the real app on loopback. `proxy.ts` is
+  the single boundary, on the reasoning that a guard which must be remembered at
+  sixteen endpoints will eventually be forgotten at one.
+- **Electron desktop** — macOS dmg, Windows nsis, Linux AppImage + deb
+  (`electron-builder.yml`), plus a PWA and a service worker.
+- **Paired remote access** — off until switched on, 32 random bytes stored 0600,
+  constant-time comparison, rate-limited. Plain HTTP on the LAN: it stops a
+  stranger on the same wifi guessing in, and does not protect the traffic. Not
+  for hotel wifi.
+- **Semantic search** and local models via Ollama.
+
+The three rounds above are the design history. This list is the state of the
+code; it is not an account of why any of it was decided.

@@ -68,17 +68,21 @@ you actually checked. Trust that cannot lapse is not trust, it is a sticker.
 
 ## Quickstart
 
-Requires **Node 20+**. Nothing else — no database, no account, no API key.
+Requires **Node 20.9+** (what Next 16 needs). Nothing else — no database, no
+account, no API key.
 
 ```bash
 cd "path/to/lore"
 npm install
-npm run dev          # → http://localhost:4646
+npm run dev          # → http://localhost:4646, bound to 127.0.0.1
 ```
 
-Open <http://localhost:4646> and pick your wiki folder. On macOS that opens a
-real native folder picker; everywhere else you paste a path. If Lore finds a
-likely vault already on the machine it offers it. That is the whole setup.
+`/` is the landing page; the app itself is at <http://localhost:4646/vault>,
+which is where the button on the landing page goes. With nothing linked yet it
+opens onboarding: pick your wiki folder. On macOS that opens a real native
+folder picker (`osascript`); everywhere else the picker returns 501 and you
+paste a path instead. If Lore finds a likely vault already on the machine it
+offers it. That is the whole setup.
 
 ## The six destinations
 
@@ -90,10 +94,11 @@ Long folders page in 40 sections at a time, most recently edited first.
 **Review** — what changed, ranked. One bar shows how much of the whole corpus a
 human has ever confirmed, split four ways (verified / aging / lapsed /
 unverified). Below it, the week's writes ranked by lines deleted, how many pages
-link to the page, and whether you had previously signed it off — so you read five
-things instead of three hundred. Sign off or withdraw sign-off inline. A standing
-**Blast radius** list shows the most-linked pages, because those deserve
-verification as policy rather than by accident.
+link to the page, whether the page was rewritten in place rather than appended
+to, and whether you had previously signed it off — the top twelve, so you read a
+dozen things instead of three hundred. Sign off or withdraw sign-off inline. A
+standing **Blast radius** list shows the ten most-linked pages, because those
+deserve verification as policy rather than by accident.
 
 **Insights** — the two reports only Lore can produce, plus the number that
 governs everything. **Context budget**: what the wiki costs in tokens, measured
@@ -103,10 +108,10 @@ nothing, copyable as a prompt. **What carries the weight**: the most-read pages,
 and how many have never been opened at all.
 
 **Explore** — seven lenses on the corpus, behind one nav item: Browse (faceted
-table), Graph (d3-force link graph), Map (squarified treemap by size), Timeline
-(how the wiki grew, from mtime), Compare (two pages side by side, read or diff),
-Duplicates (near-duplicate prose via MinHash + LSH), Schema (frontmatter drift
-against your own `SCHEMA.md`).
+table), Graph (d3-force link graph), Map (squarified treemap by word count),
+Timeline (how the wiki grew, from mtime), Compare (two pages side by side, read
+or diff), Duplicates (near-duplicate prose via MinHash + LSH), Schema
+(frontmatter drift against your own `SCHEMA.md`).
 
 **Connections** — how agents get in: write `AGENTS.md` into the vault, or wire up
 an MCP client from a config generated with the paths already filled in for this
@@ -118,6 +123,14 @@ running on this machine, paste a page's text in and a local model will draft a
 summary, a set of tags, or a title. It is a scratchpad — nothing it returns is
 written back to the vault. Lore detects Ollama, it never ships it — absent, the
 panel says so and nothing else changes.
+
+Settings also holds **remote access**, off until you switch it on. Turning it on
+mints a 32-byte token that every non-loopback request must then carry, and shows
+a pairing link and QR code. Read the limits exactly: it is plain HTTP on a local
+network with no TLS, so anyone who can read packets on that network can lift the
+token — and nothing in this repository binds anything but `127.0.0.1`, so today
+pairing a phone mints a token but the phone still cannot reach the socket. The
+panel reports that rather than promising a connection that cannot happen.
 
 ## Connecting agents
 
@@ -178,21 +191,22 @@ curl -s "localhost:4646/api/review?days=7"          # triage + trust split
 ## What data lives where
 
 Everything Lore keeps for itself lives in `~/.lore` (created `0700`), never in
-your vault — so a journal entry or a pending verification never shows up in a
+your vault — so a journal entry or a verification record never shows up in a
 `git diff` of your notes.
 
 | Path | What it holds |
 | --- | --- |
 | `~/.lore/config.json` | Which folders you linked and which one is open. Delete it and you are unlinked; the wiki is untouched |
-| `~/.lore/usage.jsonl` | Append-only log of MCP tool calls: reads, searches and their hit counts, index pulls |
+| `~/.lore/usage.jsonl` | Append-only log of MCP tool calls: reads, searches and their hit counts, index pulls, health checks |
 | `~/.lore/journal-<key>.jsonl` | Append-only write journal per vault: path, kind, lines added/removed |
 | `~/.lore/shadow/<key>/` | A copy of each page as Lore last saw it, so the next write can be diffed and classified |
 | `~/.lore/verified-<key>.json` | The verification ledger: page → hash, timestamp, who, optional note |
-| `~/.lore/attribution.jsonl` | Which agent wrote which file. Only exists if you install the optional Claude Code hook |
+| `~/.lore/attribution.jsonl` | Which agent wrote which file. Only exists if you install the optional Claude Code hook. Collected, not yet displayed — nothing reads it back |
+| `~/.lore/remote.json` | The remote-access token and port, written `0600`. Only exists once you switch remote access on |
 | `~/.lore/models/`, `~/.lore/embeddings-<key>.json` | The local embedding model and the vectors built from your pages |
 
-`<key>` is a short hash of the vault's absolute path, so two linked wikis never
-share a journal or a ledger.
+`<key>` is the first 10 hex characters of a SHA-1 of the vault's absolute path,
+so two linked wikis never share a journal or a ledger.
 
 A filesystem watcher can see *what* changed but never *who* changed it. The
 journal is therefore harness-agnostic and author-blind; attribution is a separate,
@@ -200,7 +214,8 @@ opt-in, single-harness addition, and everything in Review works without it.
 
 Inside your vault, Lore writes exactly two things, both only when you ask:
 `AGENTS.md` when you press the button, and pages you create or edit in the app
-itself.
+itself. (`/api/page` also implements DELETE, but nothing in the interface calls
+it.)
 
 ## Privacy
 
@@ -224,7 +239,11 @@ vault is sensitive, that directory is too.
 ## What's in the box
 
 ```
-app/            Next.js App Router — landing page, /vault app, /api routes
+app/            Next.js App Router — landing page, /vault app, /install,
+                /offline, the PWA manifest, /api routes
+proxy.ts        The security boundary. Two deployment shapes: local (full app,
+                loopback only) and site (LORE_MODE=site, marketing only, every
+                filesystem route 404s and /vault redirects to /install)
 components/
   lore/         The app: onboarding, sidebar, folder document, review,
                 insights, explore lenses, connections, settings
@@ -248,6 +267,17 @@ electron/       Desktop shell — spawns the Next standalone server and frames i
                 in a window. Packaging config in electron-builder.yml
 docs/           Build log, competitive research, style options
 ```
+
+## Documentation
+
+| Document | What it covers |
+| --- | --- |
+| [docs/HANDBOOK.md](./docs/HANDBOOK.md) | **Start here.** The complete account — what was built, how it works, why it is shaped this way, every bug found, every decision reversed, and the limitations |
+| [DOCUMENTATION.md](./DOCUMENTATION.md) | Architecture and the full HTTP API reference |
+| [DEPLOY.md](./DEPLOY.md) | The two deployment shapes, and how to verify one is locked down |
+| [electron/README.md](./electron/README.md) | Desktop packaging, per platform |
+| [docs/BUILD-LOG.md](./docs/BUILD-LOG.md) | Chronological record, including designs later replaced |
+| [docs/COMPETITIVE-RESEARCH.md](./docs/COMPETITIVE-RESEARCH.md) | The landscape survey that shaped the feature set |
 
 ## Credits
 

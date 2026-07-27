@@ -8,8 +8,10 @@ the API surface, the design system, and the constraints that shaped each.
 ## 1. Architecture
 
 Lore is a single Next.js 16 app (App Router, React 19, Tailwind v4) that runs on
-`localhost` and talks to the user's filesystem through the Node runtime. There is
-no database, no auth, no cloud, and no build-time content step.
+`127.0.0.1:4646` and talks to the user's filesystem through the Node runtime.
+There is no database, no account, no cloud service, and no build-time content
+step. The only authentication anywhere is the optional paired-remote token
+(§10), which is off until the user switches it on.
 
 ```
 ┌──────────────┐   HTTP    ┌────────────────────┐   fs    ┌─────────────┐
@@ -57,6 +59,31 @@ than packing it into the asar, because the standalone server is a real Node
 program that reads its chunks and traced `node_modules` from disk. `mcp/` is
 copied alongside it: the Connections screen prints a config pointing at
 `${cwd}/mcp/server.mjs`, and the server chdirs into that directory.
+
+### Two deployment shapes (`proxy.ts`, `lib/mode.ts`)
+
+One codebase serves two shapes, and `proxy.ts` — Next 16's renamed middleware —
+is the boundary between them.
+
+- **local** — the real app. Loopback only. Full filesystem access.
+- **site** — the marketing pages only. Every one of the seventeen
+  filesystem-touching routes returns 404, and `/vault` redirects to `/install`.
+
+`isSiteMode()` returns true when `LORE_MODE=site`, false when `LORE_MODE=local`,
+and otherwise infers site mode from any recognised host's environment (`VERCEL`,
+`NETLIFY`, `RENDER`, `FLY_APP_NAME`, `RAILWAY_ENVIRONMENT`,
+`AWS_LAMBDA_FUNCTION_NAME`, `K_SERVICE`). The bias is deliberate: deploying this
+repo somewhere without reading the docs cannot expose a filesystem, because the
+dangerous outcome requires an explicit opt-in rather than merely forgetting to
+opt out. `electron/main.js` sets `LORE_MODE=local` explicitly so a stray
+`VERCEL` in the user's shell cannot 404 the desktop app's own routes.
+
+In local mode the same file guards non-loopback callers. A request whose `Host`
+is not loopback is refused with 403 unless it carries the remote token, and
+repeated failures from one address are rate-limited. The loopback *bind* is the
+real protection — `Host` and `x-forwarded-for` are both attacker-controlled, so
+the header check is a hint that catches the accident (a container publishing the
+port, a `-H 0.0.0.0`), not a peer check.
 
 ### Why local-first
 
@@ -162,13 +189,17 @@ about what happened.** Nothing is journalled unless the content hash actually
 changed — agents and editors rewrite files with identical bytes surprisingly
 often, and a journal full of no-op entries is a journal nobody reads.
 
-That design is not defensive programming; the events genuinely lie:
+That design is not defensive programming; the event stream genuinely under-reports
+a burst, which is exactly the shape of an agent's edits:
 
-- **chokidar throttles `change` at 50ms with no trailing event.** The last write
-  in a fast burst can simply be dropped — and a burst is exactly the shape of an
-  agent's edits.
-- **On Windows, libuv's watcher uses a 4KB buffer** whose overflow surfaces only
-  as a `null` filename. You are told something happened, not what.
+- **chokidar suppresses duplicate `change` events for 50ms and never emits a
+  trailing one** (`_throttle(EV.CHANGE, path, 50)` — the suppressed events are
+  counted and dropped). This path is live before the initial scan finishes, and
+  whenever `awaitWriteFinish` is off.
+- **With `awaitWriteFinish` on — which is how Lore watches — a run of writes
+  collapses into a single event** emitted once the file has been stable for
+  400ms. Every intermediate state is invisible, and if the process is not around
+  when that timer fires, nothing is emitted at all.
 
 So a **reconcile sweep runs every 90 seconds**: walk the vault, hash every page,
 journal anything that differs from its shadow. Hashing a 1,400-page corpus is
@@ -177,9 +208,11 @@ reason the journal does not silently miss the bursts an agent produces. The
 interval is a deliberate trade — frequent enough that a missed burst surfaces
 while you still remember causing it, rare enough that the cost is invisible.
 
-`awaitWriteFinish` (400ms stability, 100ms poll) absorbs atomic saves. Most
-editors write a temp file and rename, firing add/unlink/add in milliseconds;
-without debouncing the journal fills with phantom delete-recreate pairs.
+`awaitWriteFinish` (400ms stability, 100ms poll) is what absorbs a save that
+lands in pieces: the event is held until the file stops changing, so one save is
+one journal line. The unlink/add pair an editor's temp-file-and-rename produces
+is collapsed by chokidar's own `atomic` handling, which is on by default for
+non-polling watchers and which Lore therefore does not set.
 
 ### Cache invalidation
 
@@ -208,8 +241,13 @@ appends to `~/.lore/attribution.jsonl` (`{ at, file, agent, tool }`).
 
 It is opt-in, single-harness, and deliberately non-load-bearing. The hook runs
 inside the user's agent loop, so that endpoint returns 204 on every path —
-including malformed bodies — and never blocks or fails loudly. Everything in
-Review works with attribution absent.
+including malformed bodies — and never blocks or fails loudly. Writes outside
+the active vault are dropped, so this stays a record of who edited the wiki
+rather than a log of everything the user's tools touched.
+
+**Collecting is all it does today.** `attributionByPath()` exists to join the log
+onto `WriteEvent.relPath`, but no route and no view calls it, so Review shows
+every change unattributed whether or not the hook is installed.
 
 ---
 
@@ -294,7 +332,8 @@ Two signals matter, and neither exists anywhere else:
 - **Reads** — which pages actually get opened. On a 1,400-page wiki most pages
   are never read again after they are written. Knowing which carry the weight
   tells you what to keep sharp. Pages with no reads in the window are reported as
-  *cold*.
+  *cold* — `coldCount` is the true total, and the payload carries the first 200
+  ids.
 - **Misses** — searches that returned nothing. Each one is a question the wiki
   could not answer, which is a page worth writing: a to-do list from real demand
   instead of guesswork.
@@ -348,15 +387,22 @@ and alarming in a wiki of one-liners.
 | --- | --- |
 | `id` | Vault-relative path, no extension, POSIX separators. The stable key |
 | `relPath` | Vault-relative path with extension |
-| `title` | `frontmatter.title` → first `# H1` → filename, in that order |
+| `title` | `frontmatter.title` → `frontmatter.name` → first `# H1` → filename, in that order |
 | `folder` | Vault-relative directory; `""` for root-level pages |
 | `tags` | Frontmatter `tags`/`tag` plus inline `#tags` found outside code |
 | `frontmatter` | Parsed YAML. Server-only — stripped before the client |
 | `excerpt` | First 240 chars of plain text |
 | `words`, `mtime` | For the health report and list rows |
 | `links` | Outgoing links **resolved to real page ids** |
-| `rawLinks` | Link targets exactly as written, pre-resolution. Server-only |
+| `rawLinks` | The same targets before resolution — cleaned (anchor, alias and extension stripped) but not matched against any page. Server-only |
 | `plain` | Whole body as plain text. Server-only; search and hashing read it |
+
+Inline tags have to earn their place: a candidate is kept only if it contains a
+lowercase letter and is not all-caps/digits, and no more than 12 inferred tags
+are kept per page. Measured on a 1,441-page vault the naive "anything after a
+`#`" rule produced 71 junk tags out of 195 and gave one append-only log page 43
+of them — hex ids, ticket codes, `#IFDEF`. Frontmatter tags are exempt from both
+tests, because those were typed deliberately.
 
 `rawLinks` exists because `links` is overwritten with resolved ids during
 indexing. Without keeping the originals, a link that resolved to nothing would be
@@ -375,8 +421,13 @@ are surfaced in the UI rather than dropped.
 
 An `[[Exact/Path]]` match wins. Failing that, a **unique** basename match
 resolves — this is how Obsidian's short `[[Page]]` form works. An ambiguous
-basename is left unresolved rather than guessed, and shows up in the health
-report as a dead link.
+basename is left unresolved rather than guessed.
+
+**The two link checks do not agree, and this is a known hole.** Indexing needs a
+*unique* basename to resolve; the health report's dead-link test accepts *any*
+basename match. A `[[spec]]` with two `spec.md` files in the vault therefore
+produces no link, no backlink — and no dead-link report either. It is invisible
+in both directions.
 
 ### Scan scope
 
@@ -388,20 +439,24 @@ top of an existing Obsidian vault without indexing its config or its bin.
 
 ## 9. Path safety
 
-Lore is an HTTP server with filesystem write access, so `resolveInVault()` is the
-security boundary. Every read and write resolves the requested path against the
-vault root and throws if the result escapes it:
+Lore is an HTTP server with filesystem write access, so there are two boundaries
+and they answer different questions. `proxy.ts` decides **who may call** (§1);
+`resolveInVault()` decides **what a call may touch**. Every read and write
+resolves the requested path against the vault root and throws if the result
+escapes it:
 
 ```ts
 const absolute = path.resolve(root, relPath);
-if (absolute !== root && !absolute.startsWith(root + path.sep)) {
+const rootWithSep = root.endsWith(path.sep) ? root : root + path.sep;
+if (absolute !== root && !absolute.startsWith(rootWithSep)) {
   throw new Error("Path escapes the vault.");
 }
 ```
 
-Verified: `GET /api/page?path=../../../../../etc/passwd` and
-`PUT /api/page {"path":"../../../../../tmp/pwned.md"}` both return
-`{"error":"Path escapes the vault."}` and write nothing.
+Verified against a running instance: `GET /api/page?path=../../../../../etc/passwd`
+returns `{"error":"Path escapes the vault."}` with 404 and
+`PUT /api/page {"path":"../../../../../tmp/pwned.md"}` returns the same error
+with 400. Neither reads nor writes anything.
 
 The MCP install endpoint takes the server path from `process.cwd()` rather than
 from the request body, so a stray caller cannot write an arbitrary command into
@@ -411,9 +466,11 @@ an agent's config file.
 
 ## 10. HTTP API
 
-All routes are `runtime: "nodejs"`, `dynamic: "force-dynamic"`. Errors return
-`{ "error": "message" }` with a non-2xx status. A request that needs a vault when
-none is linked returns 409.
+Seventeen routes, all `runtime: "nodejs"`, `dynamic: "force-dynamic"`. Errors
+return `{ "error": "message" }` with a non-2xx status. A read that needs a vault
+when none is linked returns 409; the exceptions are `/api/page`, which answers
+404 on `GET` and 400 on the write verbs, and `/api/vault`, `/api/pick` and
+`/api/remote`, which need no vault at all.
 
 ### Vault
 
@@ -439,7 +496,7 @@ way could not be handed to the MCP server or written to Lore's config.
 | Method | Route | Body / query | Returns |
 | --- | --- | --- | --- |
 | `GET` | `/api/pages` | `?refresh=1` forces a rescan | full `VaultIndex` |
-| `GET` | `/api/folder` | `?path=` `?offset=` `?limit=` | `{ folder, sections, total, offset, limit, hasMore, … }` |
+| `GET` | `/api/folder` | `?path=` `?offset=` `?limit=` | `{ folder, sections, incoming, totals, total, offset, limit, hasMore }` |
 | `GET` | `/api/page` | `?path=` | `{ page, frontmatter, raw, backlinks, outgoing }` |
 | `PUT` | `/api/page` | `{ path, content }` | `{ ok, savedAt }` |
 | `POST` | `/api/page` | `{ path, content }` | `{ ok, path }` — 409 if it exists |
@@ -482,7 +539,7 @@ polled, which makes that an acceptable trade for an accurate number.
 
 | Method | Route | Returns |
 | --- | --- | --- |
-| `GET` | `/api/search?q=` | `{ results: [{ page, score, snippet }] }` |
+| `GET` | `/api/search?q=` | `{ results: [{ page, score, snippet, semantic? }], semantic }` — literal hits, then semantic ones if the embedding index is ready |
 | `GET` | `/api/semantic?q=` or `?related=` | `{ results, status }` — local embeddings, empty when unavailable |
 | `POST` | `/api/semantic` | schedules an index refresh; returns current `status` |
 | `GET` | `/api/health` | the health report (below) |
@@ -505,6 +562,31 @@ with no fence gets the map appended below what is already there. This was a
 data-loss bug aimed squarely at the target user — anyone following the llm-wiki
 pattern already keeps a hand-written `AGENTS.md`, and the button used to destroy
 it.
+
+### Remote access
+
+| Method | Route | Body | Returns |
+| --- | --- | --- | --- |
+| `GET` | `/api/remote` | — | `{ enabled, port, pairedAt, hasToken, addresses, urls, listening }` |
+| `POST` | `/api/remote` | `{ action: "enable", port? }` | the same status |
+| `POST` | `/api/remote` | `{ action: "disable" \| "rotate" }` | the same status |
+| `POST` | `/api/remote` | `{ action: "reveal" }` | `{ token }`, `no-store`; 409 when remote access is off |
+
+Off until switched on. `GET` never carries the token — `hasToken` is a boolean,
+because a caller needs to know whether a secret exists, never what it is.
+
+Every `POST` is refused with 403 unless the request arrives on loopback, and the
+body is parsed *before* that check so a malformed remote request gets the same
+403 as a well-formed one rather than a 400 that confirms the endpoint parses
+input. That test duplicates the one in `proxy.ts` on purpose: `proxy.ts` is the
+layer that lets a token-authenticated device through, so a paired phone that
+gets past it must still not be able to mint a new secret, read the current one,
+or switch remote access off and lock the owner out from across the room.
+
+`listening` is measured rather than assumed, and measured whether the switch is
+on or off, because both mismatches are worth telling the user about: on and
+unreachable means the pairing link will not connect, off but reachable means the
+port was opened by hand and the machine is exposed.
 
 ### Residual: the removed gate
 
@@ -538,12 +620,26 @@ hits.
 | Title starts with query | +60 |
 | Title contains query | +40 |
 | Tag contains query | +25 |
-| Path contains query | +15 |
+| Path (page id) contains query | +15 |
 | Body contains query | +10 |
 
-Ties break on `mtime`, newest first. Snippets are centred on the match, not taken
-from the top of the page, so the user sees the hit rather than the first 200
-characters of an unrelated intro.
+The three title bands are exclusive — a title scores once, at its best band.
+Everything else adds on top. Ties break on `mtime`, newest first, and the top 40
+are returned. Snippets are centred on the match (60 characters of lead-in, 200
+total), not taken from the top of the page, so the user sees the hit rather than
+the first 200 characters of an unrelated intro.
+
+### Semantic results are additive
+
+`/api/search` appends up to 12 semantic hits after the literal ones, and only
+when the local embedding index reports `ready`. They carry `semantic: true` and a score of
+`-1`, which sorts them below every literal hit without needing a label — a vector
+neighbour is a suggestion, not a match. Literal search stays primary because an
+exact-ish title hit is almost always the thing you meant; semantic exists because
+literal alone fails on real questions ("how do I undo a deploy" finds nothing on a
+wiki whose page says "Rollback is a revert commit"). If the index is still
+building, failed, or the model never downloaded, search silently degrades to
+literal only.
 
 ---
 
@@ -552,7 +648,7 @@ characters of an unrelated intro.
 | Check | What it means |
 | --- | --- |
 | **Orphans** | No backlinks *and* no outgoing links. An agent walking your links never reaches them |
-| **Dead links** | A `[[link]]` target that matches no page. Each one is a page you meant to write |
+| **Dead links** | A `[[wikilink]]` or relative markdown link whose target matches no page, counted once per link rather than per target. Each one is a page you meant to write |
 | **Stale** | Past its review window |
 | **Untagged** | The cheapest findability signal, missing |
 
@@ -560,27 +656,35 @@ characters of an unrelated intro.
 
 A single global threshold either screams about everything or catches nothing, so
 the window is chosen by what the page is about — matched against its id and
-title:
+title. **First rule that matches wins, in this order:**
 
 | Pattern | Window |
 | --- | --- |
 | `pricing`, `cost`, `rate`, `invoice` | 30 days |
-| `client`, `project`, `status`, `roadmap` | 60 days |
 | `tool`, `stack`, `version`, `setup`, `install`, `config` | 90 days |
+| `client`, `project`, `status`, `roadmap` | 60 days |
 | everything else | 180 days |
+
+The order is load-bearing and not obviously right: a page called
+`client-stack-setup` matches both the 90-day rule and the 60-day rule, and gets
+90 because that rule is tested first.
 
 ### Score
 
 ```
-100
- − (orphans / pages) × 35
- − min(deadLinks / pages, 1) × 30
- − (stale / pages) × 20
- − (untagged / pages) × 15
+max(0, round(
+  100
+   − (orphans / pages) × 35
+   − min(deadLinks / pages, 1) × 30
+   − (stale / pages) × 20
+   − (untagged / pages) × 15
+))
 ```
 
 Weighted so the two things that actually make a wiki unusable to an agent —
-orphans and dead links — cost more than a missing tag.
+orphans and dead links — cost more than a missing tag. Only the dead-link term
+is capped, because it is the only count that can exceed the number of pages: one
+page can hold twenty broken links.
 
 ---
 
@@ -612,7 +716,11 @@ and stripping it would break every note that embeds a table or `<details>`.
 
 ## 14. Design system
 
-Adapted from Creed (MIT). Tokens live in `app/globals.css` under `--lore-*`.
+Adapted from Creed (MIT). Tokens live in `app/globals.css`: surfaces and text as
+`--lore-*`, plate colours as `--pal-*`, the sky fades as `--scenery-*`, plus the
+Tailwind-facing aliases (`--background`, `--foreground`, `--card`, `--border`,
+`--muted`) that `@theme inline` maps to utility classes. `.dark` redefines every
+one of them.
 
 **Two-surface structure, both themes.** A page background, a raised surface, and
 hairline borders — light mode on warm near-white (`#f9f9f8`), dark on near-black
@@ -647,9 +755,15 @@ which is precisely what the colour exists to prevent. `slotForKey()` (hashed)
 survives for views where there is no meaningful position, such as the two panes
 of Compare.
 
-**App type scale**: 26px view titles, 18px section titles, 15px body, 13px meta,
-11px labels. The landing page has its own scale in `.t-hero` / `.t-section` /
-`.t-step` / `.t-lede` / `.t-body` / `.t-meta`. Nothing sets an ad-hoc font-size.
+**Type.** The landing page has six named classes in `app/globals.css` —
+`.t-hero`, `.t-section`, `.t-step`, `.t-lede`, `.t-body`, `.t-meta` — and the
+rendered-note surface has its own (`.lore-prose`, 16px/1.75). The app's own
+chrome has no such classes: it sets sizes inline as Tailwind arbitrary values,
+clustered on 26px view titles, 18px section titles, 15px body, 13px meta and
+11px labels. That cluster is a convention, not a constraint — big tabular
+numerals (30/40/42px) and a handful of one-offs (9, 10, 12, 14, 17, 22, 27px)
+exist outside it, so a size does have to be chosen by hand when a new view is
+added.
 
 **Squircle bullets, never round dots** (`border-radius: 0.13em` on a `0.4em`
 square) — the one detail that stops a markdown list reading as browser default.
@@ -737,8 +851,10 @@ carry `min-w-0 overflow-hidden`, and every grid that holds one carries
 ## 16. MCP server
 
 `mcp/server.mjs` — stdio JSON-RPC 2.0, zero dependencies. The protocol surface
-needed is four methods (`initialize`, `tools/list`, `tools/call`, `ping`), so a
-dependency would cost more than it saves.
+needed is four methods (`initialize`, `tools/list`, `tools/call`, `ping`) plus
+swallowing the `notifications/initialized` notification, so a dependency would
+cost more than it saves. Protocol version `2025-06-18`. Anything else answers
+`-32601`.
 
 Four tools: `wiki_index`, `wiki_search`, `wiki_read`, `wiki_health`. **No write
 tool, no delete tool, no shell, no `propose_edit`.** Four rather than twenty-one
@@ -777,10 +893,17 @@ Stated plainly rather than discovered later.
   *detection* time, not at write time, so their position in the timeline is
   wrong.
 - **Watching starts on the first Review load**, not at boot. In a session where
-  Review is never opened, the journal does not advance.
+  Review is never opened, the journal does not advance and the reconcile timer
+  never starts.
+- **The reconcile sweep cannot see a deletion.** It walks the files that exist
+  and compares each to its shadow, so a page deleted while Lore was closed is
+  never journalled and its shadow copy stays behind. If a page is later created
+  at that same path, it is classified as a rewrite of the old content rather
+  than as a new page.
 - **The journal has no author.** A filesystem watcher cannot know who wrote a
-  file. Attribution exists only where the optional Claude Code hook is installed,
-  and only for that harness.
+  file. The optional Claude Code hook records one, for that harness only, into
+  `~/.lore/attribution.jsonl` — and nothing reads that file back, so no view
+  shows an author today.
 - **`WriteEvent.hash` is recorded but never read.** It hashes the raw file; the
   ledger pins a hash of the plain-text body, computed separately at verify time.
   The two are not comparable, and the field is currently vestigial.
@@ -804,25 +927,37 @@ Stated plainly rather than discovered later.
 
 **Scale**
 
-- **Health and budget scan the whole vault per request.** Fine to a few thousand
-  pages; beyond that it wants incremental indexing.
-- **The Duplicates and Schema lenses fetch page bodies from the browser**, a
-  folder or a page at a time. They are throttled and yield between chunks, but on
-  a very large vault they are the slowest things in the app.
+- **Health and budget recompute over the whole vault on every request.** The 4s
+  index cache spares the file reads, never the work: health walks every page's
+  links and budget re-tokenizes every page. Fine to a few thousand pages; beyond
+  that it wants incremental indexing.
+- **The Duplicates and Schema lenses fetch page bodies from the browser.**
+  Duplicates walks `/api/folder` a page of sections at a time and yields to the
+  browser between work units (`requestIdleCallback`, falling back to
+  `setTimeout`); Schema fetches `/api/page` per page through a
+  six-at-a-time pool, because frontmatter is stripped from the index before it
+  crosses the wire. On a very large vault they are the slowest things in the app.
 - **A folder document loads full source for up to 200 pages at once.** The right
   unit for a personal wiki; a folder with many hundreds of pages wants
   virtualising.
-- **The diff is a common-prefix/suffix trim, not Myers.** Correct and free for
-  small, mostly-additive edits; a large reordering renders as one big remove
-  followed by one big add.
+- **The journal's diff is a common-prefix/suffix trim, not Myers** (as is
+  `diffLines` in the residual proposal code). Correct and free for small,
+  mostly-additive edits; a large reordering renders as one big remove followed
+  by one big add. Compare is the exception — it uses the `diff` package's word
+  diff.
 
 **Scope**
 
-- **The vault UI is desktop-only.** The sidebar is a fixed 15.5rem with no mobile
-  drawer. Lore runs on the machine that holds the wiki, so a phone layout would be
-  scaffolding for a scenario that does not exist. The landing page *is* fully
-  responsive and verified free of horizontal overflow at 375/414/768px.
-- **The native folder picker is macOS-only.** Everywhere else, paste a path.
+- **The vault UI assumes a wide window.** Below the `md` breakpoint the sidebar
+  becomes a 17.5rem off-canvas drawer (backdrop, `inert` page behind it, Escape
+  to close, focus handed back to the trigger) behind a top bar, but the views
+  themselves are laid out for a desktop window. Above `md` the sidebar is a
+  fixed 15.5rem column.
+- **In a browser, the native folder picker is macOS-only.** `/api/pick` shells
+  out to `osascript`, so a browser on Windows or Linux has to paste a path. The
+  Electron shell has its own picker (`window.lore.chooseVaultFolder`) and that
+  one works on all three platforms, which is why `canPickFolder()` tests for the
+  bridge first.
 - **No image or attachment handling.** Markdown only.
 - **Rename and move are not exposed in the UI.** Create, edit and delete are.
 - **The palette repeats after eight.** A folder with more than eight pages reuses
@@ -838,10 +973,13 @@ Stated plainly rather than discovered later.
   fetched once into `~/.lore/models`; everything after that is local. Page content
   never leaves the machine, but "no network at all" is not true on a cold start.
 - **The desktop build is unsigned.** `electron/main.js`, `electron/preload.js`
-  and `electron-builder.yml` are all present and `npm run electron` works, but
-  `electron-builder.yml` sets `identity: null` for macOS, so `dist:mac` produces
-  a DMG that is neither signed nor notarised. `dist:mac` / `dist:win` also
-  require `npm run build` to have produced `.next/standalone` first — the shell
-  spawns that server rather than loading a static bundle.
+  and `electron-builder.yml` are all present, but `electron-builder.yml` sets
+  `identity: null` for macOS, so `dist:mac` produces a DMG that is neither
+  signed nor notarised. The three packaging scripts (`dist:mac`, `dist:win`,
+  `dist:linux`) run `npm run build` themselves; `npm run electron` does not, so
+  it fails with a dialog until `.next/standalone` exists — the shell spawns that
+  server rather than loading a static bundle.
+- **A link whose basename is ambiguous disappears from both checks** — no
+  resolved link, no dead-link report. See §8.
 - **The removed approval gate still has residual code** (`lib/proposals.ts`,
   `/api/proposals`, and proposal rendering inside the folder document). See §10.

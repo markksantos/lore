@@ -21,22 +21,20 @@ Node 22.22.3, electron 43.2.0, electron-builder 26.15.3.
 | macOS dmg x64 | yes | `dist-desktop/Lore-0.1.0-x64.dmg` (139 MB) |
 | Linux deb arm64 | yes | `dist-desktop/Lore-0.1.0-arm64.deb` (108 MB) |
 | Linux deb x64 | yes | `dist-desktop/Lore-0.1.0-amd64.deb` (114 MB) |
-| Linux AppImage | **no — cannot be built on macOS**, see below | — |
+| Linux AppImage arm64 | yes — **but not with the default toolset**, see below | `dist-desktop/Lore-0.1.0-arm64.AppImage` (133 MB) |
+| Linux AppImage x64 | yes — same caveat | `dist-desktop/Lore-0.1.0-x86_64.AppImage` (134 MB) |
 | Windows nsis | not run here, needs Windows or Wine | — |
 
-All four carry the app icon (`build/icon.png`); no build logs
+All six carry the app icon (`build/icon.png`); no build run logged
 `default Electron icon is used`.
 
-The packaged macOS app was launched, its child server answered
-`GET /api/vault` with `200`, and no server process survived quitting the app.
-
-Re-checked against the rebuilt arm64 bundle, spawning its server exactly the way
-`main.js` does (`Lore.app/Contents/MacOS/Lore` with `ELECTRON_RUN_AS_NODE=1`,
+The packaged arm64 server was spawned exactly the way `main.js` does
+(`Lore.app/Contents/MacOS/Lore` with `ELECTRON_RUN_AS_NODE=1`,
 `HOSTNAME=127.0.0.1`, `LORE_MODE=local`, and `VERCEL=1` injected to prove the
 mode override):
 
 ```
-/api/vault                      -> 200
+/api/vault                      -> 200  {"vaults":[…]}
 /vault                          -> 200
 /                               -> 200
 /api/vault  Host: evil.example.com -> 403      (loopback boundary intact)
@@ -44,38 +42,62 @@ lsof                            -> TCP 127.0.0.1:<port> (LISTEN)   — loopback 
 after kill                      -> 0 listeners
 ```
 
-### AppImage cannot be assembled on macOS
+### The AppImage target needs a non-default toolset on macOS
 
-`npx electron-builder --linux` packages the Linux payload fine — both
-`dist-desktop/linux-unpacked` and `dist-desktop/linux-arm64-unpacked` are
-produced — and then fails at the AppImage step with:
+`npx electron-builder --linux` with the config exactly as it stands packages the
+Linux payload fine — both `dist-desktop/linux-unpacked` and
+`dist-desktop/linux-arm64-unpacked` are produced — and then fails at the
+AppImage step with:
 
 ```
 ⨯ failed to build AppImage  error=spawn Unknown system error -86
     at buildLegacyFuse2AppImage (app-builder-lib/src/targets/appimage/appImageUtil.ts:112)
 ```
 
-Error 86 is `EBADARCH`. electron-builder's AppImage target shells out to
-`mksquashfs` from its `appimage-12.0.1` tool bundle, and that binary is a Linux
-ELF:
+Errno 86 on macOS is `EBADARCH`, "Bad CPU type in executable". The cause is not
+the target platform — it is the *host* binary electron-builder picks. In
+`app-builder-lib/out/toolsets/linux.js`, `getAppImageTools()` falls into
+`getFuse2Paths()` for the default toolset version, and that helper chooses the
+tool directory by host platform:
+
+```js
+const toolRoot = process.platform === "linux" ? `linux-${hostArch}` : "darwin"
+```
+
+So on macOS it runs `appimage-12.0.1/…/darwin/mksquashfs`, and that binary is
+`Mach-O 64-bit executable x86_64` — Intel only. On an Apple Silicon machine
+without Rosetta 2 installed, exec'ing it fails with EBADARCH. Running it by hand
+gives the same thing:
 
 ```
-~/Library/Caches/electron-builder/appimage-12.0.1/.../linux-arm64/mksquashfs:
-  ELF 64-bit LSB executable, ARM aarch64, ... for GNU/Linux 3.7.0
+$ …/appimage-12.0.1/…/darwin/mksquashfs -version
+bad CPU type in executable
 ```
 
-macOS cannot exec it. There is no configuration fix — the AppImage target must
-run on Linux, or in a Linux container:
+There is a configuration fix. `toolsets.appimage` selects the AppImage toolset;
+its default is `0.0.0` (the legacy FUSE 2 toolset, the one above), and versions
+`1.0.2` / `1.0.3` use a newer static runtime whose `mksquashfs` is a wrapper
+script that dispatches to a `darwin/arm64` binary. Both AppImages in the table
+were built on this machine with:
+
+```bash
+npx electron-builder --linux AppImage --arm64 --x64 --publish never \
+  -c.toolsets.appimage=1.0.3
+```
+
+`electron-builder`'s own schema marks `1.0.2` and `1.0.3` as betas, which is why
+they are passed on the command line here rather than pinned into
+`electron-builder.yml`. Installing Rosetta 2 would presumably also let the
+legacy toolset run; that was not tested.
+
+A Linux container avoids the question entirely and is still the honest path for
+a release build, since the host binaries are then the native ones:
 
 ```bash
 docker run --rm -it -v "$PWD":/project -w /project \
   electronuserland/builder:latest \
   bash -c "npm ci && npm run build && npx electron-builder --linux --publish never"
 ```
-
-The deb built on this machine shares the identical payload and the identical
-generated `.desktop` entry, so the Linux configuration itself is verified; only
-the AppImage *assembly step* is blocked by the host OS.
 
 ## What the shell does
 
@@ -100,6 +122,7 @@ packaged app with `VERCEL=1` deliberately injected:
 ```
 with    LORE_MODE=local   GET /api/vault -> 200  {"vaults":[…]}
 without LORE_MODE         GET /api/vault -> 404  {"error":"Not found."}
+                          GET /vault     -> 307 → /install
 ```
 
 This only ever *disables* site mode for a process the user launched on their own
@@ -107,12 +130,13 @@ machine. It opens no hole: `proxy.ts` still requires a loopback `Host` header,
 and the server is still bound to `127.0.0.1`.
 
 **Port.** The shell prefers `4646`, because Lore's Connections screen prints an
-MCP config that hardcodes that port. If `4646` is taken — usually by
-`npm run dev` — it falls back to an OS-assigned free port. In that case the app
-still works, but the MCP snippet the Connections screen shows will point at the
-wrong port; agents need `LORE_URL=http://127.0.0.1:<actual port>` instead. The
-actual port is in the window's URL. (The fallback is exercised, not theoretical:
-the verification run above landed on 50097 because a dev server held 4646.)
+MCP config that hardcodes that port (`APP_PORT` in `lib/brand.ts`, and
+`env: { LORE_URL: "http://127.0.0.1:4646" }` in `lib/harness.ts`). If `4646` is
+taken — usually by `npm run dev` — `choosePort()` falls back to an OS-assigned
+free port. In that case the app still works, but the MCP snippet the Connections
+screen shows will point at the wrong port; agents need
+`LORE_URL=http://127.0.0.1:<actual port>` instead. The actual port is in the
+window's URL.
 
 **Startup.** The window is not created until an HTTP request to the child comes
 back. Showing a window against a server that is not listening yet renders a
@@ -162,8 +186,9 @@ with a dialog saying exactly that.
   "main": "electron/main.js",
   "scripts": {
     "electron": "electron electron/main.js",
-    "dist:mac": "npm run build && electron-builder --mac",
-    "dist:win": "npm run build && electron-builder --win"
+    "dist:mac": "npm run build && electron-builder --mac --arm64 --x64",
+    "dist:win": "npm run build && electron-builder --win --x64",
+    "dist:linux": "npm run build && electron-builder --linux --x64 --arm64"
   },
   "devDependencies": {
     "electron": "43.2.0",
@@ -175,8 +200,8 @@ with a dialog saying exactly that.
 `"main"` is what makes the packaged app load the shell instead of looking for
 `index.js`. The two versions above are what this shell was verified against.
 
-There is no `dist:linux` script yet; use the raw command below, or add
-`"dist:linux": "npm run build && electron-builder --linux"` to match the others.
+`dist:linux` passes no toolset override, so on macOS it stops at the AppImage
+step — see above. It builds both debs first, and those are kept.
 
 ## Build and run
 
@@ -195,12 +220,13 @@ standalone server, not `next dev`. For UI work, keep using `npm run dev`.
 ### macOS (run on macOS)
 
 ```bash
-npm run build
-npx electron-builder --mac --publish never
+npm run dist:mac
+# or: npm run build && npx electron-builder --mac --publish never
 # → dist-desktop/Lore-<version>-arm64.dmg
 # → dist-desktop/Lore-<version>-x64.dmg
 ```
 
+The `mac.target` block already lists both arches, so a bare `--mac` builds both.
 Cross-compiling the x64 dmg from Apple Silicon works and is done above; the x64
 build is not signed or notarized either, so nothing about it needs a matching
 host.
@@ -208,13 +234,13 @@ host.
 ### Windows (run on Windows)
 
 ```bat
-npm run build
-npx electron-builder --win --publish never
+npm run dist:win
 REM  -> dist-desktop\Lore Setup <version>.exe
 ```
 
-From macOS or Linux this requires Wine and is the least reliable path. Building
-on Windows or in a Windows CI runner is the path of least resistance.
+Not built here. From macOS or Linux this requires Wine and is the least reliable
+path. Building on Windows or in a Windows CI runner is the path of least
+resistance.
 
 ### Linux (run on Linux, or in a Linux container)
 
@@ -227,13 +253,13 @@ npx electron-builder --linux --publish never
 # → dist-desktop/Lore-<version>-arm64.deb
 ```
 
-The **deb** target alone does build on macOS, because fpm ships a Darwin binary:
+On macOS the same command needs `-c.toolsets.appimage=1.0.3` to get past the
+AppImage step; the **deb** target alone builds unmodified, because the fpm
+electron-builder downloads for a Darwin host is a `darwin-arm64` build:
 
 ```bash
 npx electron-builder --linux deb --publish never
 ```
-
-The AppImage target does not — see the top of this file.
 
 The deb declares its runtime dependencies explicitly (`libgtk-3-0`,
 `libnotify4`, `libnss3`, `libxss1`, `libxtst6`, `xdg-utils`,
@@ -281,7 +307,7 @@ that filter contains a hard-coded rule
 (`app-builder-lib/out/util/filter.js`):
 
 ```js
-// filter the root node_modules, but not a subnode_modules
+// filter the root node_modules, but not a subnode_modules (like /appDir/others/foo/node_modules/blah)
 if (relative === "node_modules") {
   return false;
 }
@@ -305,20 +331,21 @@ tracer copies the *entire project directory* into `.next/standalone` — `app/`,
 `components/`, `docs/`, `README.md`, and, once it exists, `dist-desktop/`. So
 the second `npm run build` folds the first build's artifacts into the standalone
 bundle, electron-builder copies that into `app-server`, and the third build
-folds *those* in again. Measured on this machine before the fix: 137 MB → 1.0 GB
-in a single generation, with the dmg containing a copy of itself.
+folds *those* in again — the dmg ends up containing a copy of itself, and it
+compounds with every generation.
 
 The `filter` on the `.next/standalone` entry excludes the output directory, and
-that name must stay in step with `directories.output`. Verified: after a rebuild
-with `dist-desktop` already present, `.next/standalone` is 951 MB but the
-packaged `app-server` is 56 MB and contains no `dist-desktop`.
+that name must stay in step with `directories.output`. Measured on this machine
+after several packaging runs: `.next/standalone` is 1.7 GB, of which
+`.next/standalone/dist-desktop` alone is 1.6 GB — while the packaged
+`app-server` is 52 MB (macOS arm64) and contains no `dist-desktop`.
 
 Note that the *source* bloat is unfixed and lives outside this directory: the
 standalone bundle still ships `app/`, `components/`, `lib/`, `docs/`,
 `package-lock.json`, and `tsconfig.tsbuildinfo` because the tracer put them
 there. Trimming that means `outputFileTracingExcludes` in `next.config.ts`. The
-disk cost of `.next/standalone` locally after a second build is also real —
-`rm -rf .next dist-desktop` between packaging runs keeps it honest.
+disk cost of `.next/standalone` locally is also real — `rm -rf .next
+dist-desktop` between packaging runs keeps it honest.
 
 If Lore ever moves into a monorepo, `outputFileTracingRoot` changes and the
 standalone output gains a nested project directory — both `.next/standalone`
@@ -326,13 +353,14 @@ paths above would need to follow it.
 
 ### Icons
 
-`icon: build/icon.png` — a single 512×512 PNG at the project root is the whole
-icon configuration, and every artifact above was built with it (no run logs
+`icon: build/icon.png` — a single 512×512 RGBA PNG in `build/` is the whole icon
+configuration, and every artifact above was built with it (no run logged
 `default Electron icon is used`). electron-builder derives the per-platform
 formats from it:
 
-- **macOS** — a multi-resolution `icon.icns` in `Lore.app/Contents/Resources`.
-  Verified in both dmgs.
+- **macOS** — a multi-resolution `icon.icns` in `Lore.app/Contents/Resources`,
+  carrying nine entries from `icp4` up to `ic13`. Verified inside both mounted
+  dmgs.
 - **Linux** — one file, `usr/share/icons/hicolor/512x512/apps/lore.png`.
   Verified by unpacking the deb. A single PNG source yields a single installed
   size; desktop environments downscale it. Pointing `icon` at a *directory* of
@@ -345,13 +373,23 @@ precedence over the generated ones, with no config change.
 
 ## Code signing is NOT configured
 
-Nothing produced by this config is signed on any platform. Be clear about what
-that means per platform.
+Nothing produced by this config carries a signature anyone trusts. Be clear
+about what that means per platform.
 
-### macOS — unsigned, un-notarized
+### macOS — no Developer ID, un-notarized
 
-`mac.identity` is set to `null`, which skips signing entirely; the build log
-says `skipped macOS code signing  reason=identity explicitly is set to null`.
+`mac.identity` is set to `null`, which skips electron-builder's signing step
+entirely; the build log says
+`skipped macOS code signing  reason=identity explicitly is set to null`.
+
+What is actually in the bundles, per `codesign -dv`:
+
+- arm64: `Signature=adhoc`, `flags=0x20002(adhoc,linker-signed)` — the ad-hoc
+  signature the linker applies because arm64 macOS refuses to execute a
+  completely unsigned Mach-O. It carries no identity and no team ID.
+- x64: `code object is not signed at all`.
+
+Neither is a distributable signature.
 
 - **Distributing it.** A user who downloads the DMG is blocked on first launch.
   They have to open **System Settings → Privacy & Security** and choose **Open
@@ -365,14 +403,16 @@ says `skipped macOS code signing  reason=identity explicitly is set to null`.
 
 Two adjacent options, neither of which is distribution:
 
-- `mac.identity: "-"` requests an **ad-hoc** signature. Useful for running a
-  build on the machine that produced it; Gatekeeper does not trust it for
-  distribution, so it does not help anyone else.
-- With `identity: null` as configured, an unsigned build still runs locally via
-  the same System Settings approval.
+- `mac.identity: "-"` requests an **ad-hoc** signature explicitly. Useful for
+  running a build on the machine that produced it; Gatekeeper does not trust it
+  for distribution, so it does not help anyone else.
+- With `identity: null` as configured, the build still runs locally via the same
+  System Settings approval.
 
 Notarization (`notarize:`) is also not configured — it requires the same paid
-membership plus an app-specific password or API key.
+membership plus an app-specific password or API key
+(`APPLE_ID` + `APPLE_APP_SPECIFIC_PASSWORD` + `APPLE_TEAM_ID`, or the
+`APPLE_API_KEY` trio).
 
 ### Windows — unsigned
 
@@ -387,10 +427,12 @@ certificate gets reputation immediately. Both are paid, per year, from a CA.
 Neither the AppImage nor the deb is signed, and no repository is published.
 
 - **AppImage.** Nothing verifies it. The user must `chmod +x` it before it will
-  run, and on many distributions an AppImage built with the legacy runtime needs
-  FUSE 2 (`libfuse2` / `fuse2`) installed; without it the file exits with
-  `dlopen(): error loading libfuse.so.2`. Running it with `--appimage-extract-and-run`
-  is the workaround.
+  run. The runtime embedded by the `1.0.3` toolset statically links libfuse and
+  squashfuse, so no `libfuse2` package is needed — but it still mounts itself,
+  so it needs `/dev/fuse` and a `fusermount` on `$PATH`. Its own error strings
+  are `Cannot mount AppImage, please check your FUSE setup.` and
+  `Error: No suitable fusermount binary found on the $PATH`. In a container or
+  on a host without FUSE, run it with `--appimage-extract-and-run`.
 - **deb.** `dpkg -i Lore-<version>-<arch>.deb` installs it and prints no signing
   complaint; only `apt` against a signed *repository* checks signatures, and
   there is no repository here. `apt install ./Lore-<version>-<arch>.deb` pulls
@@ -400,37 +442,47 @@ Neither the AppImage nor the deb is signed, and no repository is published.
   work around. Signing them would mean publishing a GPG-signed apt repo, which
   is a distribution decision, not a build one.
 
-## Renderer integration (not wired up)
+## Renderer integration
 
-`window.lore` exists but nothing in `components/lore/` consumes it yet. Wiring
-it is a one-file change in whichever component owns vault linking (today
-`components/lore/onboarding.tsx` calls `POST /api/pick`, which shells out to
-`osascript` and is macOS-only — so on Windows and Linux the browse button does
-nothing until this is wired).
+`window.lore` is consumed. `lib/desktop.ts` wraps it and
+`components/lore/onboarding.tsx` uses both members: `chooseVaultFolder()` behind
+the Browse button, and `onVaultFolderChosen()` so a folder picked from the
+native File menu is handled as if Browse had been clicked.
 
-The API:
+The contract lives in `lib/desktop.ts` and must stay in step with
+`electron/preload.js`:
 
 ```ts
-interface LoreDesktop {
+export type LoreDesktopBridge = {
   isDesktop: true;
   platform: NodeJS.Platform;
   /** Native folder picker. Resolves to an absolute path, or null if cancelled. */
-  chooseVaultFolder(): Promise<string | null>;
-  /** Fires when the folder came from the File menu. Returns an unsubscribe fn. */
-  onVaultFolderChosen(handler: (folder: string) => void): () => void;
-}
+  chooseVaultFolder: () => Promise<string | null>;
+  /** Folder chosen from the native menu. Returns an unsubscribe function. */
+  onVaultFolderChosen: (handler: (folder: string) => void) => () => void;
+};
 
 declare global {
   interface Window {
-    lore?: LoreDesktop;
+    lore?: LoreDesktopBridge;
   }
 }
 ```
 
-Use `window.lore?.chooseVaultFolder()` in preference to `/api/pick` when it is
-present — it is the same dialog on macOS and the only one that works on Windows
-and Linux. Feed the returned path to the existing `POST /api/vault` with
-`{ action: "link", path }`, exactly as the browse button already does.
+Two helpers go with it:
+
+- `desktopBridge()` returns `window.lore` or `null`, SSR-safe.
+- `canPickFolder()` answers whether *any* real picker exists. The Electron
+  bridge works on all three desktop platforms; the browser fallback,
+  `POST /api/pick`, shells out to `osascript` and returns 501 off macOS. So a
+  browser on Windows or Linux has neither, and onboarding hides the Browse
+  button rather than offering one that cannot work. There is still no folder
+  picker for a Windows or Linux user running Lore in a browser instead of the
+  desktop app — only the path text field.
+
+New code that needs a folder should prefer `desktopBridge()?.chooseVaultFolder()`
+over `/api/pick`, and feed the returned path to `POST /api/vault` with
+`{ action: "link", path }`, exactly as onboarding does.
 
 `chooseVaultFolder()` returns the path and does not also emit
 `onVaultFolderChosen`; the menu item emits and does not return. One folder
