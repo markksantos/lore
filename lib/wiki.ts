@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { authority, bm25, invertedFor, terms } from "@/lib/rank";
 import matter from "gray-matter";
 
 // The wiki engine. Everything here reads and writes the user's own markdown
@@ -412,6 +413,32 @@ export async function search(root: string, query: string, limit = 40): Promise<S
   if (!q) return [];
 
   const index = await getIndex(root);
+
+  /*
+   * Two rankers, deliberately combined rather than one replacing the other.
+   *
+   * The exact-match bonuses below are what made search feel sharp: on a personal
+   * wiki the page whose title IS your query is nearly always the one you meant,
+   * and no statistical ranker should be allowed to bury it.
+   *
+   * BM25 handles everything that is not that. The original scored a query only
+   * as one literal phrase, so "postgres backup" returned nothing from a page
+   * saying "backup of the postgres cluster" — the words were there, just not
+   * adjacent. Term scores are scaled to sit below an exact title hit and above
+   * an incidental body mention.
+   *
+   * Authority is a bounded multiplier, never a sort key. Of two pages that both
+   * mention "deploy", the one eleven pages link to is more likely the one you
+   * want — but a hub must not outrank a page actually called what you typed.
+   */
+  const signature = `${index.pages.length}:${index.pages.reduce((m, p) => Math.max(m, p.mtime), 0)}`;
+  const inverted = invertedFor(root, index.pages, signature);
+  const termScores = bm25(query, inverted);
+  const rank = authority(
+    index.pages.map((p) => p.id),
+    index.backlinks,
+  );
+
   const hits: SearchHit[] = [];
 
   for (const page of index.pages) {
@@ -436,12 +463,40 @@ export async function search(root: string, query: string, limit = 40): Promise<S
         (start > 0 ? "…" : "") + page.plain.slice(start, start + 200).trim() + "…";
     }
 
-    if (score > 0) hits.push({ page, score, snippet });
+    const bm = termScores.get(page.id) ?? 0;
+    if (bm > 0) {
+      score += Math.min(bm * 3, 35);
+      if (!snippet) snippet = snippetForTerms(page.plain, query);
+    }
+
+    if (score > 0) {
+      score *= 1 + 0.18 * (rank.get(page.id) ?? 0);
+      hits.push({ page, score, snippet });
+    }
   }
 
   return hits
     .sort((a, b) => b.score - a.score || b.page.mtime - a.page.mtime)
     .slice(0, limit);
+}
+
+/**
+ * A snippet for a multi-word match, where no single literal position exists.
+ * Picks the line containing the most query terms, which is the closest thing to
+ * "where the answer probably is" without parsing the page.
+ */
+function snippetForTerms(plain: string, query: string): string | null {
+  const wanted = new Set(terms(query));
+  if (!wanted.size) return null;
+
+  let best: { line: string; hits: number } | null = null;
+  for (const line of plain.split("\n")) {
+    if (line.trim().length < 12) continue;
+    let hits = 0;
+    for (const word of new Set(terms(line))) if (wanted.has(word)) hits++;
+    if (hits && (!best || hits > best.hits)) best = { line: line.trim(), hits };
+  }
+  return best ? best.line.slice(0, 220) + (best.line.length > 220 ? "…" : "") : null;
 }
 
 // -------------------------------------------------------------------- health
