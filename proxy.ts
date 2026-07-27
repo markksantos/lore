@@ -73,6 +73,8 @@ const FILESYSTEM_ROUTES = [
   "/api/pick",
   "/api/history",
   "/api/policy",
+  "/api/pack",
+  "/api/changes",
   "/api/mcp-event",
   // Reads and writes ~/.lore/remote.json, and its status payload lists this
   // machine's network addresses. On a public host that is a free map of the

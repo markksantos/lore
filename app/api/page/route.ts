@@ -1,5 +1,6 @@
 import { fail, requireVault, toMeta } from "@/lib/server";
 import { readPolicy } from "@/lib/policy";
+import { recordAttribution } from "@/lib/harness";
 import { createPage, deletePage, getIndex, readRaw, writeRaw } from "@/lib/wiki";
 
 export const runtime = "nodejs";
@@ -65,15 +66,79 @@ export async function PUT(request: Request) {
   }
 }
 
-/** POST — create a new page; fails rather than overwriting an existing one. */
+/**
+ * POST — create a page, or write to one on behalf of an agent.
+ *
+ * Without `mode` this is the original create-only behaviour, which fails rather
+ * than overwriting. With `mode` it is the endpoint behind the `wiki_write` MCP
+ * tool, and the two rules that make that safe are here:
+ *
+ * `append` is the default and never touches existing prose. Measured on a real
+ * vault, 60 of 75 modified files were in-place rewrites — the destructive kind —
+ * so the safe mode has to be the one you get by not thinking about it.
+ *
+ * Every write is attributed. It is NOT gated, because gating was tried and does
+ * not work; attribution is what survives, and it is what makes Review able to
+ * say which agent did this rather than shrugging.
+ */
 export async function POST(request: Request) {
   try {
     const vault = await requireVault();
-    const { path: relPath, content } = (await request.json()) as {
+    const {
+      path: relPath,
+      content,
+      mode,
+      agent,
+    } = (await request.json()) as {
       path?: string;
       content?: string;
+      mode?: "append" | "replace";
+      agent?: string;
     };
     if (!relPath) return fail(new Error("Missing path"));
+
+    if (mode) {
+      const policy = await readPolicy(vault.root);
+      const index = await getIndex(vault.root);
+      const existing = index.pages.find((p) => p.relPath === relPath);
+
+      // Quarantine withholds a page from agents in both directions. Letting an
+      // agent rewrite the page a human just flagged as wrong would defeat the
+      // entire point of flagging it.
+      if (existing && policy.quarantined.includes(existing.id)) {
+        return fail(new Error("That page is quarantined and cannot be written to."), 409);
+      }
+
+      const before = await readRaw(vault.root, relPath).catch(() => null);
+      const body = content ?? "";
+      const next =
+        mode === "replace" || before === null
+          ? body
+          : `${before.replace(/\s*$/, "")}\n\n${body.trim()}\n`;
+
+      if (before === null) await createPage(vault.root, relPath, next);
+      else await writeRaw(vault.root, relPath, next);
+
+      // The watcher journals the change itself; this records WHO, which the
+      // filesystem cannot know.
+      await recordAttribution({
+        at: Date.now(),
+        file: `${vault.root}/${relPath}`,
+        agent: agent?.trim() || "MCP agent",
+        tool: `wiki_write:${mode}`,
+      });
+
+      const fresh = await getIndex(vault.root, true);
+      const page = fresh.pages.find((p) => p.relPath === relPath);
+      return Response.json({
+        ok: true,
+        path: relPath,
+        mode,
+        created: before === null,
+        page: page ? { id: page.id, title: page.title } : null,
+        trust: "unverified",
+      });
+    }
 
     const created = await createPage(vault.root, relPath, content ?? "");
     return Response.json({ ok: true, path: created });

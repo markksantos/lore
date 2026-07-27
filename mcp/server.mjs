@@ -2,16 +2,21 @@
 /**
  * Lore MCP server.
  *
- * A thin stdio bridge onto the local Lore app. It deliberately exposes four
- * tools, not twenty-one: an agent that has to choose between twenty-one
- * overlapping tools spends its budget choosing.
+ * A thin stdio bridge onto the local Lore app. It exposes seven tools, not
+ * twenty-one: an agent choosing between twenty-one overlapping tools spends its
+ * budget choosing.
  *
- * There is no write tool and no approval gate. An earlier version shipped a
- * `propose_edit` tool that queued changes for human approval; it was removed
- * because it did not work and could not work. It competed with every agent's
- * built-in file-write tool and lost, and a vault measured at 300 changed pages
- * per week would turn a perfect gate into a 300-item queue that resolves to
- * "accept all" — worse than no gate, because it manufactures confidence.
+ * There IS a write tool, and it is not a gate. An earlier version shipped
+ * `propose_edit`, which queued changes for human approval; that was removed
+ * because it did not work and could not work — it competed with every agent's
+ * built-in file-write tool and lost, and 300 changed pages a week turns a
+ * perfect gate into a 300-item queue that resolves to "accept all".
+ *
+ * `wiki_write` is the opposite idea. It does not ask permission, it writes. What
+ * it adds is that the write is attributed and lands unverified, exactly like a
+ * write through any other tool. It exists for agents that have MCP and no
+ * filesystem — ChatGPT, Claude on a phone — which until now could read this wiki
+ * and never contribute a line to it.
  *
  * Lore watches the filesystem instead, which captures every harness equally.
  *
@@ -64,6 +69,57 @@ const TOOLS = [
         path: { type: "string", description: "Vault-relative path, e.g. notes/stack.md" },
       },
       required: ["path"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "wiki_context",
+    description:
+      "Get the best passages about a subject, assembled to a token budget, each citing its source page. Prefer this over reading several pages in full — it returns the relevant sections instead of whole documents.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "The subject you need context on." },
+        budget: {
+          type: "number",
+          description: "Approximate token ceiling for the result. Defaults to 8000.",
+        },
+      },
+      required: ["query"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "wiki_changes",
+    description:
+      "List pages that changed since a timestamp, with who changed them and how much. Use at the start of a session to catch up instead of re-reading pages you have already seen.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        since: {
+          type: "number",
+          description: "Millisecond epoch timestamp. Defaults to seven days ago.",
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "wiki_write",
+    description:
+      "Create or update a page. The write is attributed to you and lands UNVERIFIED — a human decides later whether it is trustworthy. Use `mode: append` to add to a page without touching what is already there; that is almost always the safer choice.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "Vault-relative path, e.g. notes/stack.md" },
+        content: { type: "string", description: "Markdown to write." },
+        mode: {
+          type: "string",
+          enum: ["append", "replace"],
+          description: "append adds to the end; replace overwrites the whole page.",
+        },
+      },
+      required: ["path", "content"],
       additionalProperties: false,
     },
   },
@@ -151,6 +207,58 @@ async function runTool(name, args = {}) {
       ]
         .filter((line) => line !== null)
         .join("\n");
+    }
+
+    case "wiki_context": {
+      const budget = Number(args.budget) || 8000;
+      const raw = await callLore(
+        `/api/pack?format=md&budget=${budget}&q=${encodeURIComponent(args.query ?? "")}`,
+      );
+      // Logged as a search so a pack that finds nothing counts as a gap, the
+      // same as a bare search would. The question failed either way.
+      const found = !raw.startsWith("No passages");
+      report({ t: "search", query: args.query ?? "", hits: found ? 1 : 0 });
+      return raw;
+    }
+
+    case "wiki_changes": {
+      const since = Number(args.since) || Date.now() - 7 * 86_400_000;
+      const raw = await callLore(`/api/changes?since=${since}`);
+      const data = JSON.parse(raw);
+      if (!data.changes.length) {
+        return `Nothing changed in the wiki since ${new Date(since).toISOString()}.`;
+      }
+      const lines = data.changes.map((c) => {
+        const who = c.agent ? ` by ${c.agent}` : "";
+        const trust = c.gone ? "DELETED" : (c.trust ?? "unknown");
+        return `- \`${c.relPath}\` — ${c.kinds.join("/")}${who}, +${c.linesAdded}/-${c.linesRemoved} (${trust})`;
+      });
+      return [
+        `${data.changes.length} pages changed since ${new Date(data.since).toISOString()}.`,
+        `Pass since=${data.now} next time to get only what is newer than this call.`,
+        "",
+        ...lines,
+      ].join("\n");
+    }
+
+    case "wiki_write": {
+      const mode = args.mode === "replace" ? "replace" : "append";
+      const raw = await callLore("/api/page", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          path: args.path,
+          content: args.content ?? "",
+          mode,
+          agent: AGENT,
+        }),
+      });
+      const data = JSON.parse(raw);
+      report({ t: "read", page: data.page?.id ?? args.path });
+      return [
+        `Wrote \`${args.path}\` (${mode}).`,
+        "It is recorded as unverified and attributed to you. A human decides whether to trust it.",
+      ].join("\n");
     }
 
     case "wiki_health": {
