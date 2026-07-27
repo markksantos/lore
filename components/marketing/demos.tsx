@@ -1,389 +1,399 @@
 "use client";
 
-import { useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowUp, Check, X, FolderOpen, FileText, Loader2, Activity } from "lucide-react";
-import { DemoCard, WaterfallText, Caret } from "@/components/marketing/motion-bits";
-import { EASE, useCountUp, useLoopSequence, useTyped } from "@/lib/anim";
+import { Radio, Shield, ShieldAlert, Search, PenLine, Check } from "lucide-react";
+import { DemoCard } from "@/components/marketing/motion-bits";
+import { EASE, useCountUp, useLoopSequence } from "@/lib/anim";
 import { paletteVars } from "@/lib/palette";
 import { cn } from "@/lib/utils";
 
 /**
- * Four auto-playing demos, one per beat of the product loop. Each pauses when
- * scrolled off screen and parks on a resting frame under reduced motion — the
- * frame that best explains the idea as a still, not frame zero.
+ * Four auto-playing demos, one per beat of the loop. Each pauses when scrolled
+ * off screen and parks on a resting frame under reduced motion — the frame that
+ * best explains the idea as a still, not frame zero.
  *
  * They are built from the same tokens and surfaces as the real app, fed static
  * mock data. No backend, no network.
+ *
+ * Sample paths and agent names are generic on purpose: this is a public page,
+ * and a realistic screenshot is worth nothing if it leaks a real client.
  */
 
-// ---------------------------------------------------------------- beat 1: link
+// ------------------------------------------------------- beat 1: agents write
 
-const LINK_PATH = "~/Documents/wiki";
-// 0 typing the path, 1 scanning, 2 pages land, 3 hold on the result.
-const LINK_STEPS = [1900, 1100, 1400, 2600] as const;
+const WRITE_STEPS = [1500, 1150, 1150, 2900] as const;
 
-const FOUND = [
-  { name: "stack", count: 3, slot: 0 },
-  { name: "operating", count: 2, slot: 1 },
-  { name: "projects", count: 3, slot: 2 },
-  { name: "clients", count: 6, slot: 3 },
-];
+const WRITES = [
+  {
+    agent: "Claude Code",
+    path: "stack/deploy-pipeline.md",
+    kind: "rewritten",
+    add: 12,
+    del: 31,
+    slot: 0,
+  },
+  { agent: "Codex", path: "clients/pricing.md", kind: "rewritten", add: 4, del: 18, slot: 2 },
+  {
+    agent: "Cursor",
+    path: "operating/review-checklist.md",
+    kind: "appended",
+    add: 6,
+    del: 0,
+    slot: 3,
+  },
+  { agent: "sync script", path: "projects/atlas.md", kind: "created", add: 22, del: 0, slot: 6 },
+] as const;
 
-export function LinkDemo() {
-  const { ref, step } = useLoopSequence(LINK_STEPS, LINK_STEPS.length - 1);
-  const typed = useTyped(LINK_PATH, step === 0);
-
-  return (
-    <div ref={ref} className="w-full">
-      <DemoCard>
-        <span className="text-[10px] font-semibold uppercase tracking-[0.09em] text-[var(--lore-text-tertiary)]">
-          Folder path
-        </span>
-        <div
-          className="mt-1.5 flex items-center gap-2 rounded-lg border border-[var(--lore-border)] bg-[var(--lore-background)] px-2.5 py-2 text-[12.5px] text-[var(--lore-text-primary)]"
-          style={{ fontFamily: "var(--font-mono), monospace" }}
-        >
-          <FolderOpen size={13} className="shrink-0 text-[var(--lore-text-tertiary)]" />
-          <span className="truncate">{typed}</span>
-          <Caret on={step === 0} />
-        </div>
-
-        <div className="mt-3 h-[7.5rem]">
-          <AnimatePresence mode="wait">
-            {step === 1 ? (
-              <motion.div
-                key="scan"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="flex h-full flex-col items-center justify-center gap-2.5"
-              >
-                <Loader2 size={16} className="animate-spin text-[var(--lore-accent)]" />
-                <span className="text-[11.5px] text-[var(--lore-text-tertiary)]">
-                  Reading markdown…
-                </span>
-                <div className="h-1 w-32 overflow-hidden rounded-full bg-[var(--lore-surface-raised)]">
-                  <motion.div
-                    className="h-full rounded-full bg-[var(--lore-accent)]"
-                    initial={{ width: "0%" }}
-                    animate={{ width: "100%" }}
-                    transition={{ duration: 1, ease: "linear" }}
-                  />
-                </div>
-              </motion.div>
-            ) : step >= 2 ? (
-              <motion.div key="found" className="space-y-1">
-                {FOUND.map((f, i) => (
-                  <motion.div
-                    key={f.name}
-                    style={paletteVars(f.slot)}
-                    initial={{ opacity: 0, x: -8 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.3, delay: i * 0.09, ease: EASE }}
-                    className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-[12.5px] text-[var(--lore-text-secondary)]"
-                  >
-                    <span className="pal-dot" />
-                    <span>{f.name}</span>
-                    <span className="ml-auto text-[10.5px] text-[var(--lore-text-tertiary)]">
-                      {f.count}
-                    </span>
-                  </motion.div>
-                ))}
-              </motion.div>
-            ) : (
-              <motion.div
-                key="idle"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="flex h-full items-center justify-center text-[11.5px] text-[var(--lore-text-tertiary)]"
-              >
-                Nothing moves. Nothing is uploaded.
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-      </DemoCard>
-    </div>
-  );
-}
-
-// ----------------------------------------------------------------- beat 2: read
-
-const READ_PROMPT = "How do we roll back a bad deploy?";
-const READ_ANSWER =
-  "A revert commit, never the dashboard button — and a red build blocks the deploy in the first place.";
-// 0 typing, 1 sent, 2 tool call, 3 answer, 4 hold.
-const READ_STEPS = [1900, 550, 1300, 2400, 1600] as const;
-
-export function ReadDemo() {
-  const { ref, step } = useLoopSequence(READ_STEPS, 3);
-  const typed = useTyped(READ_PROMPT, step === 0);
+export function WriteFeedDemo() {
+  const { ref, step, playing } = useLoopSequence(WRITE_STEPS, WRITE_STEPS.length - 1);
+  const changed = useCountUp(303, playing);
 
   return (
     <div ref={ref} className="w-full">
       <DemoCard className="h-[15.5rem] justify-between">
-        <div className="space-y-2.5 overflow-hidden">
-          <AnimatePresence>
-            {step >= 1 ? (
-              <motion.div
-                key="bubble"
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, ease: EASE }}
-                className="flex justify-end"
-              >
-                <span className="max-w-[85%] rounded-2xl rounded-br-md bg-[var(--lore-surface-raised)] px-3 py-1.5 text-[12px] text-[var(--lore-text-primary)]">
-                  {READ_PROMPT}
-                </span>
-              </motion.div>
-            ) : null}
-          </AnimatePresence>
-
-          <AnimatePresence>
-            {step >= 2 ? (
-              <motion.div
-                key="tool"
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, ease: EASE }}
-                className="flex items-center gap-1.5"
-              >
-                <span
-                  className="inline-flex items-center gap-1.5 rounded-md border border-[var(--lore-border)] bg-[var(--lore-background)] px-2 py-1 text-[10.5px] text-[var(--lore-text-secondary)]"
-                  style={{ fontFamily: "var(--font-mono), monospace" }}
-                >
-                  <FileText size={10} className="text-[var(--lore-accent)]" />
-                  wiki_index
-                  {step === 2 ? (
-                    <Loader2 size={9} className="animate-spin" />
-                  ) : (
-                    <Check size={9} className="text-[var(--lore-success)]" />
-                  )}
-                </span>
-                {step > 2 ? (
-                  <span
-                    className="inline-flex items-center gap-1.5 rounded-md border border-[var(--lore-border)] bg-[var(--lore-background)] px-2 py-1 text-[10.5px] text-[var(--lore-text-secondary)]"
-                    style={{ fontFamily: "var(--font-mono), monospace" }}
-                  >
-                    wiki_read
-                    <Check size={9} className="text-[var(--lore-success)]" />
-                  </span>
-                ) : null}
-              </motion.div>
-            ) : null}
-          </AnimatePresence>
-
-          <div className="text-[12.5px] leading-relaxed text-[var(--lore-text-primary)]">
-            <WaterfallText text={READ_ANSWER} play={step >= 3} />
-          </div>
-        </div>
-
-        <div className="mt-3 flex items-center gap-2 rounded-xl border border-[var(--lore-border)] bg-[var(--lore-background)] px-3 py-2">
-          <span className="min-w-0 flex-1 truncate text-[12px] text-[var(--lore-text-secondary)]">
-            {step === 0 ? typed : ""}
-            {step === 0 ? <Caret on /> : <span className="text-[var(--lore-text-tertiary)]">Ask anything…</span>}
-          </span>
+        <div className="flex items-center gap-1.5">
+          <Radio size={11} className="text-[var(--lore-success)]" />
           <span
-            className={cn(
-              "flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors",
-              step === 0
-                ? "bg-[var(--lore-accent)] text-white"
-                : "bg-[var(--lore-surface-raised)] text-[var(--lore-text-tertiary)]",
-            )}
+            className="min-w-0 truncate text-[10.5px] text-[var(--lore-text-tertiary)]"
+            style={{ fontFamily: "var(--font-mono), monospace" }}
           >
-            <ArrowUp size={12} />
+            watching ~/Documents/wiki
           </span>
         </div>
-      </DemoCard>
-    </div>
-  );
-}
 
-// -------------------------------------------------------------- beat 3: propose
-
-// 0 collapsed, 1 diff expands, 2 accepted, 3 merged into the page.
-const PROPOSE_STEPS = [1500, 2400, 900, 2200] as const;
-
-export function ProposeDemo() {
-  const { ref, step } = useLoopSequence(PROPOSE_STEPS, 1);
-  const accepted = step >= 2;
-
-  return (
-    <div ref={ref} className="w-full">
-      <DemoCard className="h-[15.5rem]">
-        <div style={paletteVars(0)}>
-          <div className="flex items-center gap-2">
-            <span className="pal-bar !h-5" />
-            <h4 className="pal-title text-[13.5px] font-semibold">Deploy pipeline</h4>
-          </div>
-          <ul className="mt-1.5 space-y-1">
-            <li className="text-[12px] leading-relaxed text-[var(--lore-text-secondary)]">
-              A red build blocks the deploy — never override it.
-            </li>
-            <AnimatePresence>
-              {step >= 3 ? (
-                <motion.li
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  transition={{ duration: 0.4, ease: EASE }}
-                  className="rounded bg-[var(--lore-success)]/14 px-1 text-[12px] leading-relaxed text-[var(--lore-text-primary)]"
-                >
-                  Rollback is a revert commit, not a dashboard button.
-                </motion.li>
-              ) : null}
-            </AnimatePresence>
-          </ul>
-        </div>
-
-        <AnimatePresence>
-          {step < 3 ? (
+        <div className="mt-2.5 flex-1 space-y-1">
+          {WRITES.slice(0, step + 1).map((write) => (
             <motion.div
-              key="proposal"
-              exit={{ opacity: 0, y: -6, height: 0 }}
-              transition={{ duration: 0.3, ease: EASE }}
-              className="mt-3 overflow-hidden rounded-lg border border-[var(--lore-border)]"
+              key={write.path}
+              layout
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.32, ease: EASE }}
+              style={paletteVars(write.slot)}
+              className="flex items-center gap-2 rounded-lg px-1.5 py-1"
             >
-              <div className="flex flex-wrap items-center gap-1.5 border-b border-[var(--lore-border)] bg-[var(--lore-surface-raised)] px-2.5 py-1.5">
-                <span className="text-[11.5px] font-semibold text-[var(--lore-text-primary)]">
-                  Claude Code
+              <span className="pal-dot" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[11.5px] text-[var(--lore-text-primary)]">
+                  {write.path}
                 </span>
-                <span className="rounded-full border border-[#b45309]/40 px-1.5 py-px text-[9px] font-bold uppercase tracking-[0.05em] text-[#b45309] dark:border-[#fbbf24]/35 dark:text-[#fbbf24]">
-                  medium
+                <span className="block truncate text-[10px] text-[var(--lore-text-tertiary)]">
+                  {write.agent} · {write.kind}
                 </span>
-                <span className="flex-1" />
-                <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-[var(--lore-text-secondary)]">
-                  <X size={10} />
-                  Reject
-                </span>
-                <motion.span
-                  animate={
-                    accepted
-                      ? { scale: [1, 0.92, 1], backgroundColor: "#16a34a" }
-                      : { scale: 1 }
-                  }
-                  transition={{ duration: 0.35, ease: EASE }}
-                  className="inline-flex items-center gap-1 rounded-md bg-[var(--lore-accent)] px-2 py-0.5 text-[11px] font-medium text-white"
-                >
-                  <Check size={10} />
-                  {accepted ? "Accepted" : "Accept"}
-                </motion.span>
-              </div>
-
-              <AnimatePresence initial={false}>
-                {step >= 1 ? (
-                  <motion.div
-                    key="diff"
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: "auto", opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.35, ease: EASE }}
-                    className="overflow-hidden"
-                  >
-                    <p className="px-2.5 py-1.5 text-[11.5px] leading-relaxed text-[var(--lore-text-secondary)]">
-                      Rollbacks came up twice this week and the answer isn&apos;t written down.
-                    </p>
-                    <div
-                      className="border-t border-[var(--lore-border)] bg-[var(--lore-background)] px-2.5 py-1.5 text-[11px] leading-[1.7]"
-                      style={{ fontFamily: "var(--font-mono), monospace" }}
-                    >
-                      <div className="text-[var(--lore-text-tertiary)]">
-                        {"  "}A red build blocks the deploy…
-                      </div>
-                      <div className="rounded bg-[var(--lore-success)]/12 px-1 text-[var(--lore-success)]">
-                        + Rollback is a revert commit, not a dashboard button.
-                      </div>
-                    </div>
-                  </motion.div>
-                ) : null}
-              </AnimatePresence>
-            </motion.div>
-          ) : (
-            <motion.p
-              key="done"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="mt-auto pt-3 text-[11.5px] text-[var(--lore-text-tertiary)]"
-            >
-              Written to <span style={{ fontFamily: "var(--font-mono), monospace" }}>stack/deploy-pipeline.md</span>
-            </motion.p>
-          )}
-        </AnimatePresence>
-      </DemoCard>
-    </div>
-  );
-}
-
-// -------------------------------------------------------------- beat 4: health
-
-const HEALTH_STEPS = [2600, 2600] as const;
-
-const ISSUES = [
-  { label: "Orphans", value: 6, slot: 0 },
-  { label: "Dead links", value: 3, slot: 2 },
-  { label: "Stale", value: 11, slot: 6 },
-];
-
-export function HealthDemo() {
-  const { ref, step, playing } = useLoopSequence(HEALTH_STEPS, 1);
-  const score = useCountUp(88, playing ? step >= 0 : true);
-  const dash = useMemo(() => 2 * Math.PI * 34, []);
-
-  return (
-    <div ref={ref} className="w-full">
-      <DemoCard className="h-[15.5rem] items-center justify-center">
-        <div className="relative h-[92px] w-[92px]">
-          <svg viewBox="0 0 80 80" className="h-full w-full -rotate-90">
-            <circle
-              cx="40"
-              cy="40"
-              r="34"
-              fill="none"
-              strokeWidth="7"
-              className="stroke-[var(--lore-surface-raised)]"
-            />
-            <motion.circle
-              cx="40"
-              cy="40"
-              r="34"
-              fill="none"
-              strokeWidth="7"
-              strokeLinecap="round"
-              className="stroke-[var(--lore-success)]"
-              style={{ strokeDasharray: dash }}
-              animate={{ strokeDashoffset: dash - (dash * score) / 100 }}
-              transition={{ duration: 0.2, ease: "linear" }}
-            />
-          </svg>
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-[26px] font-bold leading-none tabular-nums text-[var(--lore-text-primary)]">
-              {score}
-            </span>
-            <span className="text-[9.5px] text-[var(--lore-text-tertiary)]">of 100</span>
-          </div>
-        </div>
-
-        <div className="mt-4 grid w-full grid-cols-3 gap-2">
-          {ISSUES.map((issue, i) => (
-            <motion.div
-              key={issue.label}
-              style={paletteVars(issue.slot)}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.35, delay: 0.5 + i * 0.1, ease: EASE }}
-              className="rounded-lg px-2 py-1.5 text-center"
-            >
-              <div className="pal-title text-[15px] font-bold tabular-nums">{issue.value}</div>
-              <div className="text-[9.5px] text-[var(--lore-text-tertiary)]">{issue.label}</div>
+              </span>
+              <span
+                className="shrink-0 text-[10.5px] tabular-nums"
+                style={{ fontFamily: "var(--font-mono), monospace" }}
+              >
+                <span className="text-[var(--lore-success)]">+{write.add}</span>{" "}
+                <span className="text-[var(--lore-danger)]">−{write.del}</span>
+              </span>
             </motion.div>
           ))}
         </div>
 
-        <p className="mt-3 flex items-center gap-1.5 text-[11px] text-[var(--lore-text-tertiary)]">
-          <Activity size={11} />
-          Pricing pages get 30 days. Tooling gets 90.
-        </p>
+        <div className="mt-2 flex items-baseline gap-1.5 border-t border-[var(--lore-border)] pt-2.5">
+          <span className="text-[22px] font-bold leading-none tabular-nums text-[var(--lore-text-primary)]">
+            {changed}
+          </span>
+          <span className="text-[11px] text-[var(--lore-text-tertiary)]">
+            pages changed in seven days
+          </span>
+        </div>
+      </DemoCard>
+    </div>
+  );
+}
+
+// ------------------------------------------------------ beat 2: the sign-off
+
+// 0 unverified, 1 a human signs off, 2 an agent rewrites the page, 3 it lapses.
+const SIGN_STEPS = [1700, 1900, 1500, 2700] as const;
+
+/** Counts for the four-segment bar at each step, over a twelve-page folder. */
+const SIGN_COUNTS = [
+  { verified: 1, aging: 1, lapsed: 0, unverified: 10 },
+  { verified: 2, aging: 1, lapsed: 0, unverified: 9 },
+  { verified: 2, aging: 1, lapsed: 0, unverified: 9 },
+  { verified: 1, aging: 1, lapsed: 1, unverified: 9 },
+] as const;
+
+const SEGMENT_FILL = {
+  verified: "var(--lore-success)",
+  aging: "var(--pal-7)",
+  lapsed: "var(--lore-danger)",
+  unverified: "var(--lore-border-strong)",
+} as const;
+
+export function SignOffDemo() {
+  const { ref, step } = useLoopSequence(SIGN_STEPS, SIGN_STEPS.length - 1);
+  const counts = SIGN_COUNTS[step];
+  const signed = step >= 1;
+  const lapsed = step >= 3;
+
+  return (
+    <div ref={ref} className="w-full">
+      <DemoCard className="h-[15.5rem] justify-between">
+        <div>
+          <div className="flex h-1.5 overflow-hidden rounded-full bg-[var(--lore-surface-raised)]">
+            {(["verified", "aging", "lapsed", "unverified"] as const).map((state) => (
+              <motion.div
+                key={state}
+                animate={{ width: `${(counts[state] / 12) * 100}%` }}
+                transition={{ duration: 0.45, ease: EASE }}
+                style={{ background: SEGMENT_FILL[state] }}
+              />
+            ))}
+          </div>
+          <p className="mt-1.5 text-[10px] text-[var(--lore-text-tertiary)]">
+            {counts.verified + counts.aging} of 12 pages checked by a human
+          </p>
+        </div>
+
+        <div style={paletteVars(2)} className="rounded-lg border border-[var(--lore-border)] p-2.5">
+          <div className="flex items-center gap-2">
+            <span className="pal-bar !h-5" />
+            <h4 className="pal-title min-w-0 flex-1 truncate text-[13.5px] font-semibold">
+              Pricing policy
+            </h4>
+            <TrustPill state={lapsed ? "lapsed" : signed ? "verified" : "unverified"} />
+          </div>
+
+          <p
+            className="mt-2 truncate text-[10.5px] text-[var(--lore-text-tertiary)]"
+            style={{ fontFamily: "var(--font-mono), monospace" }}
+          >
+            hash {step >= 2 ? "b70e…9d44" : "4f9c…c1a2"} · 21 pages link here
+          </p>
+
+          <motion.div
+            animate={
+              step === 1
+                ? { scale: [1, 0.94, 1] }
+                : { scale: 1 }
+            }
+            transition={{ duration: 0.35, ease: EASE }}
+            className={cn(
+              "mt-2.5 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-semibold",
+              signed && !lapsed
+                ? "border border-[var(--lore-border)] text-[var(--lore-text-secondary)]"
+                : "bg-[var(--lore-accent)] text-white",
+            )}
+          >
+            {signed && !lapsed ? <Check size={10} /> : <Shield size={10} />}
+            {signed && !lapsed ? "Signed off" : "Sign off"}
+          </motion.div>
+        </div>
+
+        <div className="h-[2.4rem]">
+          <AnimatePresence mode="wait">
+            {step === 2 ? (
+              <motion.p
+                key="rewrite"
+                initial={{ opacity: 0, y: 5 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                className="flex items-start gap-1.5 text-[11px] leading-relaxed text-[var(--lore-text-secondary)]"
+              >
+                <PenLine size={11} className="mt-0.5 shrink-0" />
+                Claude Code rewrote this page. The hash moved.
+              </motion.p>
+            ) : lapsed ? (
+              <motion.p
+                key="lapsed"
+                initial={{ opacity: 0, y: 5 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                className="flex items-start gap-1.5 text-[11px] leading-relaxed text-[var(--lore-danger)]"
+              >
+                <ShieldAlert size={11} className="mt-0.5 shrink-0" />
+                Sign-off withdrawn. Back to the top of Review.
+              </motion.p>
+            ) : (
+              <motion.p
+                key="idle"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="text-[11px] leading-relaxed text-[var(--lore-text-tertiary)]"
+              >
+                A sign-off is pinned to the bytes you read.
+              </motion.p>
+            )}
+          </AnimatePresence>
+        </div>
+      </DemoCard>
+    </div>
+  );
+}
+
+/**
+ * The four trust states as an outlined pill. Aging borrows the amber plate ink
+ * rather than a one-off hex so it survives the theme flip.
+ */
+export function TrustPill({
+  state,
+}: {
+  state: "verified" | "aging" | "lapsed" | "unverified";
+}) {
+  const tone =
+    state === "verified"
+      ? "text-[var(--lore-success)] border-[var(--lore-success)]/45"
+      : state === "lapsed"
+        ? "text-[var(--lore-danger)] border-[var(--lore-danger)]/50"
+        : state === "aging"
+          ? "text-[var(--pal-7-ink)] border-[var(--pal-7-ink)]/45"
+          : "text-[var(--lore-text-tertiary)] border-[var(--lore-border-strong)]";
+
+  return (
+    <span
+      className={cn(
+        "shrink-0 rounded-full border px-1.5 py-px text-[9px] font-bold uppercase tracking-[0.05em]",
+        tone,
+      )}
+    >
+      {state}
+    </span>
+  );
+}
+
+// ------------------------------------------------------- beat 3: the questions
+
+// 0–2 searches arrive, 3 the one that found nothing becomes a page to write.
+const GAP_STEPS = [1400, 1250, 1450, 2900] as const;
+
+const QUERIES = [
+  { q: "rollback procedure", hits: 3 },
+  { q: "postgres pooling", hits: 2 },
+  { q: "reseller discount", hits: 0 },
+] as const;
+
+export function GapsDemo() {
+  const { ref, step } = useLoopSequence(GAP_STEPS, GAP_STEPS.length - 1);
+
+  return (
+    <div ref={ref} className="w-full">
+      <DemoCard className="h-[15.5rem] justify-between">
+        <div>
+          <span className="text-[10px] font-semibold uppercase tracking-[0.09em] text-[var(--lore-text-tertiary)]">
+            wiki_search
+          </span>
+
+          <div className="mt-2 space-y-1.5">
+            {QUERIES.slice(0, step + 1).map((query) => (
+              <motion.div
+                key={query.q}
+                layout
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, ease: EASE }}
+                className="flex items-center gap-2 rounded-lg border border-[var(--lore-border)] bg-[var(--lore-background)] px-2 py-1.5"
+              >
+                <Search size={11} className="shrink-0 text-[var(--lore-text-tertiary)]" />
+                <span
+                  className="min-w-0 flex-1 truncate text-[11.5px] text-[var(--lore-text-primary)]"
+                  style={{ fontFamily: "var(--font-mono), monospace" }}
+                >
+                  {query.q}
+                </span>
+                <span
+                  className={cn(
+                    "shrink-0 text-[10.5px] tabular-nums",
+                    query.hits === 0
+                      ? "text-[var(--lore-danger)]"
+                      : "text-[var(--lore-text-tertiary)]",
+                  )}
+                >
+                  {query.hits} hits
+                </span>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+
+        <div className="h-[4.6rem]">
+          <AnimatePresence>
+            {step >= 3 ? (
+              <motion.div
+                key="towrite"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.35, ease: EASE }}
+                style={paletteVars(6)}
+                className="rounded-lg border border-[var(--lore-border)] px-2.5 py-2"
+              >
+                <div className="flex items-center gap-1.5">
+                  <span className="pal-dot" />
+                  <span className="pal-title text-[11.5px] font-semibold">To write</span>
+                </div>
+                <p className="mt-1 text-[11px] leading-relaxed text-[var(--lore-text-secondary)]">
+                  Reseller discount — asked four times this month, answered nowhere in the wiki.
+                </p>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
+        </div>
+      </DemoCard>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------- beat 4: the budget
+
+// 0 the window on its own, 1 the wiki beside it.
+const BUDGET_STEPS = [1900, 3200] as const;
+
+/** Twelve blocks: one context window each, the first one filled. */
+const BLOCKS = Array.from({ length: 12 }, (_, i) => i);
+
+export function BudgetDemo() {
+  const { ref, step, playing } = useLoopSequence(BUDGET_STEPS, 1);
+  const pages = useCountUp(1424, playing ? step >= 1 : true);
+
+  return (
+    <div ref={ref} className="w-full">
+      <DemoCard className="h-[15.5rem] justify-center">
+        <div className="flex items-baseline justify-between">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.09em] text-[var(--lore-text-tertiary)]">
+            One 200k window
+          </span>
+          <span className="text-[10px] text-[var(--lore-text-tertiary)]">12 needed</span>
+        </div>
+
+        <div className="mt-2.5 grid grid-cols-6 gap-1.5">
+          {BLOCKS.map((block) => (
+            <motion.div
+              key={block}
+              initial={false}
+              animate={{
+                opacity: block === 0 || step >= 1 ? 1 : 0.14,
+                scale: block === 0 || step >= 1 ? 1 : 0.9,
+              }}
+              transition={{ duration: 0.3, delay: step >= 1 ? block * 0.045 : 0, ease: EASE }}
+              className={cn(
+                "h-7 rounded-md",
+                block === 0
+                  ? "bg-[var(--lore-accent)]"
+                  : "border border-[var(--lore-border-strong)] bg-[var(--lore-surface-raised)]",
+              )}
+            />
+          ))}
+        </div>
+
+        <div className="mt-5 border-t border-[var(--lore-border)] pt-3.5">
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-[26px] font-bold leading-none tabular-nums text-[var(--lore-text-primary)]">
+              2.3M
+            </span>
+            <span className="text-[11.5px] text-[var(--lore-text-secondary)]">
+              tokens across {pages.toLocaleString()} pages
+            </span>
+          </div>
+          <p className="mt-1.5 text-[11px] leading-relaxed text-[var(--lore-text-tertiary)]">
+            Counted with a real BPE tokenizer, not characters divided by four.
+          </p>
+        </div>
       </DemoCard>
     </div>
   );

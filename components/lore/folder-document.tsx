@@ -18,7 +18,14 @@ type FolderData = {
   /** Proposals that would create a new page here — no section to attach to. */
   incoming: Proposal[];
   totals: { count: number; added: number; removed: number };
+  total: number;
+  offset: number;
+  limit: number;
+  hasMore: boolean;
 };
+
+/** Matches the server default. A real vault has folders of 600+ pages. */
+const PAGE_SIZE = 40;
 
 /**
  * A folder rendered as one continuous document.
@@ -48,19 +55,36 @@ export function FolderDocument({
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
-  const load = useCallback(async () => {
-    const response = await fetch(`/api/folder?path=${encodeURIComponent(folder)}`);
-    if (!response.ok) {
-      setError((await response.json()).error ?? "Could not open that folder.");
-      return;
-    }
-    setError(null);
-    setData(await response.json());
-  }, [folder]);
+  const load = useCallback(
+    async (append = false) => {
+      const offset = append ? (data?.sections.length ?? 0) : 0;
+      const response = await fetch(
+        `/api/folder?path=${encodeURIComponent(folder)}&offset=${offset}&limit=${PAGE_SIZE}`,
+      );
+      if (!response.ok) {
+        setError((await response.json()).error ?? "Could not open that folder.");
+        return;
+      }
+      setError(null);
+      const next: FolderData = await response.json();
+      setData((current) =>
+        append && current
+          ? { ...next, sections: [...current.sections, ...next.sections] }
+          : next,
+      );
+    },
+    [folder, data?.sections.length],
+  );
 
   useEffect(() => {
-    load();
-  }, [load, revision]);
+    // Deliberately not depending on `load` — it changes identity whenever a
+    // page is appended, which would restart the folder from scratch mid-scroll.
+    void loadRef.current();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [folder, revision]);
+
+  const loadRef = useRef(load);
+  loadRef.current = load;
 
   // Search lands you on a page, not a folder, so the document scrolls to it
   // once its section has actually rendered.
@@ -120,7 +144,9 @@ export function FolderDocument({
           {data.folder || "Root"}
         </h1>
         <p className="t-meta mt-1 text-[var(--lore-text-tertiary)]">
-          {data.sections.length} {data.sections.length === 1 ? "page" : "pages"}
+          {data.total === data.sections.length
+            ? `${data.total} ${data.total === 1 ? "page" : "pages"}`
+            : `${data.sections.length} of ${data.total} pages · newest first`}
         </p>
       </header>
 
@@ -193,6 +219,16 @@ export function FolderDocument({
             }}
           />
         ))}
+
+        {data.hasMore ? (
+          <button
+            type="button"
+            onClick={() => load(true)}
+            className="mt-8 w-full rounded-xl border border-[var(--lore-border)] py-3 text-[13.5px] font-medium text-[var(--lore-text-secondary)] transition-colors hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)]"
+          >
+            Load more — showing {data.sections.length} of {data.total}
+          </button>
+        ) : null}
 
         {data.incoming.map((proposal) => (
           <IncomingSection

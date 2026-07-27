@@ -1,0 +1,442 @@
+import { promises as fs } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import crypto from "node:crypto";
+import { vaultKey } from "@/lib/journal";
+
+/**
+ * Local semantic search.
+ *
+ * This is not here to understand the wiki. A frontier model reading the pages
+ * understands them far better than a 23MB MiniLM ever will, and pretending
+ * otherwise would be dishonest. It is here for two things a hosted model can't
+ * give the UI: instant, and offline.
+ *
+ * Instant, because related-pages and similarity have to answer while you type,
+ * and a network round trip per keystroke does not. Offline, because this corpus
+ * contains client names and financials, and shipping it to an embedding API to
+ * get a "related pages" list is a bad trade.
+ *
+ * The measured failure it fixes: the query "how do I undo a deploy" returns
+ * zero literal results against a page whose text is "Rollback is a revert
+ * commit". No amount of substring matching bridges that; a vector does.
+ *
+ * Everything degrades to nothing rather than to an error. If the model isn't
+ * installed, isn't downloaded yet, or fails to load, search returns [] and the
+ * caller falls back to literal matching.
+ */
+
+const MODEL = "Xenova/all-MiniLM-L6-v2";
+const STORE_VERSION = 1;
+
+const DIR = path.join(os.homedir(), ".lore");
+const indexPath = (key: string) => path.join(DIR, `embeddings-${key}.json`);
+/** Model weights are cached under ~/.lore too, so nothing lands in the vault. */
+const MODEL_CACHE = path.join(DIR, "models");
+
+/**
+ * MiniLM truncates at 256 word-pieces. A 400-word chunk would therefore have
+ * its tail silently dropped before it was ever embedded — the chunk would look
+ * indexed and simply not contain half its content. 180 words of markdown prose
+ * lands under that ceiling with room for the title prefix.
+ */
+const CHUNK_WORDS = 180;
+const CHUNK_OVERLAP = 40;
+/** A single 20,000-word page shouldn't cost more index time than 30 real ones. */
+const MAX_CHUNKS_PER_PAGE = 24;
+const BATCH = 16;
+
+/**
+ * Cosine floor. Below this the ranking is noise, and returning the whole vault
+ * sorted by noise is worse than returning nothing — the user reads the top hit
+ * as an answer either way.
+ */
+const MIN_SCORE = 0.25;
+const MIN_RELATED = 0.3;
+
+/** Don't re-attempt a failed 23MB download on every keystroke. */
+const RETRY_MS = 60_000;
+
+export type EmbeddingStatus = {
+  ready: boolean;
+  /**
+   * Null until the pipeline has actually loaded. `building && model === null`
+   * is the state to render as "downloading model" — the first call fetches
+   * ~23MB and the UI should say so rather than appear hung.
+   */
+  model: string | null;
+  indexed: number;
+  total: number;
+  building: boolean;
+  error: string | null;
+};
+
+// -------------------------------------------------------------- optional dep
+
+/**
+ * transformers.js is loaded through a runtime `import` the bundler cannot
+ * statically see. It is an optional dependency: if it isn't installed, Lore
+ * must still build and every other feature must still work, with semantic
+ * search reporting an honest error instead of taking the app down.
+ */
+const importRuntime = new Function("specifier", "return import(specifier)") as (
+  specifier: string,
+) => Promise<unknown>;
+
+type Extractor = (
+  input: string[],
+  options: { pooling: "mean"; normalize: boolean },
+) => Promise<{ data: Float32Array; dims: number[] }>;
+
+type Transformers = {
+  pipeline: (
+    task: "feature-extraction",
+    model: string,
+    options: { quantized: boolean },
+  ) => Promise<Extractor>;
+  env: { cacheDir: string };
+};
+
+// -------------------------------------------------------------------- state
+
+type PageVectors = { hash: string; vectors: Float32Array[] };
+
+type StoredIndex = {
+  version: number;
+  model: string;
+  pages: Record<string, { hash: string; vectors: string[] }>;
+};
+
+type State = { root: string; key: string; pages: Map<string, PageVectors> };
+
+let state: State | null = null;
+let loading: { root: string; promise: Promise<State> } | null = null;
+let extractor: Extractor | null = null;
+let extractorLoad: Promise<Extractor | null> | null = null;
+let lastFailureAt = 0;
+let building: Promise<void> | null = null;
+
+const status: EmbeddingStatus = {
+  ready: false,
+  model: null,
+  indexed: 0,
+  total: 0,
+  building: false,
+  error: null,
+};
+
+export function embeddingStatus(): EmbeddingStatus {
+  return { ...status };
+}
+
+const hashOf = (text: string) =>
+  crypto.createHash("sha1").update(text).digest("hex").slice(0, 16);
+
+// --------------------------------------------------------------- persistence
+
+/**
+ * Vectors are stored as base64 float32 rather than JSON numbers. A 384-dim
+ * vector is 1,536 bytes packed and roughly 3KB as rounded decimal text, and a
+ * 1,400-page vault runs to several thousand chunks — the packed form is both
+ * smaller and lossless.
+ */
+const encodeVec = (v: Float32Array) =>
+  Buffer.from(v.buffer, v.byteOffset, v.byteLength).toString("base64");
+
+const decodeVec = (s: string): Float32Array => {
+  const bytes = Buffer.from(s, "base64");
+  const copy = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  return new Float32Array(copy);
+};
+
+async function readState(root: string): Promise<State> {
+  const key = vaultKey(root);
+  const next: State = { root, key, pages: new Map() };
+
+  const raw = await fs.readFile(indexPath(key), "utf8").catch(() => "");
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as StoredIndex;
+      // A different model produces incomparable vectors, so a model change is
+      // a full rebuild rather than a silent mix of two vector spaces.
+      if (parsed.version === STORE_VERSION && parsed.model === MODEL) {
+        for (const [id, page] of Object.entries(parsed.pages)) {
+          next.pages.set(id, { hash: page.hash, vectors: page.vectors.map(decodeVec) });
+        }
+      }
+    } catch {
+      // A torn index costs a rebuild, which is recoverable. Failing isn't.
+    }
+  }
+
+  state = next;
+  status.indexed = next.pages.size;
+  status.ready = next.pages.size > 0 && status.error === null;
+  return next;
+}
+
+async function loadState(root: string): Promise<State> {
+  if (state && state.root === root) return state;
+  if (loading && loading.root === root) return loading.promise;
+  const promise = readState(root);
+  loading = { root, promise };
+  try {
+    return await promise;
+  } finally {
+    if (loading?.promise === promise) loading = null;
+  }
+}
+
+async function save(s: State): Promise<void> {
+  const stored: StoredIndex = { version: STORE_VERSION, model: MODEL, pages: {} };
+  for (const [id, page] of s.pages) {
+    stored.pages[id] = { hash: page.hash, vectors: page.vectors.map(encodeVec) };
+  }
+  try {
+    await fs.mkdir(DIR, { recursive: true, mode: 0o700 });
+    const tmp = `${indexPath(s.key)}.tmp`;
+    await fs.writeFile(tmp, JSON.stringify(stored), "utf8");
+    await fs.rename(tmp, indexPath(s.key));
+  } catch {
+    // An unwritable cache costs a rebuild next boot, not a broken feature.
+  }
+}
+
+// ----------------------------------------------------------------- embedding
+
+async function loadExtractor(): Promise<Extractor | null> {
+  if (extractor) return extractor;
+  if (extractorLoad) return extractorLoad;
+  if (status.error && Date.now() - lastFailureAt < RETRY_MS) return null;
+
+  const attempt = (async (): Promise<Extractor | null> => {
+    try {
+      await fs.mkdir(MODEL_CACHE, { recursive: true, mode: 0o700 });
+      const mod = (await importRuntime("@xenova/transformers")) as Transformers;
+      mod.env.cacheDir = MODEL_CACHE;
+      const pipe = await mod.pipeline("feature-extraction", MODEL, { quantized: true });
+      extractor = pipe;
+      status.model = MODEL;
+      status.error = null;
+      return pipe;
+    } catch (error) {
+      lastFailureAt = Date.now();
+      status.model = null;
+      status.error =
+        error instanceof Error ? error.message : "Embedding model unavailable.";
+      return null;
+    } finally {
+      extractorLoad = null;
+    }
+  })();
+
+  extractorLoad = attempt;
+  return attempt;
+}
+
+async function embed(texts: string[]): Promise<Float32Array[] | null> {
+  const pipe = await loadExtractor();
+  if (!pipe) return null;
+  const out: Float32Array[] = [];
+  try {
+    for (let i = 0; i < texts.length; i += BATCH) {
+      const slice = texts.slice(i, i + BATCH);
+      // Normalised at source, so every later comparison is a plain dot product.
+      const result = await pipe(slice, { pooling: "mean", normalize: true });
+      const dim = result.dims[result.dims.length - 1];
+      for (let j = 0; j < slice.length; j++) {
+        out.push(result.data.slice(j * dim, (j + 1) * dim));
+      }
+    }
+  } catch (error) {
+    lastFailureAt = Date.now();
+    status.error = error instanceof Error ? error.message : "Embedding failed.";
+    return null;
+  }
+  return out;
+}
+
+/**
+ * Split a page into overlapping windows, each prefixed with the page title.
+ *
+ * One vector per page is useless above a few hundred words: mean-pooling a
+ * 5,000-word page averages away every specific thing in it, which is exactly
+ * what a search is looking for. The title prefix keeps a chunk from the middle
+ * of a long page anchored to its subject, since the chunk itself often never
+ * repeats it.
+ */
+function chunkPage(title: string, text: string): string[] {
+  const words = text.split(/\s+/).filter(Boolean);
+  if (!words.length) return [];
+  // Past the chunk cap the windows spread out instead of stopping, so a
+  // 20,000-word page stays searchable to its end. Widened stride leaves small
+  // gaps between windows; covering all of a page with gaps beats covering the
+  // first seventh of it perfectly and finding nothing below that.
+  const stride = Math.max(
+    CHUNK_WORDS - CHUNK_OVERLAP,
+    Math.ceil((words.length - CHUNK_WORDS) / (MAX_CHUNKS_PER_PAGE - 1)),
+  );
+  const out: string[] = [];
+  for (let i = 0; i < words.length && out.length < MAX_CHUNKS_PER_PAGE; i += stride) {
+    out.push(`${title}\n${words.slice(i, i + CHUNK_WORDS).join(" ")}`);
+    if (i + CHUNK_WORDS >= words.length) break;
+  }
+  return out;
+}
+
+function dot(a: Float32Array, b: Float32Array): number {
+  if (a.length !== b.length) return -1;
+  let sum = 0;
+  for (let i = 0; i < a.length; i++) sum += a[i] * b[i];
+  return sum;
+}
+
+// ------------------------------------------------------------------ indexing
+
+type SourcePage = { id: string; title: string; text: string };
+
+async function runBuild(s: State, stale: SourcePage[]): Promise<void> {
+  status.building = true;
+  try {
+    const pending = new Set(stale.map((p) => p.id));
+    let indexed = 0;
+    for (const id of s.pages.keys()) if (!pending.has(id)) indexed += 1;
+    status.indexed = indexed;
+
+    let sinceSave = 0;
+    for (const page of stale) {
+      // The user can relink a different vault mid-build; its vectors must not
+      // be written into this one's file.
+      if (state !== s) return;
+
+      const chunks = chunkPage(page.title, page.text);
+      const vectors = chunks.length ? await embed(chunks) : [];
+      // Null means the model went away. Its message is already on the status;
+      // stopping leaves the partial index intact and searchable.
+      if (vectors === null) return;
+
+      s.pages.set(page.id, { hash: hashOf(page.text), vectors });
+      status.indexed = ++indexed;
+      status.ready = status.error === null;
+
+      if (++sinceSave >= 50) {
+        await save(s);
+        sinceSave = 0;
+      }
+      // Yield so a search request lands between pages instead of behind them.
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+    await save(s);
+  } finally {
+    status.building = false;
+  }
+}
+
+/**
+ * Bring the index up to date with the vault, without blocking the caller.
+ *
+ * Only pages whose content hash changed are re-embedded. Re-embedding 1,400
+ * pages on every boot would take minutes of CPU to produce byte-identical
+ * vectors, so the hash is the whole point of persisting the index at all.
+ */
+export async function ensureIndex(root: string, pages: SourcePage[]): Promise<void> {
+  const s = await loadState(root);
+  status.total = pages.length;
+
+  const live = new Set(pages.map((p) => p.id));
+  let dropped = false;
+  for (const id of [...s.pages.keys()]) {
+    if (!live.has(id)) {
+      s.pages.delete(id);
+      dropped = true;
+    }
+  }
+
+  const stale = pages.filter((p) => s.pages.get(p.id)?.hash !== hashOf(p.text));
+  if (!stale.length) {
+    status.indexed = s.pages.size;
+    status.ready = s.pages.size > 0 && status.error === null;
+    if (dropped) await save(s);
+    return;
+  }
+
+  // A build already draining the queue will pick up anything newly stale on
+  // the next call; starting a second one would only fight it for the CPU.
+  if (building) return;
+  building = runBuild(s, stale)
+    .catch(() => {})
+    .finally(() => {
+      building = null;
+    });
+}
+
+// -------------------------------------------------------------------- search
+
+export async function semanticSearch(
+  root: string,
+  query: string,
+  limit = 10,
+): Promise<{ id: string; score: number }[]> {
+  const q = query.trim();
+  if (!q) return [];
+
+  const s = await loadState(root);
+  if (!s.pages.size) return [];
+
+  // Embedding the query needs the model in memory. On the very first call that
+  // means a ~23MB download, which must not hang a search request — start it and
+  // answer with nothing, so the caller falls back to literal search this time.
+  if (!extractor) {
+    void loadExtractor();
+    return [];
+  }
+
+  const embedded = await embed([q]);
+  const qv = embedded?.[0];
+  if (!qv) return [];
+
+  const out: { id: string; score: number }[] = [];
+  for (const [id, page] of s.pages) {
+    let best = -1;
+    for (const vec of page.vectors) {
+      const score = dot(qv, vec);
+      if (score > best) best = score;
+    }
+    // Best chunk wins: a page is relevant if any part of it is, and averaging
+    // that against the rest of a long page buries it.
+    if (best >= MIN_SCORE) out.push({ id, score: best });
+  }
+
+  out.sort((a, b) => b.score - a.score);
+  return out.slice(0, limit);
+}
+
+/**
+ * Pages similar to a given one. Runs entirely off stored vectors, so it needs
+ * no model in memory and answers in milliseconds.
+ */
+export async function relatedTo(
+  root: string,
+  pageId: string,
+  limit = 8,
+): Promise<{ id: string; score: number }[]> {
+  const s = await loadState(root);
+  const source = s.pages.get(pageId);
+  if (!source || !source.vectors.length) return [];
+
+  const out: { id: string; score: number }[] = [];
+  for (const [id, page] of s.pages) {
+    if (id === pageId) continue;
+    let best = -1;
+    for (const a of source.vectors) {
+      for (const b of page.vectors) {
+        const score = dot(a, b);
+        if (score > best) best = score;
+      }
+    }
+    if (best >= MIN_RELATED) out.push({ id, score: best });
+  }
+
+  out.sort((a, b) => b.score - a.score);
+  return out.slice(0, limit);
+}

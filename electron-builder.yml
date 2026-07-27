@@ -1,0 +1,74 @@
+# Packaging config for the Lore desktop app.
+#
+# Lore's server is a Next.js standalone build, which is a real Node program that
+# reads its chunks and traced node_modules from disk. It therefore ships as
+# extraResources — outside the asar archive — and the asar itself holds only the
+# Electron shell.
+#
+# Prerequisites: next.config.ts must set output: "standalone", and `npm run
+# build` must have run. See electron/README.md.
+
+appId: com.lore.app
+productName: Lore
+copyright: Lore
+
+directories:
+  output: dist-desktop
+
+# Replaces electron-builder's default of packing everything. Nothing in
+# main.js or preload.js imports a package, so the app's dependencies belong in
+# the traced standalone bundle below, not duplicated into the asar.
+files:
+  - electron/main.js
+  - electron/preload.js
+  - package.json
+  - "!node_modules/**/*"
+
+extraResources:
+  # The standalone server plus the node_modules Next traced for it.
+  - from: .next/standalone
+    to: app-server
+  # Next does not copy these into the standalone output — the server 404s every
+  # asset without them.
+  - from: .next/static
+    to: app-server/.next/static
+  - from: public
+    to: app-server/public
+  # The MCP stdio bridge. Lore's Connections screen prints an agent config
+  # pointing at `${process.cwd()}/mcp/server.mjs`, and the standalone server
+  # chdirs into app-server — so the file has to exist there for that config to
+  # be correct.
+  - from: mcp
+    to: app-server/mcp
+
+# No native modules anywhere in the tree, so there is nothing to rebuild.
+npmRebuild: false
+
+mac:
+  category: public.app-category.productivity
+  darkModeSupport: true
+  target:
+    - target: dmg
+      arch:
+        - arm64
+        - x64
+  # Signing is not configured: a Developer ID certificate requires a paid Apple
+  # Developer Program membership. Explicit null stops electron-builder from
+  # picking up an unrelated identity from the keychain and producing a build
+  # that fails notarization checks in a less obvious way.
+  identity: null
+  hardenedRuntime: false
+
+dmg:
+  artifactName: ${productName}-${version}-${arch}.dmg
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true

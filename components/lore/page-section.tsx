@@ -5,6 +5,7 @@ import { Check, X, Loader2, Pencil, Eye } from "lucide-react";
 import type { PageMeta } from "@/lib/types";
 import { renderMarkdown, stripFrontmatter, stripLeadingTitle } from "@/lib/markdown";
 import { paletteVars } from "@/lib/palette";
+import { MarkdownEditor } from "@/components/lore/markdown-editor";
 import { cn, relativeTime } from "@/lib/utils";
 
 export type Proposal = {
@@ -171,24 +172,28 @@ export function PageSection({
       {error ? <p className="t-meta mt-2 text-[var(--lore-danger)]">{error}</p> : null}
 
       {editing ? (
-        <textarea
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
+        /* CodeMirror rather than a textarea: [[wikilink]] autocomplete against
+           the real page list is the difference between writing links and
+           guessing at them, and on a 1,400-page wiki nobody remembers ids. */
+        <div
           onKeyDown={(event) => {
-            if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
-              event.preventDefault();
-              save();
-            }
+            // Escape abandons the edit. CodeMirror owns Cmd-S internally, but
+            // it lets Escape bubble, and losing "cancel" in the swap from a
+            // textarea would be a silent regression in a destructive direction.
             if (event.key === "Escape") {
               setDraft(raw);
               setEditing(false);
             }
           }}
-          spellCheck={false}
-          autoFocus
-          className="lore-scrollbar mt-3 min-h-[16rem] w-full resize-y rounded-xl border border-[var(--lore-border)] bg-[var(--lore-surface)] p-4 text-[13.5px] leading-[1.75] text-[var(--lore-text-primary)] outline-none focus:border-[var(--lore-accent)]"
-          style={{ fontFamily: "var(--font-mono), monospace" }}
-        />
+        >
+          <MarkdownEditor
+            value={draft}
+            onChange={setDraft}
+            onSave={save}
+            pageTitles={pageTitles}
+            className="mt-3"
+          />
+        </div>
       ) : (
         <div
           className="lore-prose mt-2.5 text-[15px]"

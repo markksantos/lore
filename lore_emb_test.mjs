@@ -1,0 +1,12 @@
+const mod = await import("@xenova/transformers");
+mod.env.cacheDir = "/tmp/lore-model-cache";
+const pipe = await mod.pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2", { quantized: true });
+const out = await pipe(["Rollback is a revert commit", "how do I undo a deploy", "banana bread recipe"], { pooling: "mean", normalize: true });
+console.log("dims:", out.dims, "dataType:", out.data.constructor.name, "len:", out.data.length);
+const dim = out.dims[out.dims.length - 1];
+const vecs = [];
+for (let j = 0; j < 3; j++) vecs.push(out.data.slice(j*dim, (j+1)*dim));
+const dot = (a,b) => { let s=0; for (let i=0;i<a.length;i++) s+=a[i]*b[i]; return s; };
+console.log("norm[0]:", dot(vecs[0],vecs[0]).toFixed(4));
+console.log("rollback vs undo-deploy:", dot(vecs[0],vecs[1]).toFixed(4));
+console.log("rollback vs banana:", dot(vecs[0],vecs[2]).toFixed(4));
