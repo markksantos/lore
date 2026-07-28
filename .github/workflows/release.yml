@@ -35,13 +35,13 @@ jobs:
       matrix:
         include:
           - os: macos-latest
-            script: dist:mac
+            flags: --mac --arm64 --x64
             artifacts: "dist-desktop/*.dmg"
           - os: windows-latest
-            script: dist:win
+            flags: --win --x64
             artifacts: "dist-desktop/*.exe"
           - os: ubuntu-latest
-            script: dist:linux
+            flags: --linux --x64 --arm64
             artifacts: "dist-desktop/*.AppImage\ndist-desktop/*.deb"
 
     runs-on: ${{ matrix.os }}
@@ -55,12 +55,18 @@ jobs:
 
       - run: npm ci
 
-      - name: Build
-        run: npm run ${{ matrix.script }}
+      - run: npm run build
+
+      # `--publish never` is load-bearing. electron-builder sees CI and tries to
+      # publish on its own, which fails on a missing GH_TOKEN and takes the job
+      # down *after* a successful build — which is exactly how this failed the
+      # first time. Attaching the files is the release step's job, below.
+      - name: Package
+        run: npx electron-builder ${{ matrix.flags }} --publish never
         env:
           # Nothing is signed: there is no Apple Developer membership and no
-          # Windows certificate. Saying so explicitly stops electron-builder
-          # from trying, failing, and taking the whole job with it.
+          # Windows certificate. Saying so stops electron-builder trying,
+          # failing, and taking the job with it.
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
       - name: Attach to release
