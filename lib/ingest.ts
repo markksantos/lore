@@ -180,3 +180,76 @@ export function toPage(ingested: Ingested, extraTags: string[] = []): string {
     .filter((line) => line !== null)
     .join("\n");
 }
+
+/**
+ * Extract the text of a PDF.
+ *
+ * pdfjs is imported lazily inside the function, not at module scope: it is a
+ * large dependency that most requests never need, and importing it eagerly
+ * would make every route that touches this file pay for it.
+ *
+ * Text only. Layout, tables and images are discarded, and that is the honest
+ * trade — a PDF's visual structure does not survive into markdown, and pretending
+ * otherwise produces a page that looks like a document and reads like noise.
+ */
+export async function pdfToMarkdown(bytes: Uint8Array, fallbackTitle: string): Promise<Ingested> {
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+
+  /*
+   * Load the worker in-process.
+   *
+   * pdfjs otherwise tries to spin up a "fake worker" by resolving a path on
+   * disk, which does not survive bundling — under Next it looks for the module
+   * inside .next/ and fails there. Importing it directly puts the worker code in
+   * this module graph, so the bundler emits it and no runtime path lookup
+   * happens at all.
+   */
+  await import("pdfjs-dist/legacy/build/pdf.worker.mjs").catch(() => {});
+
+  const doc = await pdfjs.getDocument({
+    data: bytes,
+    // No worker fetches, no system fonts, no font faces. This runs server-side
+    // on a file the user supplied, and a PDF is a format with a long history of
+    // hostile input; none of that machinery is needed to read text out of one.
+    // (`isEvalSupported` was removed in pdfjs 6 — checked rather than assumed.)
+    useWorkerFetch: false,
+    useSystemFonts: false,
+    disableFontFace: true,
+  }).promise;
+
+  const pages: string[] = [];
+  for (let n = 1; n <= doc.numPages; n++) {
+    const page = await doc.getPage(n);
+    const content = await page.getTextContent();
+    const line: string[] = [];
+    let lastY: number | null = null;
+    const out: string[] = [];
+
+    for (const item of content.items) {
+      if (!("str" in item)) continue;
+      const y = Math.round((item.transform?.[5] ?? 0) as number);
+      // A change in baseline is the only reliable line break signal pdfjs gives.
+      if (lastY !== null && Math.abs(y - lastY) > 2) {
+        out.push(line.join("").trim());
+        line.length = 0;
+      }
+      line.push(item.str);
+      lastY = y;
+    }
+    out.push(line.join("").trim());
+
+    const text = out.filter(Boolean).join("\n").trim();
+    if (text) pages.push(text);
+  }
+
+  const metadata = await doc.getMetadata().catch(() => null);
+  const declared = (metadata?.info as { Title?: string } | undefined)?.Title?.trim();
+
+  return {
+    title: declared || fallbackTitle,
+    markdown: pages
+      .map((text, i) => (pages.length > 1 ? `## Page ${i + 1}\n\n${text}` : text))
+      .join("\n\n"),
+    source: null,
+  };
+}
