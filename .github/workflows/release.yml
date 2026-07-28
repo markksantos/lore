@@ -1,0 +1,71 @@
+name: Build desktop apps
+
+# Builds the installers on GitHub's runners and attaches them to a release.
+#
+# This exists for two reasons, one of them mundane and one of them not.
+#
+# The mundane one: uploading 700MB of installers from a laptop fails. Repeatedly,
+# with `tls: bad record MAC`, on both GitHub and Vercel. Building where the
+# artifacts already are removes the upload entirely.
+#
+# The real one: electron-builder can only package a Windows app on Windows or
+# under Wine, so a Mac cannot produce `Lore-Setup.exe` at all. A Windows runner
+# can. That is the only way this project ships a Windows build without owning a
+# Windows machine.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to attach builds to (e.g. v0.1.0)"
+        required: true
+        default: v0.1.0
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      # Keep going if one platform fails. A broken Linux build should still let
+      # macOS and Windows users download something.
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            script: dist:mac
+            artifacts: "dist-desktop/*.dmg"
+          - os: windows-latest
+            script: dist:win
+            artifacts: "dist-desktop/*.exe"
+          - os: ubuntu-latest
+            script: dist:linux
+            artifacts: "dist-desktop/*.AppImage\ndist-desktop/*.deb"
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build
+        run: npm run ${{ matrix.script }}
+        env:
+          # Nothing is signed: there is no Apple Developer membership and no
+          # Windows certificate. Saying so explicitly stops electron-builder
+          # from trying, failing, and taking the whole job with it.
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Attach to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.event.release.tag_name }}
+          files: ${{ matrix.artifacts }}
+          fail_on_unmatched_files: true
