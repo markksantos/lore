@@ -16,3 +16,6 @@ dist/
 /post-click.md
 .playwright-mcp/
 .vercel
+
+# Local tool cache; contains absolute paths from this machine.
+.impeccable/
