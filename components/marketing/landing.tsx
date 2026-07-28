@@ -381,7 +381,7 @@ function Stack({ logos }: { logos: string[] }) {
             Anything that speaks MCP.
           </h2>
           <p className="t-lede mx-auto mt-4 max-w-2xl text-[var(--lore-text-secondary)]">
-            Four read tools over MCP, or a plain <code>AGENTS.md</code> for agents that only
+            Seven tools over MCP, or a plain <code>AGENTS.md</code> for agents that only
             open files. Both point at the same folder, and the watcher covers whatever else
             you run.
           </p>
@@ -502,7 +502,7 @@ function Steps({ siteMode }: { siteMode: boolean }) {
       n: "3",
       slot: 2,
       title: "Connect over MCP",
-      body: "Copy the config — the path is already filled in — restart your client, and the four read tools are live.",
+      body: "Copy the config — the path is already filled in — restart your client, and all seven tools are live.",
     },
     {
       n: "4",

@@ -23,8 +23,15 @@ step. The only authentication anywhere is the optional paired-remote token
                                      │
                            ┌─────────────────────┐
                            │  mcp/server.mjs     │ ◄── Claude Code, Cursor,
-                           │  (4 read tools)     │     Claude Desktop, Codex
+                           │  (7 tools, stdio)   │     Claude Desktop, Codex
                            └─────────────────────┘
+                                     ▲
+                              JSON-RPC over HTTP
+                                     │
+                           ┌─────────────────────┐
+                           │  /api/mcp           │ ◄── ChatGPT, phones, hosted
+                           │  (bearer token)     │     agents — anything that
+                           └─────────────────────┘     cannot spawn a process
 ```
 
 Two arrows matter more than the boxes.
@@ -66,7 +73,7 @@ One codebase serves two shapes, and `proxy.ts` — Next 16's renamed middleware 
 is the boundary between them.
 
 - **local** — the real app. Loopback only. Full filesystem access.
-- **site** — the marketing pages only. Every one of the sixteen
+- **site** — the marketing pages only. Every one of the thirty
   filesystem-touching routes returns 404, and `/vault` redirects to `/install`.
 
 `isSiteMode()` returns true when `LORE_MODE=site`, false when `LORE_MODE=local`,

@@ -52,7 +52,7 @@ export type Plan = {
 /** Shared by every plan, because the application itself is not the paywall. */
 const APP_FEATURES = [
   "The whole app — editor, graph, map, timeline",
-  "All four MCP tools, and the AGENTS.md index",
+  "All seven MCP tools, and the AGENTS.md index",
   "Verification ledger and the write journal",
   "Context budgets and local semantic search",
 ];

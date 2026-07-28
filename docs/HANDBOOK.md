@@ -37,7 +37,7 @@ things:
    frontmatter, `[[wikilinks]]` and folder names. Delete Lore and the wiki is
    byte-for-byte what it was.
 2. **Makes it legible to agents.** One `AGENTS.md` at the vault root for agents that
-   read files, and an MCP server with four read tools for agents that speak it.
+   read files, and an MCP server with seven tools for agents that speak it.
 3. **Keeps a record of what a human has actually checked.** Agents write freely.
    Everything lands unverified. You sign off on what you have read, and the sign-off
    is pinned to a content hash — so an agent rewriting a page you trusted revokes
@@ -197,12 +197,12 @@ is `0.0.0.0`, which — measured live during the build — put the vault on the 
 anyone on the same wifi could read it and re-link it to any path. That was a real
 defect, not a theoretical one.
 
-**2. `proxy.ts`.** One file guards all 16 filesystem routes. It rejects any filesystem request
+**2. `proxy.ts`.** One file guards all 30 filesystem routes. It rejects any filesystem request
 whose `Host` header is not loopback, covering the cases the bind does not: a manual
 `-H 0.0.0.0`, a container publishing the port, a reverse proxy in front.
 
 Guarding here rather than per-route is deliberate: a guard you must remember
-sixteen times is a guard that gets forgotten once.
+thirty times is a guard that gets forgotten once.
 
 **3. Site mode.** `LORE_MODE=site` makes every filesystem route return 404 and
 redirects `/vault` to `/install`. It is also **inferred** from `VERCEL`, `NETLIFY`,
@@ -705,3 +705,52 @@ whole wiki. If you want the single-file version, use Creed — it is the better 
 for that job.
 
 Sky photography generated for this project. Lore is MIT licensed.
+
+---
+
+## 14. The fifty
+
+A later pass added fifty capabilities in thirteen commits. They are grouped here
+by what they are for rather than by the order they were built, because the order
+was an artefact of which ones shared a dependency.
+
+**The agent surface.** `wiki_write` (attributed, lands unverified, append by
+default), `wiki_changes` (catch up in one call instead of re-reading the corpus),
+`wiki_context` (`/api/pack` — the best N tokens on a subject, split at headings,
+picked greedily by score-per-token, every passage citing its page). MCP over HTTP
+at `/api/mcp` for clients that cannot spawn a process. Per-agent bearer tokens
+with roles and folder scopes, stored hashed and shown once.
+
+**Trust.** Page history with rollback and history search — the journal knew a
+page had lost 400 lines and could never give them back. Quarantine, which is the
+half of trust Lore can actually enforce: it cannot stop an agent writing, but it
+decides what it hands over. Section-level sign-off, keyed by heading. Editable
+review windows per vault. A decay forecast. Attribution finally joined onto
+Review, having been written and read by nothing since the Claude Code hook
+shipped.
+
+**Retrieval.** BM25 with PageRank authority, replacing literal phrase matching
+that scored zero on "postgres backup" against a page saying "backup of the
+postgres cluster". Aliases, so renaming a page stops silently shredding the link
+graph. Link suggestions, masked against code, headings and existing links.
+
+**Analysis.** Contradiction detection (narrow and numeric — an LLM asked to do
+this across 1,400 pages confabulates). Confidence calibration against what humans
+actually confirmed. Gap clustering over the miss log. Orphan rescue. Corpus value
+and a health trend sampled at most daily.
+
+**Authoring.** Templates and daily notes, slash commands, inline rewrite,
+dictation, attachments by content hash, mermaid and maths, a per-page outline.
+
+**Ingestion.** Web capture, PDFs, transcripts grouped by speaker, and git for
+repo-backed wikis.
+
+**Platform.** A CLI that reimplements nothing and starts its own server, a CI
+action that can fail a pull request, comments, an activity feed, webhooks.
+
+The pattern worth carrying forward is in the bugs, not the features. Four of them
+— dynamic imports resolving into a torn-down effect, sections split from
+markdown-stripped text, a `??` swallowed by a ternary, an orphaned `next-server`
+holding port 4646 — all shipped looking correct and were caught only by running
+the thing and measuring the result. None would have survived a careful reading,
+because a careful reading is what produced them.
