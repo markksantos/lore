@@ -2,21 +2,20 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Apple, Monitor, Terminal, Download as DownloadIcon, ShieldAlert } from "lucide-react";
+import { Download as DownloadIcon, ShieldAlert } from "lucide-react";
 import { MarketingFooter, MarketingHeader } from "@/components/marketing/site-chrome";
 import { CodeBlock } from "@/components/marketing/code-block";
-import { DOWNLOADS, GITHUB_URL, RELEASES_URL, VERSION, type Download } from "@/lib/brand";
+import { DOWNLOADS, GITHUB_URL, RELEASES_URL, RELEASE_TAG, type Download } from "@/lib/brand";
 import { paletteVars } from "@/lib/palette";
 import { cn } from "@/lib/utils";
 
 /**
  * The download page.
  *
- * Its shape depends on whether a release exists. With `RELEASES_URL` set, the
- * detected platform gets a real download button and the rest are listed below
- * it. With it null — the state today — the page leads with building from source,
- * because that is the path that actually works, and says so plainly instead of
- * showing buttons that would 404.
+ * Its shape depends on whether a release exists. With `RELEASES_URL` set — as it
+ * is now — the detected platform is listed first with a real download button and
+ * the others follow. Set it back to null and the page falls back to building
+ * from source rather than showing buttons that would 404.
  *
  * Either way the honest part stays visible. These builds are unsigned, and a
  * user who hits Gatekeeper with no warning concludes the app is malware rather
@@ -42,7 +41,30 @@ function detectOS(): OS {
   return null;
 }
 
-const OS_ICON = { macOS: Apple, Windows: Monitor, Linux: Terminal } as const;
+/* The real marks, as on the landing page. A fruit outline and a terminal prompt
+   are drawings of the idea of a computer; someone scanning for their platform is
+   looking for a logo, not reading. */
+const OS_MARK = {
+  macOS: "/assets/platforms/apple.svg",
+  Windows: "/assets/platforms/windows.svg",
+  Linux: "/assets/platforms/linux.svg",
+} as const;
+
+function PlatformMark({ os, size = 16 }: { os: Download["os"]; size?: number }) {
+  return (
+    <img
+      src={OS_MARK[os]}
+      alt=""
+      width={size}
+      height={size}
+      className={cn(
+        "shrink-0 opacity-70 dark:brightness-0 dark:invert",
+        os === "Linux" && "scale-[1.15]",
+      )}
+      style={{ width: size, height: size }}
+    />
+  );
+}
 const OS_ORDER: Download["os"][] = ["macOS", "Windows", "Linux"];
 
 export function DownloadView() {
@@ -135,12 +157,11 @@ function Releases({ os, ordered }: { os: OS; ordered: Download["os"][] }) {
   return (
     <div className="mt-10 space-y-8">
       {ordered.map((group, i) => {
-        const Icon = OS_ICON[group];
         const builds = DOWNLOADS.filter((d) => d.os === group);
         return (
           <section key={group} style={paletteVars(i * 3)}>
             <div className="flex items-center gap-2.5">
-              <Icon size={16} className="text-[var(--lore-text-secondary)]" />
+              <PlatformMark os={group} />
               <h2 className="text-[16px] font-semibold tracking-[-0.02em] text-[var(--lore-text-primary)]">
                 {group}
               </h2>
@@ -166,7 +187,7 @@ function Releases({ os, ordered }: { os: OS; ordered: Download["os"][] }) {
                     </span>
                   ) : (
                     <a
-                      href={`${RELEASES_URL}/download/v${VERSION}/${build.asset}`}
+                      href={`${RELEASES_URL}/download/${RELEASE_TAG}/${build.asset}`}
                       className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[var(--lore-accent)] px-3 text-[13px] font-semibold text-white transition-colors hover:bg-[var(--lore-accent-hover)]"
                     >
                       <DownloadIcon size={13} />
@@ -230,7 +251,6 @@ function BuildFromSource({ os }: { os: OS }) {
         </h2>
         <div className="mt-3.5 space-y-2">
           {OS_ORDER.map((group) => {
-            const Icon = OS_ICON[group];
             const builds = DOWNLOADS.filter((d) => d.os === group);
             return (
               <div
@@ -241,7 +261,7 @@ function BuildFromSource({ os }: { os: OS }) {
                 )}
               >
                 <div className="flex items-center gap-2">
-                  <Icon size={15} className="text-[var(--lore-text-secondary)]" />
+                  <PlatformMark os={group} size={15} />
                   <span className="text-[14.5px] font-medium text-[var(--lore-text-primary)]">
                     {group}
                   </span>

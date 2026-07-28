@@ -17,12 +17,14 @@ export const ORG_URL = "https://nosleeplab.vercel.app";
 /**
  * Where prebuilt installers live.
  *
- * `null` until a release is actually published, and every download surface
- * checks it. A download button that 404s is worse than no download button — it
- * spends the one moment someone decided to try the thing. While this is null the
- * download page leads with building from source, which does work today.
+ * Every download surface checks this. A button that 404s is worse than no
+ * button — it spends the one moment someone decided to try the thing — so this
+ * stays null until a release actually exists with assets on it.
  */
-export const RELEASES_URL: string | null = null;
+export const RELEASES_URL: string | null = `${GITHUB_URL}/releases`;
+
+/** The tag whose assets the download buttons point at. */
+export const RELEASE_TAG = `v${VERSION}`;
 
 export type Download = {
   os: "macOS" | "Windows" | "Linux";
@@ -41,12 +43,7 @@ export type Download = {
 export const DOWNLOADS: Download[] = [
   { os: "macOS", label: "Apple silicon", asset: `Lore-${VERSION}-arm64.dmg` },
   { os: "macOS", label: "Intel", asset: `Lore-${VERSION}-x64.dmg` },
-  {
-    os: "Windows",
-    label: "x64 installer",
-    asset: `Lore-Setup-${VERSION}.exe`,
-    blocked: "Not built yet — electron-builder needs Windows or Wine to package it.",
-  },
+  { os: "Windows", label: "x64 installer", asset: `Lore-Setup-${VERSION}.exe` },
   { os: "Linux", label: "AppImage · x64", asset: `Lore-${VERSION}-x86_64.AppImage` },
   { os: "Linux", label: "AppImage · arm64", asset: `Lore-${VERSION}-arm64.AppImage` },
   { os: "Linux", label: "Debian · x64", asset: `Lore-${VERSION}-amd64.deb` },
