@@ -45,7 +45,18 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
           }}
         />
       </head>
-      <body className="flex min-h-full flex-col">
+      {/* Suppressed for the same reason <html> is, and it is not papering over
+          an app bug: extensions attach their own attributes to <body> before
+          React hydrates. Grammarly writes data-gr-ext-installed and
+          data-new-gr-c-s-check-loaded, which React then reports as a server /
+          client mismatch on a page that is byte-identical without it.
+
+          This only covers <body>'s own attributes. Extensions that rewrite
+          nodes deeper in the tree — Dark Reader adds --darkreader-* to every
+          inline style and SVG — will still warn, and there is no sane way to
+          suppress that from here. Nor should there be: the same mechanism is
+          what catches real mismatches. */}
+      <body suppressHydrationWarning className="flex min-h-full flex-col">
         <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>
