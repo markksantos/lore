@@ -285,7 +285,16 @@ type Tab = "review" | "wiki" | "insights" | "connections";
 export function HeroSimulator() {
   const [pages, setPages] = useState(INITIAL);
   const [writes, setWrites] = useState(INITIAL_WRITES);
-  const [tab, setTab] = useState<Tab>("review");
+  /*
+   * Opens on the wiki, not on Review.
+   *
+   * The headline says "this is where you read them", and the first thing the
+   * product shot used to show was a checklist with Sign off buttons on it. Two
+   * readers took that to mean Lore is an app for approving your agent's edits —
+   * the exact thing it is not, and the exact thing one of them said he did not
+   * want another of. Reading is the first screen; Review is a tab away.
+   */
+  const [tab, setTab] = useState<Tab>("wiki");
   const [folder, setFolder] = useState<string>("stack");
   /** The page a simulated rewrite just landed on, so the row flashes. */
   const [struck, setStruck] = useState<string | null>(null);

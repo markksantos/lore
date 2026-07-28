@@ -54,8 +54,9 @@ export function Landing({
         </div>
       </div>
 
+      <WhyNotJustAsk />
+      <Safety />
       <Measured />
-      <Gate />
       <HowItWorks />
       <States />
       <Budget />
@@ -102,13 +103,18 @@ function Hero({ scene, cta, ctaLabel }: { scene: Scene; cta: string; ctaLabel: s
               {/* The two-line lockup is held on tablet and up; below that the
                   clamp alone isn't enough to keep the second line intact at
                   375px, so it is allowed to wrap rather than overflow. */}
+              {/* Says what the thing is, in words someone who has never heard of
+                  MCP can follow. The previous headline named a problem ("your
+                  agents are already writing to your wiki") without naming the
+                  product, so two readers in a row came away unsure what it did. */}
               <h1 className="t-hero text-white">
-                <span className="block">Your agents are already</span>
-                <span className="block md:whitespace-nowrap">writing to your wiki</span>
+                <span className="block">Your AI takes notes.</span>
+                <span className="block md:whitespace-nowrap">This is where you read them.</span>
               </h1>
 
               <p className="mx-auto mt-5 max-w-xl text-[15px] font-semibold text-white/90 md:mt-6 md:text-[18px]">
-                Lore keeps the record of which of it a human has actually checked.
+                Point Lore at the folder your agents write to. It turns a pile of markdown
+                into something you can search, see and trust — without touching a single file.
               </p>
 
               <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
@@ -136,7 +142,8 @@ function Hero({ scene, cta, ctaLabel }: { scene: Scene; cta: string; ctaLabel: s
               </div>
 
               <p className="mt-4 text-[13px] text-white/70">
-                Free and open source. macOS, Windows, Linux — runs on your machine, uploads nothing.
+                Read-only by default — it cannot change your files. Free, open source, and
+                runs entirely on your own machine.
               </p>
             </div>
           </div>
@@ -180,39 +187,101 @@ function Measured() {
   );
 }
 
-function Gate() {
+/**
+ * The two objections, answered before anything else.
+ *
+ * Shown the previous version of this page, two readers in a row asked the same
+ * pair of questions: what is this for that my AI cannot already do, and will it
+ * mess with my notes? Neither was answered anywhere on the page, and the section
+ * that used to sit here was about an approval queue that had been removed —
+ * which read, to someone new, as "this is an app for approving wiki edits". That
+ * is the opposite of what it is.
+ */
+function WhyNotJustAsk() {
   return (
     <Section
-      eyebrow="The gate we removed"
-      title="A queue of 300 resolves to Accept All."
-      lede="Lore shipped with a propose_edit tool that parked agent changes for approval. It is gone. Agents write through their own file tools, so the gate only ever caught the one harness that agreed to ask — and at three hundred changes a week, an approval queue is a Friday afternoon of clicking."
+      eyebrow="The obvious question"
+      title="Can't my AI just do this?"
+      lede="It already does the writing. That was never the missing half."
     >
-      <Reveal>
-        <p className="t-body mt-8 max-w-2xl text-[var(--lore-text-secondary)]">
-          There is a second problem underneath the first. Ask a page how reliable it is and
-          the agent that wrote it will happily answer, in the page itself.
-        </p>
+      <Reveal className="mt-11 grid gap-4 sm:grid-cols-3">
+        <Plain
+          slot={0}
+          title="Your AI can read your notes. You can't."
+          body="A folder with 1,400 markdown files in it is readable by a machine and unreadable by a person. Lore is the side of that folder built for the human — search that works, a map of what connects to what, and a way to actually open the thing."
+        />
+        <Plain
+          slot={3}
+          title="It never tells you what it changed."
+          body="Agents rewrite pages between conversations and nothing announces it. Lore watches the folder itself, so it can show you what moved this week, how much prose got deleted, and which agent did it — including the ones that never asked permission."
+        />
+        <Plain
+          slot={6}
+          title="Every page looks equally true."
+          body="Something an agent guessed at in April and something you confirmed yesterday sit in the same folder looking identical. Lore keeps the record of which is which, and that record expires by itself when a page gets rewritten."
+        />
       </Reveal>
 
-      <Reveal className="mt-8 grid gap-4 sm:grid-cols-2">
-        <Stat
-          slot={6}
-          value="1,156"
-          unit="pages"
-          label="carry an agent-written confidence: field"
-          body="959 of them say high. Two say low. It is self-assessment, and self-assessment passes."
+      <Reveal>
+        <p className="t-body mx-auto mt-10 max-w-2xl text-center text-[var(--lore-text-secondary)]">
+          Put shortly: your agents are the writers. Nothing was the reader.
+        </p>
+      </Reveal>
+    </Section>
+  );
+}
+
+/**
+ * The fear, addressed in the strongest terms the product can honestly support.
+ *
+ * "It only writes when you click something" is a promise made of words. The
+ * read-only lock is the same promise made of code, so this section can say
+ * something checkable instead of something reassuring.
+ */
+function Safety() {
+  return (
+    <Section
+      eyebrow="Your files"
+      title="It can't change your wiki."
+      lede="Not as a policy. As a lock that is on when you install it, and that refuses every route which could touch a file until you deliberately turn it off."
+    >
+      <Reveal className="mt-11 grid gap-4 sm:grid-cols-2">
+        <Plain
+          slot={4}
+          title="Read-only is the default"
+          body="First run asks what Lore may do to your wiki, and the recommended answer is 'look, don't touch'. With it on, the eight routes that could write to a page are refused before they run — not asked to behave."
         />
-        {/* Deliberately not the green plate: zero human sign-offs is the bad
-            number in this pair, and a green panel would read as reassurance. */}
-        <Stat
+        <Plain
           slot={2}
-          value="0"
-          unit="pages"
-          label="carry a human sign-off"
-          body="The vault records every machine write and has never once recorded a person confirming one. Every page looks equally true."
+          title="It never undoes your agent's work"
+          body="Lore has no background job, no cleanup pass, and no opinion about what your agent wrote. It reads and it reports. The only things that ever change a file are things you did, in front of you."
+        />
+        <Plain
+          slot={5}
+          title="Nothing to approve"
+          body="There is no queue and no gate. Your agents keep writing exactly as they do now, without asking Lore or you for permission. Review is a record of what happened, not a list you are expected to clear."
+        />
+        <Plain
+          slot={7}
+          title="It keeps the old version anyway"
+          body="Every change your agents make is snapshotted outside your wiki, so the page as it was last Tuesday is still readable. Restoring one is a button you press, never something Lore decides."
         />
       </Reveal>
     </Section>
+  );
+}
+
+/** A plain titled paragraph — no number, no demo, no chrome. */
+function Plain({ slot, title, body }: { slot: number; title: string; body: string }) {
+  return (
+    <div
+      style={paletteVars(slot)}
+      className="rounded-2xl border border-[var(--lore-border)] bg-[var(--lore-surface)] p-5"
+    >
+      <span className="pal-bar" />
+      <h3 className="pal-title mt-3 text-[16px] font-semibold tracking-[-0.02em]">{title}</h3>
+      <p className="t-body mt-2 text-[var(--lore-text-secondary)]">{body}</p>
+    </div>
   );
 }
 
@@ -561,30 +630,43 @@ function Steps({ siteMode }: { siteMode: boolean }) {
   );
 }
 
+/*
+ * Ordered by what people actually ask when they first see this, which is not
+ * the order the product finds interesting. The first four are the objections
+ * two readers raised unprompted; the rest are the mechanics.
+ */
 const FAQ = [
   {
-    q: "Does Lore stop an agent from writing?",
-    a: "No, and it could not. Agents write with their own file tools, and a folder on your disk has a dozen other write paths besides. Lore watches the folder instead: every write is journaled and left exactly where it landed. What it gates is not the edit — it is the claim that a human has checked it.",
+    q: "Will Lore change or delete anything in my wiki?",
+    a: "Not unless you switch off the lock, and it is on when you install it. Read-only mode refuses every route that could write to a page, at the boundary, before the code runs — it is not a setting Lore promises to honour. Turn it off and Lore can edit, but even then it only writes when you do something: save a page, create one, capture a link. There is no background job, no cleanup pass, and nothing that runs while you are not looking.",
   },
   {
-    q: "What happens when an agent rewrites a page I signed off on?",
-    a: "The sign-off lapses. It was pinned to the content hash of the page as you read it, so a rewrite breaks the match, the page drops to Lapsed, and it comes back to the top of Review with that label on it. Nothing is silently inherited by the new text.",
+    q: "My agent already edits my wiki and I approve its changes. Why would I want another app for that?",
+    a: "You wouldn't, and this isn't one. Lore has no approval queue and cannot gate your agent — it tried, and that was removed, because an agent with filesystem access simply writes and nothing you install can stop it. Your workflow does not change at all. Lore sits beside it and answers the question your current setup does not: across everything your agents have written, which pages have a human actually read, and what changed while you were not watching.",
   },
   {
-    q: "Does Lore move or reformat my files?",
-    a: "No. It reads the markdown where it sits — your headings, your frontmatter, your [[wikilinks]], your folder names. The verification ledger and the usage log live in ~/.lore, outside the vault, so they never turn up in a git diff of your notes. Lore only writes to the vault when you press something: the AGENTS.md index, a page you create in the sidebar, or an edit you save in Lore's own editor. Nothing is written on its own, and no page is reformatted on the way through.",
+    q: "Can't my AI already do all of this?",
+    a: "Your AI can read your wiki. You cannot — not 1,400 files in a folder. It also has no memory of what it changed last week, no way to show you which pages nothing links to, and no reason to distinguish a page you confirmed from one it guessed at. Lore is the reader for a folder that only had writers.",
   },
   {
-    q: "Does it work with my Obsidian vault?",
-    a: "Yes — that's the intended case. Lore reads [[wikilinks]], inline #tags and YAML frontmatter, and skips .obsidian and .trash. Keep writing in Obsidian; Lore is the layer that makes the same folder legible to your agents and keeps score of what you have confirmed.",
+    q: "What if Lore undoes something my agent did?",
+    a: "It has no mechanism to. Nothing in Lore reverts, cleans up or reconciles on its own. It does keep a snapshot of each page before a change, so you can read what a page said last Tuesday and put it back if you want to — but that restore is a button, pressed by you, on a page you are looking at.",
   },
   {
     q: "What can an agent do through Lore?",
-    a: "Four tools: read the index, search, read a page, report health. All four are reads. There is no write tool, not as a safety measure but because withholding one would achieve nothing — the agent already has a filesystem.",
+    a: "Read the index, search, read a page, pull a context pack, check health, see what changed — and write, if you let it. The write tool exists for agents that have MCP and no filesystem, like ChatGPT on a phone, which otherwise could read your wiki and never add to it. Anything written that way is attributed and lands unverified, and read-only mode blocks it like everything else.",
+  },
+  {
+    q: "Does Lore move or reformat my files?",
+    a: "No. It reads the markdown where it sits — your headings, your frontmatter, your [[wikilinks]], your folder names. Its own state lives in ~/.lore, outside the vault, so it never turns up in a git diff of your notes. No page is reformatted on the way through.",
+  },
+  {
+    q: "Does it work with my Obsidian vault?",
+    a: "Yes — that is the intended case. Lore reads [[wikilinks]], inline #tags and YAML frontmatter, and skips .obsidian and .trash. Keep writing in Obsidian; Lore is the layer that makes the same folder legible to you and to your agents.",
   },
   {
     q: "Is anything uploaded?",
-    a: "Nothing. Lore is a local Next.js app talking to your own filesystem. Outside your vault it keeps three things in ~/.lore: the folder path, the ledger of what you have signed off, and an append-only log of what your agents read and searched for.",
+    a: "Nothing. Lore is a local app talking to your own filesystem. There is no account and no server behind the free build. Hosted plans exist for sync across machines, and they are opt-in — the version you download has no upload code in it at all.",
   },
 ];
 
