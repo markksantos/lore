@@ -9,9 +9,6 @@ import {
   ShieldCheck,
   ChevronDown,
   Download as DownloadIcon,
-  Apple,
-  Monitor,
-  Terminal,
   Smartphone,
 } from "lucide-react";
 import { SceneryImage } from "@/components/marketing/scenery-image";
@@ -401,26 +398,39 @@ function Stack({ logos }: { logos: string[] }) {
  * questions someone asks in that order before they will click anything.
  */
 function Platforms() {
+  /*
+   * Real brand marks rather than lucide's generic shapes. The previous version
+   * used a fruit outline, a desktop monitor and a terminal prompt to mean Apple,
+   * Windows and Linux, which reads as three drawings of the idea of a computer
+   * — the one place on this page where a viewer scans for a logo they recognise
+   * and does not have to read.
+   */
   const platforms = [
     {
       slot: 0,
-      icon: Apple,
+      mark: "/assets/platforms/apple.svg",
       title: "macOS",
       body: "Apple silicon and Intel. The only platform where the folder picker also works straight from a browser tab.",
     },
     {
       slot: 2,
-      icon: Monitor,
+      mark: "/assets/platforms/windows.svg",
       title: "Windows",
       body: "The desktop build is how you get a native folder picker here — a browser cannot open one.",
     },
     {
       slot: 4,
-      icon: Terminal,
+      mark: "/assets/platforms/linux.svg",
+      // Tux is a tall silhouette with internal cut-outs, where Apple and the
+      // Windows squares are solid shapes. At a shared size it reads as a smudge,
+      // so it gets a little more room.
+      markScale: "scale-[1.18]",
       title: "Linux",
       body: "AppImage or .deb, x64 and arm64. Or skip packaging entirely and run it from source.",
     },
     {
+      // No brand exists for "a phone you own", so this one keeps a drawn glyph
+      // — which is honest, because it is not naming a product.
       slot: 6,
       icon: Smartphone,
       title: "Your phone",
@@ -447,7 +457,22 @@ function Platforms() {
                 className="flex h-9 w-9 items-center justify-center rounded-xl text-white"
                 style={{ background: "var(--plate)" }}
               >
-                <Icon size={17} />
+                {platform.mark ? (
+                  // currentColor in the file, white here, so one asset works on
+                  // any plate colour and in either theme.
+                  <img
+                    src={platform.mark}
+                    alt=""
+                    width={18}
+                    height={18}
+                    className={cn(
+                      "h-[18px] w-[18px] [filter:brightness(0)_invert(1)]",
+                      platform.markScale,
+                    )}
+                  />
+                ) : Icon ? (
+                  <Icon size={17} />
+                ) : null}
               </span>
               <h3 className="pal-title mt-4 text-[16px] font-semibold tracking-[-0.02em]">
                 {platform.title}

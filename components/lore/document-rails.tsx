@@ -22,6 +22,34 @@ import { cn, relativeTime } from "@/lib/utils";
 // ------------------------------------------------------------------ scroll spy
 
 /**
+ * The element that actually scrolls.
+ *
+ * Both spies below originally listened on `window`, which is wrong here and
+ * silently so: the app shell puts the document inside an `overflow-y-auto`
+ * <main>, so the window never scrolls, no scroll event ever fires on it, and
+ * both rails sat permanently on their first item. Nothing errored — the
+ * highlight was simply always wrong, which is why it survived several passes.
+ *
+ * Walks up from a node that is inside the scroller rather than assuming which
+ * element it is, so a future layout change cannot quietly break this again.
+ */
+function scrollParentOf(node: Element | null): HTMLElement | Window {
+  let current = node?.parentElement ?? null;
+  while (current) {
+    const overflow = getComputedStyle(current).overflowY;
+    if (
+      (overflow === "auto" || overflow === "scroll") &&
+      current.scrollHeight > current.clientHeight + 8
+    ) {
+      return current;
+    }
+    current = current.parentElement;
+  }
+  return window;
+}
+
+
+/**
  * Which section is being read.
  *
  * Uses the topmost section whose heading has passed the top quarter of the
@@ -50,10 +78,11 @@ export function useActiveSection(ids: string[]): string | null {
     pick();
     // Passive: this only reads layout, and blocking the scroll thread to keep a
     // highlight in sync is a bad trade on a long document.
-    window.addEventListener("scroll", pick, { passive: true });
+    const scroller = scrollParentOf(document.getElementById(ids[0]));
+    scroller.addEventListener("scroll", pick, { passive: true });
     window.addEventListener("resize", pick);
     return () => {
-      window.removeEventListener("scroll", pick);
+      scroller.removeEventListener("scroll", pick);
       window.removeEventListener("resize", pick);
     };
   }, [ids]);
@@ -130,6 +159,8 @@ export function PageOutline({
   raw: string;
   onJump: (heading: string) => void;
 }) {
+  const [active, setActive] = useState<string | null>(null);
+
   const headings = useMemo(() => {
     const out: { depth: number; text: string }[] = [];
     let fenced = false;
@@ -142,6 +173,34 @@ export function PageOutline({
     }
     return out;
   }, [raw]);
+
+  /* Tracks the heading you are reading, on the same rule the folder rail uses:
+     the last heading to have passed the top quarter of the viewport. Matching by
+     text rather than by an id because these headings are rendered from markdown
+     and carry none. */
+  useEffect(() => {
+    if (headings.length < 3) return;
+
+    const pick = () => {
+      const line = window.innerHeight * 0.25;
+      const rendered = [...document.querySelectorAll<HTMLElement>(".lore-prose h1, .lore-prose h2, .lore-prose h3, .lore-prose h4")];
+      let current: string | null = null;
+      for (const node of rendered) {
+        if (node.getBoundingClientRect().top <= line) current = node.textContent?.trim() ?? null;
+        else break;
+      }
+      setActive(current);
+    };
+
+    pick();
+    const scroller = scrollParentOf(document.querySelector(".lore-prose"));
+    scroller.addEventListener("scroll", pick, { passive: true });
+    window.addEventListener("resize", pick);
+    return () => {
+      scroller.removeEventListener("scroll", pick);
+      window.removeEventListener("resize", pick);
+    };
+  }, [headings.length, raw]);
 
   if (headings.length < 3) return null;
 
@@ -157,7 +216,12 @@ export function PageOutline({
               type="button"
               onClick={() => onJump(heading.text)}
               style={{ paddingLeft: `${(heading.depth - 1) * 9 + 6}px` }}
-              className="block w-full truncate rounded-md py-1 pr-1.5 text-left text-[12px] text-[var(--lore-text-tertiary)] transition-colors hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)]"
+              className={cn(
+                "block w-full truncate rounded-md py-1 pr-1.5 text-left text-[12px] transition-colors",
+                active === heading.text
+                  ? "bg-[var(--lore-surface-raised)] font-medium text-[var(--lore-text-primary)]"
+                  : "text-[var(--lore-text-tertiary)] hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)]",
+              )}
             >
               {heading.text}
             </button>
