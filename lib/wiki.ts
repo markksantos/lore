@@ -87,16 +87,56 @@ const toPosix = (p: string) => p.split(path.sep).join("/");
 
 // ------------------------------------------------------------------ scanning
 
-async function walk(root: string, dir: string, out: string[]): Promise<void> {
+/**
+ * Patterns from a `.loreignore` at the vault root, one per line, `#` for
+ * comments. Gitignore-ish: a trailing `/` means directory, a leading `/` anchors
+ * to the root, `*` matches within a path segment.
+ *
+ * This exists because pointing an indexer at a real folder is an act of trust,
+ * and the first question anyone with client work under NDA or a `secrets/`
+ * directory asks is how to keep part of it out. "Move those files" is not an
+ * answer.
+ */
+async function readIgnore(root: string): Promise<RegExp[]> {
+  const raw = await fs.readFile(path.join(root, ".loreignore"), "utf8").catch(() => "");
+  const patterns: RegExp[] = [];
+  for (const line of raw.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const anchored = trimmed.startsWith("/");
+    const body = (anchored ? trimmed.slice(1) : trimmed).replace(/\/$/, "");
+    // Escape everything, then re-enable the two wildcards people expect.
+    const escaped = body
+      .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+      .replace(/\*\*/g, "\u0000")
+      .replace(/\*/g, "[^/]*")
+      .replace(/\u0000/g, ".*")
+      .replace(/\?/g, "[^/]");
+    patterns.push(new RegExp(anchored ? `^${escaped}(/|$)` : `(^|/)${escaped}(/|$)`));
+  }
+  return patterns;
+}
+
+const ignored = (patterns: RegExp[], relPath: string) =>
+  patterns.some((re) => re.test(relPath));
+
+async function walk(
+  root: string,
+  dir: string,
+  out: string[],
+  patterns: RegExp[] = [],
+): Promise<void> {
   const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
   for (const entry of entries) {
     if (SKIP_DIRS.has(entry.name)) continue;
     const abs = path.join(dir, entry.name);
+    const rel = toPosix(path.relative(root, abs));
+    if (ignored(patterns, rel)) continue;
     if (entry.isDirectory()) {
       if (entry.name.startsWith(".")) continue;
-      await walk(root, abs, out);
+      await walk(root, abs, out, patterns);
     } else if (entry.isFile() && MARKDOWN.test(entry.name)) {
-      out.push(toPosix(path.relative(root, abs)));
+      out.push(rel);
     }
   }
 }
@@ -258,7 +298,7 @@ export async function getIndex(root: string, force = false): Promise<WikiIndex> 
   if (!force && cached && Date.now() - cached.builtAt < CACHE_TTL_MS) return cached.index;
 
   const relPaths: string[] = [];
-  await walk(root, root, relPaths);
+  await walk(root, root, relPaths, await readIgnore(root));
 
   const pages: WikiPage[] = [];
   const errors: { relPath: string; message: string }[] = [];

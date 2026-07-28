@@ -282,7 +282,7 @@ const ORDER: Trust[] = ["verified", "aging", "lapsed", "unverified"];
 
 type Tab = "review" | "wiki" | "insights" | "connections";
 
-export function HeroSimulator() {
+export function HeroSimulator({ fullHeight = false }: { fullHeight?: boolean } = {}) {
   const [pages, setPages] = useState(INITIAL);
   const [writes, setWrites] = useState(INITIAL_WRITES);
   /*
@@ -376,7 +376,7 @@ export function HeroSimulator() {
     <div className="overflow-hidden rounded-2xl border border-[var(--lore-border)] bg-[var(--lore-surface)] shadow-[0_40px_100px_-45px_rgba(15,23,42,0.55)]">
       <BrowserChrome url="lore.md" />
 
-      <div className="flex h-[540px] sm:h-[580px] lg:h-[620px]">
+      <div className={fullHeight ? "flex h-[calc(100svh-11rem)] min-h-[520px]" : "flex h-[540px] sm:h-[580px] lg:h-[620px]"}>
         {/* -------------------------------------------------------- sidebar */}
         <div className="hidden w-[212px] shrink-0 flex-col border-r border-[var(--lore-border)] px-5 py-5 sm:flex">
           <div className="flex items-center gap-2.5 text-[var(--lore-text-primary)]">

@@ -98,20 +98,31 @@ export function DownloadView() {
 
         <section className="mt-14">
           <h2 className="text-[18px] font-semibold tracking-[-0.02em] text-[var(--lore-text-primary)]">
-            Or skip the download
+            Or run it from source
           </h2>
           <p className="t-body mt-2 max-w-2xl text-[var(--lore-text-secondary)]">
-            Lore is a web app first. Run it from source and use it in the browser you already
-            have — the desktop build exists for the folder picker and the dock icon, not for
-            any capability the browser version lacks. On macOS the picker works in the
-            browser too.
+            Lore is a web app that runs on your own machine, so you can skip the installer and
+            use it in the browser you already have. The desktop build exists for the folder
+            picker and the dock icon, not for any capability the browser version lacks — on
+            macOS the picker works in a browser tab too.
           </p>
-          <div className="mt-4 flex flex-wrap gap-3">
+          <div className="mt-4">
+            <CodeBlock
+              label="Terminal"
+              lines={[`git clone ${GITHUB_URL}.git`, "cd lore", "npm install", "npm run dev"]}
+            />
+            <p className="t-meta mt-2.5 text-[var(--lore-text-tertiary)]">
+              Opens on <code>127.0.0.1:4646</code>. It binds to loopback deliberately, so nothing
+              else on your network can reach your wiki through it. Node 20.9 or newer; nothing
+              else.
+            </p>
+          </div>
+          <div className="mt-5 flex flex-wrap gap-3">
             <Link
-              href="/install"
+              href="/demo"
               className="inline-flex h-10 items-center rounded-xl bg-[var(--lore-accent)] px-4 text-[14px] font-semibold text-white transition-colors hover:bg-[var(--lore-accent-hover)]"
             >
-              Install guide
+              Try it in your browser
             </Link>
             <a
               href={GITHUB_URL}
@@ -142,6 +153,24 @@ export function DownloadView() {
             <li>
               No account, no database, no API key. There is nothing to sign up for because
               there is nowhere to sign up to.
+            </li>
+          </ul>
+        </section>
+
+        <section className="mt-14">
+          <h2 className="text-[18px] font-semibold tracking-[-0.02em] text-[var(--lore-text-primary)]">
+            What it never does
+          </h2>
+          <ul className="lore-bullets mt-3 space-y-2 text-[15px] leading-[1.7] text-[var(--lore-text-secondary)]">
+            <li>Upload your wiki, or any part of it, anywhere.</li>
+            <li>Listen on anything but loopback.</li>
+            <li>
+              Move, rename or reformat your files. The one file it can add is{" "}
+              <code>AGENTS.md</code>, fenced so anything you wrote in it is preserved.
+            </li>
+            <li>
+              Keep state inside your vault. Config, journal and the verification ledger all live
+              in <code>~/.lore</code>, so a <code>git diff</code> of your notes stays clean.
             </li>
           </ul>
         </section>

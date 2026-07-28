@@ -38,8 +38,8 @@ export function Landing({
 }) {
   /* On the public site there is no app to open — every filesystem route is off.
      Sending someone to a dead /vault would be the worst possible first click. */
-  const cta = siteMode ? "/install" : "/vault";
-  const ctaLabel = siteMode ? "Get Lore" : "Link your wiki";
+  const cta = siteMode ? "/demo" : "/vault";
+  const ctaLabel = siteMode ? "Try it now" : "Link your wiki";
   return (
     <>
       <MarketingHeader overHero />
@@ -113,8 +113,9 @@ function Hero({ scene, cta, ctaLabel }: { scene: Scene; cta: string; ctaLabel: s
               </h1>
 
               <p className="mx-auto mt-5 max-w-xl text-[15px] font-semibold text-white/90 md:mt-6 md:text-[18px]">
-                Point Lore at the folder your agents write to. It turns a pile of markdown
-                into something you can search, see and trust — without touching a single file.
+                If you use Claude Code, Cursor or Obsidian, you already have a folder of
+                markdown. Lore turns it into something you can search, see and trust — without
+                touching a single file.
               </p>
 
               <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
@@ -222,6 +223,26 @@ function WhyNotJustAsk() {
         />
       </Reveal>
 
+      {/* Asked by every single reviewer who saw this page, and previously
+          answered nowhere — which reads as avoidance rather than oversight. */}
+      <Reveal className="mt-4 grid gap-4 sm:grid-cols-3">
+        <Plain
+          slot={1}
+          title="Why not just use git?"
+          body="Use git. Lore is not a replacement for it. But most of what your agents write never reaches a commit — it happens between them, and on a measured vault that was 303 changed pages in a week against two commits. Git records what you remembered to record."
+        />
+        <Plain
+          slot={4}
+          title="git has no expiring sign-off"
+          body="You can commit a note saying you checked a page. Nothing invalidates that note when an agent rewrites the page underneath it. Lore pins your sign-off to the content hash, so a rewrite lapses it automatically — that is the one primitive git does not have."
+        />
+        <Plain
+          slot={7}
+          title="git cannot hear the questions"
+          body="Because your agents read the wiki through Lore, it sees every search that came back with nothing. That is a list of what to write next, assembled from real demand. No amount of version control produces it."
+        />
+      </Reveal>
+
       <Reveal>
         <p className="t-body mx-auto mt-10 max-w-2xl text-center text-[var(--lore-text-secondary)]">
           Put shortly: your agents are the writers. Nothing was the reader.
@@ -242,14 +263,14 @@ function Safety() {
   return (
     <Section
       eyebrow="Your files"
-      title="It can't change your wiki."
-      lede="Not as a policy. As a lock that is on when you install it, and that refuses every route which could touch a file until you deliberately turn it off."
+      title="It won't change your wiki."
+      lede="Read-only is on when you install it. Eight routes in this app can write to a page, and with the lock on every one of them is refused before it runs — so this is a check you can read in the source, not a promise about intent."
     >
       <Reveal className="mt-11 grid gap-4 sm:grid-cols-2">
         <Plain
           slot={4}
           title="Read-only is the default"
-          body="First run asks what Lore may do to your wiki, and the recommended answer is 'look, don't touch'. With it on, the eight routes that could write to a page are refused before they run — not asked to behave."
+          body="First run asks what Lore may do to your wiki; the recommended answer is 'look, don't touch'. It is enforced in one file — proxy.ts — rather than in eight handlers that each have to remember, and it fails closed: a corrupt or missing setting reads as locked."
         />
         <Plain
           slot={2}
@@ -645,6 +666,10 @@ const FAQ = [
     a: "You wouldn't, and this isn't one. Lore has no approval queue and cannot gate your agent — it tried, and that was removed, because an agent with filesystem access simply writes and nothing you install can stop it. Your workflow does not change at all. Lore sits beside it and answers the question your current setup does not: across everything your agents have written, which pages have a human actually read, and what changed while you were not watching.",
   },
   {
+    q: "Why not just use git and a folder?",
+    a: "You should use git — Lore is not a replacement and reads a repo happily. But git only records what someone remembered to commit, and most agent writes happen between commits: one measured vault had 303 changed pages in a week and two commits. Git also has no expiring sign-off — you can commit a note saying you checked a page, and nothing invalidates it when an agent rewrites the page underneath. Lore pins the sign-off to the content hash so a rewrite lapses it by itself. And because your agents read through Lore, it sees every search that came back empty, which is a to-write list git cannot produce.",
+  },
+  {
     q: "Can't my AI already do all of this?",
     a: "Your AI can read your wiki. You cannot — not 1,400 files in a folder. It also has no memory of what it changed last week, no way to show you which pages nothing links to, and no reason to distinguish a page you confirmed from one it guessed at. Lore is the reader for a folder that only had writers.",
   },
@@ -655,6 +680,14 @@ const FAQ = [
   {
     q: "What can an agent do through Lore?",
     a: "Read the index, search, read a page, pull a context pack, check health, see what changed — and write, if you let it. The write tool exists for agents that have MCP and no filesystem, like ChatGPT on a phone, which otherwise could read your wiki and never add to it. Anything written that way is attributed and lands unverified, and read-only mode blocks it like everything else.",
+  },
+    {
+    q: "What are the seven MCP tools?",
+    a: "wiki_index (the map of every page), wiki_search, wiki_read (a page plus its trust state), wiki_context (the best passages on a subject, assembled to a token budget, each citing its page), wiki_changes (what moved since a timestamp), wiki_health (dead links, orphans, stale pages) and wiki_write. Six read, one writes — and the write tool is blocked entirely by read-only mode.",
+  },
+  {
+    q: "Can I use it from a script or in CI?",
+    a: "Yes. There is a CLI — `lore health --max-dead 0 --min-score 70` exits non-zero when the wiki fails your thresholds, so it can gate a pull request. It reimplements nothing: it talks to the same code the app runs, and starts its own server if one is not already up. A GitHub Action that fails a PR when the docs it touches have lapsed ships in the repo.",
   },
   {
     q: "Does Lore move or reformat my files?",

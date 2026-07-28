@@ -121,6 +121,12 @@ const TOKEN_COOKIE = "lore_remote";
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // /install was folded into /download. The path is published in release notes
+  // and on the deployed site, so it redirects rather than 404s.
+  if (pathname === "/install") {
+    return NextResponse.redirect(new URL("/download", request.url));
+  }
   const siteMode = isSiteMode();
   const touchesDisk = FILESYSTEM_ROUTES.some(
     (route) => pathname === route || pathname.startsWith(`${route}/`),
@@ -152,7 +158,7 @@ export function proxy(request: NextRequest) {
       return NextResponse.json({ error: "Not found." }, { status: 404 });
     }
     if (pathname === "/vault" || pathname.startsWith("/vault/")) {
-      return NextResponse.redirect(new URL("/install", request.url));
+      return NextResponse.redirect(new URL("/demo", request.url));
     }
     return NextResponse.next();
   }

@@ -48,7 +48,7 @@ export default function OfflinePage() {
           Try again
         </Link>
         <Link
-          href="/install"
+          href="/download"
           className="inline-flex h-9 items-center rounded-lg border border-[var(--lore-border-strong)] bg-[var(--lore-surface)] px-4 text-[13.5px] font-medium text-[var(--lore-text-secondary)] transition-colors hover:text-[var(--lore-text-primary)]"
         >
           Install instructions

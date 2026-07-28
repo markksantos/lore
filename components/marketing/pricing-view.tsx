@@ -186,8 +186,13 @@ function PlanCard({ plan, cycle }: { plan: Plan; cycle: Cycle }) {
 
       <hr className="mt-6 border-[var(--lore-border)]" />
 
-      <ul className="mt-6 flex-1 space-y-3">
-        {plan.features.map((feature) => (
+      {/* Split, not just crossed. Reviewers repeatedly read the free tier as
+          including sync and hosted storage, because a small red cross does not
+          survive a skim — and survives a screen reader even less well. */}
+      <ul className="mt-6 space-y-3">
+        {plan.features
+          .filter((f) => f.included)
+          .map((feature) => (
           <li key={feature.label} className="flex items-start gap-2.5">
             {/* A star means "this is more than the tier below gives you". A
                 carried-forward line like "Everything in Personal" is not that,
@@ -200,19 +205,34 @@ function PlanCard({ plan, cycle }: { plan: Plan; cycle: Cycle }) {
             ) : (
               <Check size={14} className="mt-[3px] shrink-0 text-[var(--lore-success)]" />
             )}
-            <span
-              className={cn(
-                "text-[13.5px] leading-[1.6]",
-                feature.included
-                  ? "text-[var(--lore-text-secondary)]"
-                  : "text-[var(--lore-text-tertiary)]",
-              )}
-            >
+            <span className="text-[13.5px] leading-[1.6] text-[var(--lore-text-secondary)]">
               {feature.label}
             </span>
           </li>
-        ))}
+          ))}
       </ul>
+
+      {plan.features.some((f) => !f.included) ? (
+        <div className="mt-5 flex-1 border-t border-[var(--lore-border)] pt-4">
+          <p className="t-meta mb-2.5 font-semibold uppercase tracking-[0.08em] text-[var(--lore-text-tertiary)]">
+            Not included
+          </p>
+          <ul className="space-y-2.5">
+            {plan.features
+              .filter((f) => !f.included)
+              .map((feature) => (
+                <li key={feature.label} className="flex items-start gap-2.5">
+                  <X size={14} className="mt-[3px] shrink-0 text-[var(--lore-text-tertiary)]" />
+                  <span className="text-[13.5px] leading-[1.6] text-[var(--lore-text-tertiary)]">
+                    {feature.label}
+                  </span>
+                </li>
+              ))}
+          </ul>
+        </div>
+      ) : (
+        <div className="flex-1" />
+      )}
 
       <Link
         href={plan.href}
