@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Loader2, RefreshCw, Unlink } from "lucide-react";
 import type { VaultIndex } from "@/lib/types";
 import { AiView } from "@/components/lore/ai-view";
+import { PolicyView } from "@/components/lore/policy-view";
 import { RemoteView } from "@/components/lore/remote-view";
 import { paletteVars } from "@/lib/palette";
 import { cn, formatCount } from "@/lib/utils";
@@ -110,6 +111,10 @@ export function SettingsView({
           Unlinking forgets the path. It never touches the folder.
         </p>
       </section>
+
+      <div className="mt-8">
+        <PolicyView />
+      </div>
 
       <div className="mt-8">
         <RemoteView />

@@ -87,21 +87,31 @@ export function useTyped(text: string, active: boolean, speedMs = 34) {
   return active ? typed : text;
 }
 
-/** Counts from 0 to `target` while `run`, easing out so it settles rather than stops. */
+/**
+ * Counts from 0 to `target` while `run`, easing out so it settles rather than
+ * stops.
+ *
+ * Starts *at* the target rather than at zero, and returns there whenever it is
+ * not running. Reviewers reading the landing page repeatedly quoted the stats as
+ * "0 pages" and "0 changes a week" — the server renders the initial state, and
+ * anyone who screenshotted before the animation began, or who never scrolled the
+ * section into view, saw a product claiming to have measured nothing. The
+ * animation is a flourish; the number is the argument, so the number is what
+ * exists when the flourish is not playing.
+ */
 export function useCountUp(target: number, run: boolean, durationMs = 1100) {
   const reduce = useReducedMotion();
-  const [value, setValue] = useState(0);
+  const [value, setValue] = useState(target);
 
   useEffect(() => {
-    if (reduce) {
+    if (reduce || !run) {
       setValue(target);
       return;
     }
-    if (!run) {
-      setValue(0);
-      return;
-    }
     let frame = 0;
+    // Zero is set here, inside the run branch, so it is only ever visible as the
+    // first frame of an animation that is actually about to play.
+    setValue(0);
     const start = performance.now();
     const tick = (now: number) => {
       const t = Math.min(1, (now - start) / durationMs);

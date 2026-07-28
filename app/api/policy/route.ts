@@ -54,6 +54,7 @@ export async function PUT(request: Request) {
       defaultDays: Math.max(1, Math.round(body.defaultDays ?? current.defaultDays)),
       decayDays: Math.max(1, Math.round(body.decayDays ?? current.decayDays)),
       quarantined: body.quarantined ?? current.quarantined,
+      stampFrontmatter: body.stampFrontmatter ?? current.stampFrontmatter,
     };
 
     await writePolicy(vault.root, next);

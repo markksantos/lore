@@ -43,6 +43,21 @@ export type Policy = {
    * one thing it does control.
    */
   quarantined: string[];
+  /**
+   * Mirror a sign-off into the page's own frontmatter as `lore_verified`.
+   *
+   * Off by default, and it should stay off for most people: the ledger lives
+   * outside the vault precisely so that verifying a page leaves the file
+   * byte-identical and `git status` stays clean.
+   *
+   * It exists because Obsidian users asked for it, and their reason is good.
+   * Dataview can only query fields that are in the file, so without a stamp
+   * there is no way to write `WHERE lore_verified` and get a table of what has
+   * been checked — the trust data is real but invisible to the tool they
+   * actually read their wiki in. Anyone who turns this on is choosing a noisier
+   * diff in exchange for a queryable field, which is a trade only they can make.
+   */
+  stampFrontmatter: boolean;
 };
 
 export const DEFAULT_POLICY: Policy = {
@@ -56,6 +71,7 @@ export const DEFAULT_POLICY: Policy = {
   defaultDays: 180,
   decayDays: 120,
   quarantined: [],
+  stampFrontmatter: false,
 };
 
 export async function readPolicy(root: string): Promise<Policy> {
@@ -68,6 +84,7 @@ export async function readPolicy(root: string): Promise<Policy> {
       defaultDays: parsed.defaultDays ?? DEFAULT_POLICY.defaultDays,
       decayDays: parsed.decayDays ?? DEFAULT_POLICY.decayDays,
       quarantined: Array.isArray(parsed.quarantined) ? parsed.quarantined : [],
+      stampFrontmatter: parsed.stampFrontmatter === true,
     };
   } catch {
     return DEFAULT_POLICY;

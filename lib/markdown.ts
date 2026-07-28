@@ -13,6 +13,23 @@ function escapeHtml(value: string): string {
 
 const MASK_PREFIX = "LOREMASK";
 
+const IMAGE_EXT = /\.(png|jpe?g|gif|bmp|webp|svg)$/i;
+
+/**
+ * Point an image at the route that can actually serve it.
+ *
+ * Attachments live inside the vault, which is a folder on disk that the browser
+ * has no access to — a vault-relative `assets/shot.png` resolves against the
+ * app's own URL and 404s. Every image in every note was therefore broken, in
+ * Lore's own paste-a-screenshot flow as much as in an imported Obsidian vault.
+ * Absolute URLs and data URIs are left exactly as written.
+ */
+function imageTag(src: string, alt: string): string {
+  const external = /^(https?:|data:|blob:|\/)/i.test(src);
+  const url = external ? src : `/api/attachment?path=${encodeURIComponent(src)}`;
+  return `<img class="lore-image" src="${escapeHtml(url)}" alt="${escapeHtml(alt)}" loading="lazy" />`;
+}
+
 /**
  * Render a note to HTML.
  *
@@ -70,6 +87,28 @@ export function renderMarkdown(source: string, pages: Map<string, string>): stri
     .replace(/```[\s\S]*?```/g, stash)
     .replace(/`[^`\n]*`/g, stash);
 
+  /*
+   * Obsidian embeds — `![[screenshot.png]]` and `![[some note]]`.
+   *
+   * These must run BEFORE the wikilink rule, which would otherwise match the
+   * `[[...]]` inside and leave a stray `!` sitting in the prose. An embedded
+   * image becomes a real image; an embedded note becomes a link to it, marked
+   * as an embed rather than silently pretending to have inlined the page.
+   */
+  body = body.replace(/!\[\[([^\]]+)\]\]/g, (_match, inner: string) => {
+    const target = String(inner).split("|")[0].split("#")[0].trim();
+    if (IMAGE_EXT.test(target)) return imageTag(target, target);
+    const key = target.toLowerCase();
+    const resolved = [...pages.keys()].find(
+      (id) => id.toLowerCase() === key || id.toLowerCase().split("/").pop() === key,
+    );
+    const label = resolved ? (pages.get(resolved) ?? target) : target;
+    if (!resolved) {
+      return `<span class="lore-wikilink" data-missing="true" title="No page named &quot;${escapeHtml(target)}&quot; yet">${escapeHtml(label)}</span>`;
+    }
+    return `<a class="lore-wikilink" data-embed="true" href="#page:${escapeHtml(resolved)}" data-page="${escapeHtml(resolved)}" title="Embedded: ${escapeHtml(resolved)}">${escapeHtml(label)}</a>`;
+  });
+
   body = body.replace(/\[\[([^\]]+)\]\]/g, (_match, inner: string) => {
     const [rawTarget, alias] = String(inner).split("|");
     const target = rawTarget.split("#")[0].trim();
@@ -85,6 +124,17 @@ export function renderMarkdown(source: string, pages: Map<string, string>): stri
     const label = alias?.trim() || pages.get(resolved) || target;
     return `<a class="lore-wikilink" href="#page:${escapeHtml(resolved)}" data-page="${escapeHtml(resolved)}" title="${escapeHtml(resolved)}">${escapeHtml(label)}</a>`;
   });
+
+  // Ordinary markdown images, same problem: `![alt](assets/shot.png)` is a path
+  // into the vault, not a URL the browser can fetch.
+  body = body.replace(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g, (match, alt: string, src: string) =>
+    IMAGE_EXT.test(src) || /^(https?:|data:|blob:)/i.test(src) ? imageTag(src, alt) : match,
+  );
+
+  // Obsidian block identifiers: a trailing `^some-id` marks a paragraph as a
+  // link target. Obsidian hides them; rendering them left a stray token at the
+  // end of a sentence on every note that used block references.
+  body = body.replace(/[ \t]+\^[a-zA-Z0-9-]{1,64}[ \t]*$/gm, "");
 
   body = body.replace(
     /(^|[\s(])#([a-zA-Z][\w/-]{1,48})/g,

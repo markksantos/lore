@@ -474,6 +474,24 @@
   border: 1px dashed var(--lore-border-strong);
 }
 
+/* An ![[embedded]] note. Obsidian inlines the whole page; we link to it, and
+   the arrow says so rather than letting it pass for an ordinary reference. */
+.lore-wikilink[data-embed="true"]::before {
+  content: "↳ ";
+  opacity: 0.6;
+}
+
+/* Screenshots pasted into a note, and Obsidian's ![[image.png]] embeds. Capped
+   at the column width so a 4K screenshot doesn't set the page's measure. */
+.lore-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 1.4em 0;
+  border-radius: 10px;
+  border: 1px solid var(--lore-border);
+}
+
 .pal-bullets {
   list-style: none;
   padding-left: 0;

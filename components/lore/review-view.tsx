@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Loader2, ShieldCheck, ShieldAlert, Shield, Radio } from "lucide-react";
+import { ChangeDiff } from "@/components/lore/change-diff";
 import { paletteVars } from "@/lib/palette";
 import { cn, relativeTime } from "@/lib/utils";
 
@@ -251,6 +252,9 @@ export function ReviewView({ onOpenPage }: { onOpenPage: (pageId: string) => voi
                 </button>
               </div>
               <p className="t-meta mt-1.5 text-[var(--lore-text-secondary)]">{item.why}</p>
+              {/* +12/−31 is a quantity, not a review. The lines themselves are
+                  one click away, on the card that asks for the signature. */}
+              {item.kind !== "deleted" ? <ChangeDiff relPath={item.relPath} /> : null}
             </article>
           ))}
         </div>
