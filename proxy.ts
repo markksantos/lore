@@ -233,5 +233,8 @@ export function proxy(request: NextRequest) {
    file and use crypto.timingSafeEqual here, instead of re-implementing the
    boundary in each of the sixteen routes that touch the disk. */
 export const config = {
-  matcher: ["/vault/:path*", "/api/:path*"],
+  // /install is here only so the redirect above actually runs. Without it the
+  // matcher never routes that path through this file and the redirect was dead
+  // code sitting next to a live 404 — which is how it shipped.
+  matcher: ["/vault/:path*", "/api/:path*", "/install"],
 };

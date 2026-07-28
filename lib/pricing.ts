@@ -1,3 +1,5 @@
+import { GITHUB_URL } from "@/lib/brand";
+
 /**
  * Plans.
  *
@@ -37,6 +39,17 @@ export type Plan = {
   href: string;
   /** External destination — GitHub rather than a checkout. */
   external?: boolean;
+  /**
+   * Whether you can actually buy this today.
+   *
+   * The hosted service is not built. Showing three plans with "Get started"
+   * buttons that quietly land on the download page is the kind of thing that
+   * costs a product its credibility on first contact — someone clicks a $12/mo
+   * plan, gets a .dmg, and correctly concludes the page was not being straight
+   * with them. The prices are real and announced; the checkout is not open, and
+   * the card says so rather than hoping nobody clicks.
+   */
+  available?: boolean;
   featured?: boolean;
   features: {
     label: string;
@@ -70,6 +83,7 @@ export const PLANS: Plan[] = [
     },
     cta: "Download",
     href: "/download",
+    available: true,
     features: [
       ...APP_FEATURES.map((label) => ({ label, included: true })),
       { label: "Runs entirely on your own machine", included: true },
@@ -88,8 +102,9 @@ export const PLANS: Plan[] = [
       yearly: { amount: "$99", unit: "/yr", caption: "$8.25 a month, billed yearly" },
       lifetime: { amount: "$199", unit: "", caption: "one payment, no renewal" },
     },
-    cta: "Get started",
-    href: "/download",
+    cta: "Watch for the launch",
+    href: GITHUB_URL,
+    external: true,
     featured: true,
     features: [
       ...APP_FEATURES.map((label) => ({ label, included: true })),
@@ -109,8 +124,9 @@ export const PLANS: Plan[] = [
       yearly: { amount: "$999", unit: "/yr", caption: "10 seats, billed yearly" },
       lifetime: { amount: "$1,999", unit: "", caption: "10 seats, one payment" },
     },
-    cta: "Get started",
-    href: "/download",
+    cta: "Watch for the launch",
+    href: GITHUB_URL,
+    external: true,
     features: [
       // Not an upgrade — it is everything the tier below already has, so it
       // takes the same tick those lines take there.
@@ -135,7 +151,7 @@ export const PLANS: Plan[] = [
 export const FAQ: { q: string; a: string }[] = [
   {
     q: "Is Lore free?",
-    a: "Yes. Lore is open source and free to self-host, and the free build is the complete application — the editor, every MCP tool, the graph, semantic search, context budgets and the verification ledger. Nothing is held back. Hosted plans add cross-device sync, backups, and managed auth and storage, and start at $12 per month.",
+    a: "Yes. Lore is open source and free to self-host, and the free build is the complete application — the editor, every MCP tool, the graph, semantic search, context budgets and the verification ledger. Nothing is held back. Hosted plans will add cross-device sync, backups, and managed auth and storage from $12 per month; they are not open yet, so today the free build is the only thing you can actually get, and it is the whole thing.",
   },
   {
     q: "What do the hosted plans actually add?",
@@ -146,8 +162,8 @@ export const FAQ: { q: string; a: string }[] = [
     a: "Only if you turn sync on, and only then. The local app has no upload path at all — that is not a policy, it is that no such code exists. Switching on a hosted plan is a deliberate choice to put an encrypted copy somewhere you can reach from elsewhere, and it is the one thing that changes.",
   },
   {
-    q: "Can I switch between monthly, yearly and lifetime?",
-    a: "Yes, from the billing portal, and a subscriber can pay the difference to own Lore for life. Only the account owner manages billing.",
+    q: "When does hosted open, and can I pay now?",
+    a: "There is no date, and no — there is no checkout, no waitlist form and no card capture anywhere on this site. When it opens it will be announced in the GitHub releases. Everything the app does today it does without an account, so nothing you set up now is waiting on it.",
   },
   {
     q: "What happens if I stop paying?",

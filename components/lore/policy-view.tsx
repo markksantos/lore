@@ -132,8 +132,8 @@ export function PolicyView() {
                 onBlur={() => save(draft)}
                 className="h-8 w-16 rounded-lg border border-[var(--lore-border)] bg-[var(--lore-background)] px-2 text-right text-[13px] tabular-nums text-[var(--lore-text-primary)] outline-none focus:border-[var(--lore-accent)]"
               />
-              <span className="t-meta w-20 text-[var(--lore-text-tertiary)]">
-                days · {coverage.get(rule.match) ?? 0}
+              <span className="t-meta w-24 text-[var(--lore-text-tertiary)]">
+                days · {coverage.get(rule.match) ?? 0} pages
               </span>
               <button
                 type="button"

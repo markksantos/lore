@@ -695,11 +695,19 @@ const FAQ = [
   },
   {
     q: "Does it work with my Obsidian vault?",
-    a: "Yes — that is the intended case. Lore reads [[wikilinks]], inline #tags and YAML frontmatter, and skips .obsidian and .trash. Keep writing in Obsidian; Lore is the layer that makes the same folder legible to you and to your agents.",
+    a: "Yes — that is the intended case, and here is exactly what is supported. [[Wikilinks]] resolve by full path, by basename and by frontmatter aliases, and [[page|display text]] shows your label. ![[image.png]] embeds render as images; ![[note]] embeds render as a link to that note rather than inlining it. Inline #tags, YAML frontmatter and block ids (^abc123) are all handled, and .obsidian and .trash are skipped. A [[page#heading]] link opens the page — it does not scroll to the heading. Dataview inline fields are left exactly as written; if you want your sign-offs queryable in Dataview, Settings can stamp lore_verified into the frontmatter, off by default.",
+  },
+  {
+    q: "Where do the history snapshots live, and how big do they get?",
+    a: "In ~/.lore/history, outside your vault, so they never appear in a git diff. Lore keeps up to 40 past versions of each page and only stores a copy when the text actually changes — identical content is stored once. On a real 1,482-page wiki changing 300 times a week that is a few megabytes. Delete the folder any time; you lose the ability to see what changed, and nothing else.",
   },
   {
     q: "Is anything uploaded?",
     a: "Nothing. Lore is a local app talking to your own filesystem. There is no account and no server behind the free build. Hosted plans exist for sync across machines, and they are opt-in — the version you download has no upload code in it at all.",
+  },
+  {
+    q: "If I turn on hosted sync, can you read my wiki?",
+    a: "Hosted sync is not open yet, so today the answer is that there is nothing to read — the app you can download has no upload code in it at all. When it does open it will be end-to-end encrypted by default: the key derived from your passphrase on your machine, ciphertext on the server, no recovery if you lose the passphrase. That is a commitment made before the code exists rather than a feature you can check, which is exactly why it is written down here.",
   },
 ];
 

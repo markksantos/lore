@@ -127,8 +127,9 @@ export function PricingView({ scene }: { scene: Scene }) {
         </div>
 
         <p className="t-meta mt-8 text-center text-[var(--lore-text-tertiary)]">
-          Hosted plans are billed per account. The self-hosted build has no licence check, no
-          expiry and no account — it keeps working whatever happens here.
+          The hosted service is not open yet — these are the prices it will launch at, not a
+          checkout you can reach today. The self-hosted build is shipping now, has no licence
+          check, no expiry and no account, and keeps working whatever happens here.
         </p>
 
         <hr className="mt-16 border-[var(--lore-border)]" />
@@ -161,14 +162,23 @@ function PlanCard({ plan, cycle }: { plan: Plan; cycle: Cycle }) {
         plan.featured ? "border-[var(--lore-accent)]/40" : "border-[var(--lore-border)]",
       )}
     >
-      <h2
-        className={cn(
-          "text-[34px] font-semibold leading-none tracking-[-0.03em]",
-          tone.name,
-        )}
-      >
-        {plan.name}
-      </h2>
+      <div className="flex items-center justify-between gap-3">
+        <h2
+          className={cn(
+            "text-[34px] font-semibold leading-none tracking-[-0.03em]",
+            tone.name,
+          )}
+        >
+          {plan.name}
+        </h2>
+        {/* The price is announced; the checkout is not open. Said on the card,
+            where the decision is made, rather than in a footnote below it. */}
+        {!plan.available ? (
+          <span className="rounded-full border border-[var(--lore-border)] px-2.5 py-1 text-[11.5px] font-semibold uppercase tracking-[0.06em] text-[var(--lore-text-tertiary)]">
+            Not open yet
+          </span>
+        ) : null}
+      </div>
 
       <div className="mt-5 flex items-baseline gap-1.5">
         <span className="text-[32px] font-semibold leading-none tracking-[-0.04em] text-[var(--lore-text-primary)]">
@@ -234,15 +244,35 @@ function PlanCard({ plan, cycle }: { plan: Plan; cycle: Cycle }) {
         <div className="flex-1" />
       )}
 
-      <Link
-        href={plan.href}
-        className={cn(
-          "mt-7 inline-flex h-11 items-center justify-center rounded-xl px-4 text-[14px] font-semibold transition-colors",
-          tone.button,
-        )}
-      >
-        {plan.cta}
-      </Link>
+      {plan.external ? (
+        <a
+          href={plan.href}
+          target="_blank"
+          rel="noreferrer"
+          className={cn(
+            "mt-7 inline-flex h-11 items-center justify-center rounded-xl px-4 text-[14px] font-semibold transition-colors",
+            tone.button,
+          )}
+        >
+          {plan.cta}
+        </a>
+      ) : (
+        <Link
+          href={plan.href}
+          className={cn(
+            "mt-7 inline-flex h-11 items-center justify-center rounded-xl px-4 text-[14px] font-semibold transition-colors",
+            tone.button,
+          )}
+        >
+          {plan.cta}
+        </Link>
+      )}
+
+      {!plan.available ? (
+        <p className="t-meta mt-2.5 text-center text-[var(--lore-text-tertiary)]">
+          No charge, no card, no waitlist form — releases are announced on GitHub.
+        </p>
+      ) : null}
     </div>
   );
 }
