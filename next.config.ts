@@ -6,7 +6,11 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   // Electron spawns the Next server as a child process, so the build has to be
   // self-contained rather than assuming node_modules is present beside it.
-  output: "standalone",
+  //
+  // Skipped on Vercel, which does its own output tracing and has no use for a
+  // standalone server directory. Leaving it on there is not fatal, but it is
+  // build time spent producing an artifact nothing reads.
+  ...(process.env.VERCEL ? {} : { output: "standalone" as const }),
   serverExternalPackages: ["gray-matter"],
 };
 

@@ -1,0 +1,21 @@
+# What must never reach a deployment.
+#
+# The CLI falls back to .gitignore, but this directory holds ~2GB of desktop
+# installers and an Electron build, and "probably ignored" is not the standard
+# for a 2GB upload over a home connection.
+
+node_modules
+.next
+dist-desktop
+
+# Electron and the CLI are local-only. Site mode serves marketing pages; none of
+# this is reachable there, so shipping it is dead weight in the bundle.
+electron
+electron-builder.yml
+bin
+mcp
+
+# Local scratch and captures.
+.playwright-mcp
+.impeccable
+*.log
