@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, Download as DownloadIcon } from "lucide-react";
+import { ArrowRight, Download as DownloadIcon, FolderOpen } from "lucide-react";
 import { MarketingFooter, MarketingHeader } from "@/components/marketing/site-chrome";
 import { HeroSimulator } from "@/components/marketing/hero-simulator";
 
@@ -45,11 +45,18 @@ export function DemoView() {
 
           <div className="flex flex-wrap gap-2.5">
             <Link
-              href="/download"
+              href="/web"
               className="inline-flex h-10 items-center gap-2 rounded-xl bg-[var(--lore-accent)] px-4 text-[14px] font-semibold text-white transition-colors hover:bg-[var(--lore-accent-hover)]"
             >
+              <FolderOpen size={15} />
+              Open your own wiki
+            </Link>
+            <Link
+              href="/download"
+              className="inline-flex h-10 items-center gap-2 rounded-xl border border-[var(--lore-border)] px-4 text-[14px] font-medium text-[var(--lore-text-secondary)] transition-colors hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)]"
+            >
               <DownloadIcon size={15} />
-              Download for your machine
+              Download
             </Link>
             <Link
               href="/pricing"
@@ -73,8 +80,8 @@ export function DemoView() {
 
         <section className="mt-14 grid gap-4 md:grid-cols-3">
           <Note
-            title="Why there is no hosted version"
-            body="Lore reads the markdown folder on your disk. A hosted app could only do that by being given your notes, which is the one thing this is built not to require. So the real app runs on your machine, and this demo is a mock."
+            title="This is a mock — the real thing is one click away"
+            body="These twelve pages are made up. If you want the real interface on your own notes without installing anything, /web opens a folder you choose and reads it in this browser. Nothing is uploaded there either; it is the same refusal to hold your data, done a different way."
           />
           <Note
             title="What the real one adds"

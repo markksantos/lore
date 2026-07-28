@@ -94,6 +94,26 @@ export function DownloadView() {
           service.
         </p>
 
+        {/* Before the installers, because it is the shortest honest path to
+            someone's own wiki: no download, no build step, no account. */}
+        <section className="mt-8 rounded-2xl border border-[var(--lore-accent)]/35 bg-[var(--lore-surface)] p-5">
+          <h2 className="text-[16px] font-semibold tracking-[-0.02em] text-[var(--lore-text-primary)]">
+            Nothing to install
+          </h2>
+          <p className="t-body mt-1.5 max-w-2xl text-[var(--lore-text-secondary)]">
+            Lore can open your markdown folder straight from a browser tab, reading it off
+            your disk with nothing uploaded. Read-only, no account, and it works today in
+            Chrome, Edge, Arc and Brave. The download below adds the watcher, page history,
+            the MCP server your agents connect to, local AI, and phone access.
+          </p>
+          <Link
+            href="/web"
+            className="mt-3.5 inline-flex h-9 items-center rounded-lg bg-[var(--lore-accent)] px-3.5 text-[13.5px] font-semibold text-white transition-colors hover:bg-[var(--lore-accent-hover)]"
+          >
+            Open your wiki in the browser
+          </Link>
+        </section>
+
         {RELEASES_URL ? <Releases os={os} ordered={ordered} /> : <BuildFromSource os={os} />}
 
         <section className="mt-14">
@@ -119,10 +139,10 @@ export function DownloadView() {
           </div>
           <div className="mt-5 flex flex-wrap gap-3">
             <Link
-              href="/demo"
+              href="/web"
               className="inline-flex h-10 items-center rounded-xl bg-[var(--lore-accent)] px-4 text-[14px] font-semibold text-white transition-colors hover:bg-[var(--lore-accent-hover)]"
             >
-              Try it in your browser
+              Open your wiki in the browser
             </Link>
             <a
               href={GITHUB_URL}

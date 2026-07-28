@@ -38,8 +38,17 @@ export function Landing({
 }) {
   /* On the public site there is no app to open — every filesystem route is off.
      Sending someone to a dead /vault would be the worst possible first click. */
-  const cta = siteMode ? "/demo" : "/vault";
-  const ctaLabel = siteMode ? "Try it now" : "Link your wiki";
+  /*
+   * The primary door.
+   *
+   * On the public site this used to be the fixture demo, which answered "what
+   * does it look like" and not "does it work on MY notes" — the question every
+   * reviewer actually asked. /web opens the reader's own folder in their own
+   * browser, so the first click now lands on their wiki rather than on twelve
+   * invented pages. Running locally, the app itself is already the answer.
+   */
+  const cta = siteMode ? "/web" : "/vault";
+  const ctaLabel = siteMode ? "Open your wiki" : "Link your wiki";
   return (
     <>
       <MarketingHeader overHero />
@@ -700,6 +709,10 @@ const FAQ = [
   {
     q: "Where do the history snapshots live, and how big do they get?",
     a: "In ~/.lore/history, outside your vault, so they never appear in a git diff. Lore keeps up to 40 past versions of each page and only stores a copy when the text actually changes — identical content is stored once. On a real 1,482-page wiki changing 300 times a week that is a few megabytes. Delete the folder any time; you lose the ability to see what changed, and nothing else.",
+  },
+  {
+    q: "Can I try it without installing anything?",
+    a: "Yes, on your own notes rather than a sample. Open /web in Chrome, Edge, Arc or Brave and pick your markdown folder: the page reads it off your disk, nothing is uploaded, and the folder is opened read-only so the browser itself refuses a write. What the download adds is the part a web page cannot do — a watcher that sees what your agents changed and by how much, page history and diffs, the MCP server your agents connect to, local AI, and reading your wiki from your phone.",
   },
   {
     q: "Is anything uploaded?",
