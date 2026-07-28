@@ -1,5 +1,7 @@
 import { fail, requireVault, toMeta } from "@/lib/server";
 import { readPolicy } from "@/lib/policy";
+import { readLedger, trustOf } from "@/lib/verify";
+import crypto from "node:crypto";
 import { recordAttribution } from "@/lib/harness";
 import { createPage, deletePage, getIndex, readRaw, writeRaw } from "@/lib/wiki";
 
@@ -36,8 +38,22 @@ export async function GET(request: Request) {
       );
     }
 
+    /*
+     * Trust travels with the page.
+     *
+     * Without this the model has no way to know a page is unverified, so it
+     * cannot weigh a fact a human confirmed against one an agent guessed at in
+     * April — which is the entire premise of the product, withheld from the one
+     * reader that could act on it. It costs one ledger read.
+     */
+    const ledger = await readLedger(vault.root);
+    const hash = crypto.createHash("sha1").update(page.plain).digest("hex").slice(0, 16);
+    const trust = trustOf(ledger, page.id, hash, Date.now(), policy.decayDays);
+
     const backlinkIds = index.backlinks[page.id] ?? [];
     return Response.json({
+      trust,
+      verifiedAt: ledger[page.id]?.at ?? null,
       page: toMeta(page),
       frontmatter: page.frontmatter,
       raw,

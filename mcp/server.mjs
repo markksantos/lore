@@ -57,12 +57,8 @@ const TOOLS = [
   },
   {
     name: "wiki_read",
-    // Deliberately does NOT promise trust state. `/api/page` carries no
-    // verification field, so a description telling the model to "prefer
-    // verified pages" would describe a capability the payload does not deliver
-    // and the model could only comply by guessing.
     description:
-      "Read one page in full, plus the pages that link to it and the pages it links to. Use the exact `path` from wiki_index or wiki_search.",
+      "Read one page in full, plus its trust state and the pages linking to and from it. The trust line says whether a human has ever confirmed this page — prefer verified pages, and say so when you rely on an unverified one. Use the exact `path` from wiki_index or wiki_search.",
     inputSchema: {
       type: "object",
       properties: {
@@ -194,8 +190,22 @@ async function runTool(name, args = {}) {
       report({ t: "read", page: data.page.id });
       const linked = data.backlinks.map((p) => p.relPath);
       const links = data.outgoing.map((p) => p.relPath);
+      /*
+       * Trust is stated first, in words the model will act on. A page that says
+       * "verified by a human" and one that says "no human has ever checked
+       * this" should not be quoted with the same confidence, and until now the
+       * model had no way to tell them apart.
+       */
+      const TRUST_NOTE = {
+        verified: "VERIFIED — a human confirmed this exact text. Safe to rely on.",
+        aging: "AGING — confirmed by a human, but a while ago. Worth double-checking dates and numbers.",
+        lapsed: "LAPSED — a human confirmed an earlier version, and it has been rewritten since. Treat as unverified.",
+        unverified: "UNVERIFIED — no human has ever checked this page. It may have been written by an agent. Say so if you rely on it.",
+      };
+
       return [
         `# ${data.page.title}`,
+        `trust: ${TRUST_NOTE[data.trust] ?? "unknown"}`,
         `path: ${data.page.relPath}`,
         data.page.tags.length ? `tags: ${data.page.tags.join(", ")}` : null,
         linked.length ? `linked from: ${linked.join(", ")}` : null,
