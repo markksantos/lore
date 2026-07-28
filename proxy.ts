@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { isSiteMode } from "@/lib/mode";
+import { readSafetySync, wouldWriteVault } from "@/lib/safety";
 import { isRateLimited, noteAuthFailure, verifyToken } from "@/lib/remote";
 
 /**
@@ -83,6 +84,7 @@ const FILESYSTEM_ROUTES = [
   "/api/access",
   "/api/mcp",
   "/api/maintain",
+  "/api/safety",
   "/api/attachment",
   "/api/changes",
   "/api/mcp-event",
@@ -123,6 +125,25 @@ export function proxy(request: NextRequest) {
   const touchesDisk = FILESYSTEM_ROUTES.some(
     (route) => pathname === route || pathname.startsWith(`${route}/`),
   );
+
+  /*
+   * Read-only mode, enforced here rather than in each handler.
+   *
+   * Seven routes can change a file in the user's wiki. Asking seven handlers to
+   * remember a check is how one of them eventually forgets, and the cost of
+   * forgetting is writing to someone's notes. One gate, listed in lib/safety.ts,
+   * derived from an audit of every writeRaw / createPage / deletePage call.
+   */
+  if (!siteMode && wouldWriteVault(pathname, request.method) && readSafetySync().readOnly) {
+    return NextResponse.json(
+      {
+        error:
+          "Lore is in read-only mode and cannot change your wiki. Turn it off in Settings if you want Lore to be able to write.",
+        readOnly: true,
+      },
+      { status: 403 },
+    );
+  }
 
   if (siteMode) {
     // On a public host the app half does not exist. 404 rather than 403 so a
