@@ -13,7 +13,15 @@ export const metadata: Metadata = {
   description: DESCRIPTION,
   // Next injects the manifest link itself; the Apple icon has no manifest
   // equivalent, and iOS screenshots the page instead when the link is missing.
-  icons: { apple: "/icons/apple-touch-icon.png" },
+  //
+  // `icon` has to be listed here too. Defining this object at all opts out of
+  // the app/icon.png file convention — the route is still built and served, but
+  // Next stops emitting the <link> for it, so the browser falls back to asking
+  // for /favicon.ico and 404s on every page load. That was the live behaviour.
+  icons: {
+    icon: "/icon.png",
+    apple: "/icons/apple-touch-icon.png",
+  },
 };
 
 // Next's default viewport meta omits viewport-fit, which leaves every
