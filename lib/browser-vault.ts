@@ -68,10 +68,12 @@ async function idbGet<T>(key: string): Promise<T | null> {
 
 async function idbPut(key: string, value: unknown): Promise<void> {
   const db = await idb();
-  await new Promise<void>((resolve) => {
+  await new Promise<void>((resolve, reject) => {
+    // `put` can throw synchronously — DataCloneError on a value the structured
+    // clone algorithm refuses — so it sits inside the executor deliberately.
     const request = db.transaction(STORE, "readwrite").objectStore(STORE).put(value, key);
     request.onsuccess = () => resolve();
-    request.onerror = () => resolve();
+    request.onerror = () => reject(request.error);
   });
 }
 
@@ -84,20 +86,34 @@ async function idbDelete(key: string): Promise<void> {
   });
 }
 
-/** Ask for a folder. Returns null if the user cancels the picker. */
+/**
+ * Ask for a folder.
+ *
+ * Returns null only when the user dismissed the picker. Anything else throws,
+ * and the caller shows it: the first version caught everything and returned
+ * null, so a real failure — IndexedDB unavailable, permission refused, a
+ * SecurityError — was indistinguishable from "changed my mind" and the button
+ * simply appeared dead. Silence is the correct response to a cancel and the
+ * worst possible response to a fault.
+ *
+ * Remembering the handle is a convenience and is never allowed to be
+ * load-bearing. Private-window browsing, blocked storage, or a quota error must
+ * cost the user the *next* visit's shortcut, not this visit's wiki.
+ */
 export async function pickFolder(): Promise<DirHandle | null> {
+  let handle: DirHandle;
   try {
-    const handle = await (
+    handle = await (
       globalThis as unknown as {
         showDirectoryPicker: (o: { mode: "read" }) => Promise<DirHandle>;
       }
     ).showDirectoryPicker({ mode: "read" });
-    await idbPut(KEY, handle);
-    return handle;
-  } catch {
-    // AbortError when the picker is dismissed. Not an error worth surfacing.
-    return null;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") return null;
+    throw error;
   }
+  await idbPut(KEY, handle).catch(() => {});
+  return handle;
 }
 
 /**
@@ -138,6 +154,68 @@ export async function requestAccess(handle: DirHandle): Promise<boolean> {
 
 export async function forgetFolder(): Promise<void> {
   await idbDelete(KEY);
+}
+
+// ------------------------------------------------------------------ creating
+
+/**
+ * Make a wiki for someone who does not have one.
+ *
+ * Everything else in this file asks for `mode: "read"`, and that is the promise
+ * the browser build makes. This is the one exception, and it is deliberately a
+ * *separate* act with its own picker: the user is choosing an empty folder for
+ * the express purpose of having files written into it. Browsing never gains
+ * write access — after the starter is written we re-open the same folder for
+ * reading, so the session that follows is as locked-down as any other.
+ *
+ * Refuses a folder with anything in it. Scaffolding on top of someone's
+ * existing files is how you overwrite an index.md they wrote, and "it was
+ * empty, I promise" is not something to take on trust from a UI.
+ */
+export async function createWiki(name: string): Promise<DirHandle | null> {
+  let dir: DirHandle;
+  try {
+    dir = await (
+      globalThis as unknown as {
+        showDirectoryPicker: (o: { mode: "readwrite" }) => Promise<DirHandle>;
+      }
+    ).showDirectoryPicker({ mode: "readwrite" });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") return null;
+    throw error;
+  }
+
+  // @ts-expect-error - values() is not in the lib.dom types Next ships with.
+  for await (const entry of dir.values() as AsyncIterable<FileSystemHandle>) {
+    if (!entry.name.startsWith(".")) {
+      throw new Error(
+        `"${dir.name}" already has files in it. Choose an empty folder, or open that one as an existing wiki instead.`,
+      );
+    }
+  }
+
+  const { STARTER_FOLDERS, starterFiles } = await import("@/lib/starter-files");
+
+  for (const folder of STARTER_FOLDERS) {
+    await dir.getDirectoryHandle(folder, { create: true });
+  }
+
+  for (const { relPath, body } of starterFiles(name || dir.name)) {
+    const parts = relPath.split("/");
+    let target = dir;
+    for (const segment of parts.slice(0, -1)) {
+      target = await target.getDirectoryHandle(segment, { create: true });
+    }
+    const file = await target.getFileHandle(parts[parts.length - 1], { create: true });
+    const writable = await (
+      file as unknown as { createWritable: () => Promise<FileSystemWritableFileStream> }
+    ).createWritable();
+    await writable.write(body);
+    await writable.close();
+  }
+
+  await idbPut(KEY, dir).catch(() => {});
+  return dir;
 }
 
 // ------------------------------------------------------------------ scanning

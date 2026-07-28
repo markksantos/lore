@@ -2,11 +2,20 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, ArrowRight, FolderOpen, Loader2, Lock, Monitor } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowRight,
+  FolderOpen,
+  Loader2,
+  Lock,
+  Monitor,
+  Sparkles,
+} from "lucide-react";
 import { MarketingFooter, MarketingHeader } from "@/components/marketing/site-chrome";
 import { VaultApp } from "@/components/lore/vault-app";
 import {
   SUPPORTED,
+  createWiki,
   forgetFolder,
   pickFolder,
   requestAccess,
@@ -36,6 +45,8 @@ type Stage =
   | { kind: "unsupported" }
   | { kind: "idle" }
   | { kind: "regrant"; folder: string }
+  | { kind: "naming" }
+  | { kind: "creating" }
   | { kind: "scanning"; progress: ScanProgress | null }
   | { kind: "ready"; index: VaultIndex }
   | { kind: "error"; message: string };
@@ -77,15 +88,48 @@ export function WebApp() {
   }, [load]);
 
   async function choose() {
-    const handle = await pickFolder();
-    if (handle) await load(handle);
+    try {
+      const handle = await pickFolder();
+      // null means the picker was dismissed, which is not a failure and needs
+      // no message. Everything else lands in the catch and gets shown.
+      if (handle) await load(handle);
+    } catch (error) {
+      setStage({ kind: "error", message: describe(error) });
+    }
+  }
+
+  /**
+   * Write a starter wiki into an empty folder, then open it like any other.
+   *
+   * Deliberately two steps: the name is asked for first, in this page, so that
+   * the folder picker — the moment the browser hands over write access — is the
+   * last thing that happens before files appear. Nobody should be granting write
+   * permission while still deciding what to call it.
+   */
+  async function create(name: string) {
+    setStage({ kind: "creating" });
+    try {
+      const handle = await createWiki(name);
+      if (!handle) return setStage({ kind: "naming" });
+      await load(handle);
+    } catch (error) {
+      setStage({ kind: "error", message: describe(error) });
+    }
   }
 
   async function regrant() {
-    const saved = await restoreFolder();
-    if (!saved) return setStage({ kind: "idle" });
-    if (await requestAccess(saved.handle)) await load(saved.handle);
-    else setStage({ kind: "idle" });
+    try {
+      const saved = await restoreFolder();
+      if (!saved) return setStage({ kind: "idle" });
+      if (await requestAccess(saved.handle)) await load(saved.handle);
+      else
+        setStage({
+          kind: "error",
+          message: "Your browser did not grant access to that folder.",
+        });
+    } catch (error) {
+      setStage({ kind: "error", message: describe(error) });
+    }
   }
 
   if (stage.kind === "ready") {
@@ -117,18 +161,26 @@ export function WebApp() {
           Open your wiki in this tab.
         </h1>
         <p className="t-lede mt-3 text-[var(--lore-text-secondary)]">
-          Point this page at the folder your markdown already lives in. It reads the files
-          straight off your disk — nothing is uploaded, there is no account, and this page
+          Point this page at the folder your markdown already lives in — or start a new one
+          if you have agents but nothing to point them at yet. Either way it reads the files
+          straight off your disk: nothing is uploaded, there is no account, and this page
           does not talk to a server again after it loads.
         </p>
 
-        <Body stage={stage} onChoose={choose} onRegrant={regrant} />
+        <Body
+          stage={stage}
+          onChoose={choose}
+          onRegrant={regrant}
+          onCreate={() => setStage({ kind: "naming" })}
+          onName={create}
+          onCancelName={() => setStage({ kind: "idle" })}
+        />
 
         <div className="mt-10 grid gap-3 border-t border-[var(--lore-border)] pt-8 sm:grid-cols-2">
           <Note
             icon={<Lock size={14} />}
             title="Read-only, enforced by the browser"
-            body="The folder is opened for reading only, so a write is refused below this code. Sign-offs are stored in this browser, not in your files."
+            body="A wiki you open is opened read-only, so a write is refused below this code, and sign-offs live in this browser rather than in your files. Starting a new wiki is the single exception — it writes the starter pages into an empty folder you pick, then reopens it read-only."
           />
           <Note
             icon={<Monitor size={14} />}
@@ -154,10 +206,16 @@ function Body({
   stage,
   onChoose,
   onRegrant,
+  onCreate,
+  onName,
+  onCancelName,
 }: {
   stage: Stage;
   onChoose: () => void;
   onRegrant: () => void;
+  onCreate: () => void;
+  onName: (name: string) => void;
+  onCancelName: () => void;
 }) {
   const button =
     "mt-8 inline-flex h-11 w-fit items-center gap-2 rounded-xl bg-[var(--lore-accent)] px-5 text-[14.5px] font-semibold text-white transition-colors hover:bg-[var(--lore-accent-hover)]";
@@ -209,6 +267,19 @@ function Body({
     );
   }
 
+  if (stage.kind === "naming") {
+    return <NameForm onSubmit={onName} onCancel={onCancelName} />;
+  }
+
+  if (stage.kind === "creating") {
+    return (
+      <div className="mt-8 flex h-11 items-center gap-2.5 text-[var(--lore-text-secondary)]">
+        <Loader2 size={16} className="animate-spin" />
+        <span className="text-[14.5px]">Writing your wiki…</span>
+      </div>
+    );
+  }
+
   if (stage.kind === "scanning") {
     const p = stage.progress;
     return (
@@ -228,23 +299,46 @@ function Body({
   if (stage.kind === "error") {
     return (
       <div className="mt-8">
-        <p className="flex items-center gap-2 text-[14.5px] text-[var(--lore-danger)]">
-          <AlertTriangle size={15} />
+        <p className="flex items-start gap-2 text-[14.5px] leading-[1.6] text-[var(--lore-danger)]">
+          <AlertTriangle size={15} className="mt-[3px] shrink-0" />
           {stage.message}
         </p>
-        <button type="button" onClick={onChoose} className={button}>
-          <FolderOpen size={16} />
-          Try another folder
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <button type="button" onClick={onChoose} className={button}>
+            <FolderOpen size={16} />
+            Try another folder
+          </button>
+          <button
+            type="button"
+            onClick={onCreate}
+            className="mt-8 inline-flex h-11 w-fit items-center gap-2 rounded-xl border border-[var(--lore-border-strong)] px-5 text-[14.5px] font-medium text-[var(--lore-text-primary)] transition-colors hover:bg-[var(--lore-surface-raised)]"
+          >
+            <Sparkles size={15} />
+            Start a new wiki
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
-    <button type="button" onClick={onChoose} className={button}>
-      <FolderOpen size={16} />
-      Choose your wiki folder
-    </button>
+    <div className="mt-8 flex flex-wrap items-center gap-3">
+      <button type="button" onClick={onChoose} className={button.replace("mt-8 ", "")}>
+        <FolderOpen size={16} />
+        Choose your wiki folder
+      </button>
+      {/* The second door, for the larger group nobody was serving: people who
+          have agents but no wiki yet. "Make a folder and write some notes" is
+          not an onboarding step, it is homework. */}
+      <button
+        type="button"
+        onClick={onCreate}
+        className="inline-flex h-11 w-fit items-center gap-2 rounded-xl border border-[var(--lore-border-strong)] px-5 text-[14.5px] font-medium text-[var(--lore-text-primary)] transition-colors hover:bg-[var(--lore-surface-raised)]"
+      >
+        <Sparkles size={15} />
+        I don&rsquo;t have one yet
+      </button>
+    </div>
   );
 }
 
@@ -303,6 +397,76 @@ function BrowserBanner({
   );
 }
 
+/**
+ * Naming the wiki before the picker opens.
+ *
+ * The name becomes the H1 of index.md and the title of AGENTS.md, so it is worth
+ * asking for rather than defaulting to the folder name silently — but it is also
+ * not worth blocking on, which is why the field starts filled and submitting it
+ * empty is fine.
+ */
+function NameForm({
+  onSubmit,
+  onCancel,
+}: {
+  onSubmit: (name: string) => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState("My wiki");
+
+  return (
+    <form
+      className="mt-8 rounded-xl border border-[var(--lore-border)] bg-[var(--lore-surface)] p-5"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSubmit(name.trim());
+      }}
+    >
+      <label
+        htmlFor="wiki-name"
+        className="text-[14.5px] font-semibold text-[var(--lore-text-primary)]"
+      >
+        What should it be called?
+      </label>
+      <p className="t-meta mt-1.5 text-[var(--lore-text-secondary)]">
+        Next you will pick an <strong>empty folder</strong> to put it in. Lore writes five
+        starter pages and five folders there — an index, a page on how to keep a wiki
+        useful, a log, a worked example of a decision page, and an AGENTS.md so the first
+        agent that opens it already knows the house rules.
+      </p>
+      <div className="mt-4 flex flex-wrap items-center gap-2.5">
+        <input
+          id="wiki-name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          autoFocus
+          className="h-11 min-w-0 flex-1 basis-56 rounded-xl border border-[var(--lore-border)] bg-[var(--lore-background)] px-3.5 text-[14.5px] text-[var(--lore-text-primary)] outline-none focus:border-[var(--lore-accent)]"
+        />
+        <button
+          type="submit"
+          className="inline-flex h-11 items-center gap-2 rounded-xl bg-[var(--lore-accent)] px-5 text-[14.5px] font-semibold text-white transition-colors hover:bg-[var(--lore-accent-hover)]"
+        >
+          <FolderOpen size={15} />
+          Choose an empty folder
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="inline-flex h-11 items-center rounded-xl px-3 text-[14px] font-medium text-[var(--lore-text-secondary)] transition-colors hover:text-[var(--lore-text-primary)]"
+        >
+          Cancel
+        </button>
+      </div>
+      {/* Said here because this is the one moment the browser build asks for
+          write access, and the user should know why before the prompt appears. */}
+      <p className="t-meta mt-3 text-[var(--lore-text-tertiary)]">
+        This is the only thing Lore ever writes. After the starter pages are created the
+        folder is reopened read-only, like any other wiki you open here.
+      </p>
+    </form>
+  );
+}
+
 function Note({ icon, title, body }: { icon: React.ReactNode; title: string; body: string }) {
   return (
     <div className="rounded-xl border border-[var(--lore-border)] bg-[var(--lore-surface)] p-4">
@@ -313,6 +477,26 @@ function Note({ icon, title, body }: { icon: React.ReactNode; title: string; bod
       <p className="t-meta mt-1.5 text-[var(--lore-text-secondary)]">{body}</p>
     </div>
   );
+}
+
+/**
+ * Turn a thrown thing into a sentence worth showing.
+ *
+ * The browser's own messages for this API are unusually good at saying what
+ * went wrong and unusually bad at saying what to do about it, so the two named
+ * cases get an answer rather than a diagnosis.
+ */
+function describe(error: unknown): string {
+  if (error instanceof DOMException) {
+    if (error.name === "SecurityError") {
+      return "Your browser blocked the folder picker. This usually means the page is in an iframe or was opened from a file:// URL — open lore directly in a tab.";
+    }
+    if (error.name === "NotAllowedError") {
+      return "Permission to read that folder was refused. Pick it again and choose View files when your browser asks.";
+    }
+    return `${error.name}: ${error.message}`;
+  }
+  return error instanceof Error ? error.message : "That folder could not be opened.";
 }
 
 function toVaultIndex(index: WikiIndex): VaultIndex {

@@ -166,6 +166,38 @@ async function handle(url: URL, init?: RequestInit): Promise<Response | null> {
     });
   }
 
+  /*
+   * A folder as one document — the main reading surface, and the one endpoint
+   * whose absence made the browser vault look broken rather than reduced: the
+   * sidebar listed the folders and the document pane said "could not open".
+   *
+   * Paged the same way the server pages it, newest-edited first, because the
+   * reason for paging is the browser's, not the server's: one measured vault
+   * keeps 654 pages in a single folder.
+   */
+  if (p === "/api/folder") {
+    const folder = params.get("path") ?? "";
+    const offset = Math.max(0, Number(params.get("offset") ?? 0) || 0);
+    const limit = Math.min(200, Math.max(1, Number(params.get("limit") ?? 40) || 40));
+
+    const inFolder = s.index.pages
+      .filter((page) => page.folder === folder)
+      .sort((a, b) => b.mtime - a.mtime);
+    const slice = inFolder.slice(offset, offset + limit);
+
+    return json({
+      folder,
+      sections: slice.map((page) => ({
+        page: toMeta(page),
+        raw: s.texts.get(page.relPath) ?? "",
+      })),
+      total: inFolder.length,
+      offset,
+      limit,
+      hasMore: offset + slice.length < inFolder.length,
+    });
+  }
+
   if (p === "/api/search") {
     const q = params.get("q") ?? "";
     return json({

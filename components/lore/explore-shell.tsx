@@ -30,14 +30,27 @@ import { cn } from "@/lib/utils";
  * bearing, and would push the nav past the point where anyone reads it.
  */
 
+/**
+ * `fills` marks the two lenses that size themselves to the pane rather than
+ * flowing as a document: the graph runs a force simulation inside a fixed box,
+ * and Compare is two independently scrolling columns. Those must not sit in a
+ * scroller — an outer scrollbar on a canvas that already fills the space is how
+ * you get two nested scrollbars and a graph you cannot pan.
+ *
+ * Everything else is a document and needs somewhere to scroll. It did not have
+ * one: `main` is deliberately overflow-hidden on this view (see vault-app), this
+ * container was overflow-hidden too, and the five document lenses each render a
+ * plain div. Anything below the fold — most of Browse, all of a long Timeline —
+ * was simply unreachable.
+ */
 const TABS = [
-  { id: "explorer", label: "Browse", icon: SlidersHorizontal },
-  { id: "graph", label: "Graph", icon: Share2 },
-  { id: "map", label: "Map", icon: LayoutGrid },
-  { id: "timeline", label: "Timeline", icon: CalendarClock },
-  { id: "compare", label: "Compare", icon: Columns2 },
-  { id: "duplicates", label: "Duplicates", icon: Copy },
-  { id: "schema", label: "Schema", icon: ClipboardCheck },
+  { id: "explorer", label: "Browse", icon: SlidersHorizontal, fills: false },
+  { id: "graph", label: "Graph", icon: Share2, fills: true },
+  { id: "map", label: "Map", icon: LayoutGrid, fills: false },
+  { id: "timeline", label: "Timeline", icon: CalendarClock, fills: false },
+  { id: "compare", label: "Compare", icon: Columns2, fills: true },
+  { id: "duplicates", label: "Duplicates", icon: Copy, fills: false },
+  { id: "schema", label: "Schema", icon: ClipboardCheck, fills: false },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -84,7 +97,14 @@ export function ExploreShell({
       {/* Each lens is mounted only while selected. The graph runs a physics
           simulation and the duplicate finder hashes the whole corpus — keeping
           those alive behind a hidden tab would burn a laptop for nothing. */}
-      <div className="min-w-0 flex-1 overflow-hidden">
+      <div
+        className={cn(
+          "min-w-0 flex-1",
+          TABS.find((t) => t.id === tab)?.fills
+            ? "overflow-hidden"
+            : "lore-scrollbar overflow-y-auto",
+        )}
+      >
         {tab === "explorer" ? <ExplorerView index={index} onOpenPage={onOpenPage} /> : null}
         {tab === "graph" ? (
           isDesktop ? (
