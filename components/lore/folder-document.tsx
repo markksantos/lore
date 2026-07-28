@@ -192,19 +192,24 @@ export function FolderDocument({
       </div>
       </div>
 
+      {/* One sticky, scrolling column. Both panels move together, so neither
+          can slide underneath the other. */}
       <div className="hidden lg:block">
-        <ContextRail page={activePage} index={index} onOpenPage={onOpenPage} />
-        {/* The headings of whichever section is being read, so a long page is
-            navigable without leaving the folder document. */}
-        <PageOutline
-          raw={data.sections.find((s) => s.page.relPath === activePage?.relPath)?.raw ?? ""}
-          onJump={(heading) => {
-            const match = [...document.querySelectorAll("h1,h2,h3,h4")].find(
-              (h) => h.textContent?.trim() === heading,
-            );
-            match?.scrollIntoView({ behavior: "smooth", block: "start" });
-          }}
-        />
+        <div className="sticky top-9 max-h-[calc(100svh-5rem)] overflow-y-auto lore-scrollbar pb-6">
+          <ContextRail page={activePage} index={index} onOpenPage={onOpenPage} />
+
+          {/* The headings of whichever section is being read, so a long page is
+              navigable without leaving the folder document. */}
+          <PageOutline
+            raw={data.sections.find((s) => s.page.relPath === activePage?.relPath)?.raw ?? ""}
+            onJump={(heading) => {
+              const match = [...document.querySelectorAll("h1,h2,h3,h4")].find(
+                (h) => h.textContent?.trim() === heading,
+              );
+              match?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }}
+          />
+        </div>
       </div>
     </div>
   );

@@ -172,6 +172,13 @@ export function PageOutline({
 
 type Related = { id: string; score: number };
 
+/**
+ * Deliberately does NOT position itself. It used to be `sticky top-9` with its
+ * own max-height, which was correct while it was the only thing in the right
+ * column and broke the moment it was not: a pinned element with an unpinned
+ * sibling below it means the sibling scrolls up through the pinned one and the
+ * two render on top of each other. The containing rail owns the sticky.
+ */
 export function ContextRail({
   page,
   index,
@@ -225,10 +232,7 @@ export function ContextRail({
     .filter((p) => p.id !== page.id);
 
   return (
-    <aside
-      aria-label="About this page"
-      className="sticky top-9 hidden max-h-[calc(100svh-5rem)] overflow-y-auto lore-scrollbar lg:block"
-    >
+    <aside aria-label="About this page">
       <p className="mb-2.5 text-[10px] font-semibold uppercase tracking-[0.09em] text-[var(--lore-text-tertiary)]">
         This page
       </p>
