@@ -157,8 +157,11 @@ export function proxy(request: NextRequest) {
     if (touchesDisk) {
       return NextResponse.json({ error: "Not found." }, { status: 404 });
     }
+    // There IS a real app on a public host — it just reads a folder the user
+    // picks, in their own browser, rather than one on this server. /web is the
+    // honest destination for someone who clicked "Open Lore" here.
     if (pathname === "/vault" || pathname.startsWith("/vault/")) {
-      return NextResponse.redirect(new URL("/demo", request.url));
+      return NextResponse.redirect(new URL("/web", request.url));
     }
     return NextResponse.next();
   }

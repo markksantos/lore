@@ -50,7 +50,7 @@ export function MarketingHeader({ overHero = false }: { overHero?: boolean }) {
 
         <nav className="flex items-center gap-1">
           <Link
-            href="/demo"
+            href="/web"
             className={cn(
               "hidden rounded-md px-2.5 py-1.5 text-[13.5px] font-medium transition-colors sm:block",
               scrolled
@@ -58,7 +58,7 @@ export function MarketingHeader({ overHero = false }: { overHero?: boolean }) {
                 : "text-white/85 hover:text-white",
             )}
           >
-            Try it
+            Open your wiki
           </Link>
           <Link
             href="/pricing"
@@ -136,6 +136,7 @@ const COLUMNS: { heading: string; links: { label: string; href: string; ext?: bo
     links: [
       { label: "Download", href: "/download" },
       { label: "Pricing", href: "/pricing" },
+      { label: "Open your wiki in the browser", href: "/web" },
       { label: "Try the demo", href: "/demo" },
       { label: "Open Lore", href: "/vault" },
     ],
