@@ -97,6 +97,11 @@ win:
         - x64
 
 nsis:
+  # Every other target pins its filename; this one did not, so it fell back to
+  # electron-builder's default "Lore Setup 0.1.0.exe". GitHub turns those spaces
+  # into dots on upload, the download link in lib/brand.ts expects dashes, and
+  # the Windows button 404s while every other platform works.
+  artifactName: ${productName}-Setup-${version}.${ext}
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
