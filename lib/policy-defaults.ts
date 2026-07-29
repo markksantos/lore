@@ -58,3 +58,34 @@ export const DEFAULT_POLICY: Policy = {
   stampFrontmatter: false,
 };
 
+
+/** Does this rule catch that page? Substring, or /regex/ if written as one. */
+export function matches(rule: Rule, id: string, title: string): boolean {
+  const raw = rule.match.trim();
+  if (!raw) return false;
+  const hay = `${id} ${title}`.toLowerCase();
+
+  if (raw.startsWith("/") && raw.lastIndexOf("/") > 0) {
+    // A rule the user wrote as /.../ is a regex; a broken one must not take the
+    // whole report down with it.
+    const body = raw.slice(1, raw.lastIndexOf("/"));
+    const flags = raw.slice(raw.lastIndexOf("/") + 1);
+    try {
+      return new RegExp(body, flags.includes("i") ? flags : flags + "i").test(hay);
+    } catch {
+      return false;
+    }
+  }
+  return hay.includes(raw.toLowerCase());
+}
+
+/** The review window for one page, and which rule decided it. */
+export function windowFor(
+  policy: Policy,
+  id: string,
+  title: string,
+): { days: number; rule?: Rule } {
+  const rule = policy.rules.find((r) => matches(r, id, title));
+  return { days: rule?.days ?? policy.defaultDays, rule };
+}
+

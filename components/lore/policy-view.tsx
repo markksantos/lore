@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Loader2, Plus, Trash2 } from "lucide-react";
+import type { Safety } from "@/components/lore/safety-view";
 import { cn, count } from "@/lib/utils";
 
 /**
@@ -19,6 +20,9 @@ import { cn, count } from "@/lib/utils";
 
 type Rule = { match: string; days: number; label?: string };
 
+/** The example date in the label. Hardcoding it meant it went stale the next day. */
+const today = () => new Date().toISOString().slice(0, 10);
+
 type Policy = {
   rules: Rule[];
   defaultDays: number;
@@ -34,11 +38,25 @@ type PolicyResponse = {
   totalPages: number;
 };
 
-export function PolicyView() {
+export function PolicyView({ safety }: { safety: Safety | null }) {
   const [data, setData] = useState<PolicyResponse | null>(null);
   const [draft, setDraft] = useState<Policy | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  /**
+   * Whether this host can write to the wiki at all.
+   *
+   * The browser build opens the folder with `mode: "read"`, so the stamp is not
+   * a setting there — it is impossible. A checkbox that accepts a tick and then
+   * springs back is worse than one that is plainly disabled and says why.
+   */
+  /*
+   * Both read straight from the shared state rather than a copy fetched here.
+   * A local copy went stale the moment the switch above it was used, so
+   * unlocking left this panel still warning that nothing was being written.
+   */
+  const locked = safety?.locked === true;
+  const readOnly = safety?.readOnly === true;
 
   useEffect(() => {
     fetch("/api/policy")
@@ -48,6 +66,7 @@ export function PolicyView() {
         setDraft(d?.policy ?? null);
       })
       .catch(() => setData(null));
+
   }, []);
 
   async function save(next: Policy) {
@@ -179,23 +198,48 @@ export function PolicyView() {
       </div>
 
       {/* The one setting here that edits the user's own files, so it says so. */}
-      <label className="mt-5 flex cursor-pointer items-start gap-3 border-t border-[var(--lore-border)] pt-4">
+      <label
+        className={cn(
+          "mt-5 flex items-start gap-3 border-t border-[var(--lore-border)] pt-4",
+          locked ? "cursor-not-allowed" : "cursor-pointer",
+        )}
+      >
         <input
           type="checkbox"
-          checked={draft.stampFrontmatter}
+          checked={draft.stampFrontmatter && !locked}
+          disabled={locked}
           onChange={(e) => save({ ...draft, stampFrontmatter: e.target.checked })}
-          className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--lore-accent)]"
+          className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--lore-accent)] disabled:opacity-40"
         />
         <span>
-          <span className="text-[13.5px] font-medium text-[var(--lore-text-primary)]">
+          <span
+            className={cn(
+              "text-[13.5px] font-medium",
+              locked ? "text-[var(--lore-text-tertiary)]" : "text-[var(--lore-text-primary)]",
+            )}
+          >
             Write sign-offs into the page
           </span>
           <span className="t-meta mt-1 block text-[var(--lore-text-secondary)]">
-            Adds <code>lore_verified: 2026-07-28</code> to the frontmatter when you sign a
+            Adds <code>lore_verified: {today()}</code> to the frontmatter when you sign a
             page off, so Dataview can query it. This edits your markdown — off by default,
             because the ledger otherwise lives outside the vault and your files never change.
-            Ignored while Lore is in read-only mode.
           </span>
+          {/* Only said when it is actually true of right now. A permanent
+              "ignored in read-only mode" line is read once and then never
+              again, which is the wrong place for the one caveat that decides
+              whether this setting does anything. */}
+          {locked ? (
+            <span className="t-meta mt-1 block text-[var(--lore-text-tertiary)]">
+              Not available here: this tab was given read-only access to your folder, so your
+              browser refuses the write. The desktop app can do this.
+            </span>
+          ) : readOnly && draft.stampFrontmatter ? (
+            <span className="t-meta mt-1 block text-[#b45309] dark:text-[#fbbf24]">
+              On, but nothing is being written: Lore is in read-only mode. Turn that off in
+              Read-only above for sign-offs to reach your files.
+            </span>
+          ) : null}
         </span>
       </label>
 

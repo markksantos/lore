@@ -5,6 +5,7 @@ import { Loader2, RefreshCw, Unlink } from "lucide-react";
 import type { VaultIndex } from "@/lib/types";
 import { AiView } from "@/components/lore/ai-view";
 import { PolicyView } from "@/components/lore/policy-view";
+import { SafetyView, type Safety } from "@/components/lore/safety-view";
 import { RemoteView } from "@/components/lore/remote-view";
 import { paletteVars } from "@/lib/palette";
 import { cn, count, formatCount } from "@/lib/utils";
@@ -36,7 +37,16 @@ export function SettingsView({
   onChanged: () => void;
 }) {
   const [health, setHealth] = useState<Health | null>(null);
+  /** Owned here so the read-only switch and the trust panel never disagree. */
+  const [safety, setSafety] = useState<Safety | null>(null);
   const [rescanning, setRescanning] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/safety")
+      .then((r) => (r.ok ? r.json() : null))
+      .then(setSafety)
+      .catch(() => setSafety(null));
+  }, []);
 
   useEffect(() => {
     fetch("/api/health")
@@ -112,8 +122,15 @@ export function SettingsView({
         </p>
       </section>
 
+      {/* Directly under the linked folder: this is about what Lore may do to
+          that folder, which is the question anyone reading the path above is
+          already holding. */}
+      <div className="mt-4">
+        <SafetyView safety={safety} onChange={setSafety} />
+      </div>
+
       <div className="mt-8">
-        <PolicyView />
+        <PolicyView safety={safety} />
       </div>
 
       <div className="mt-8">

@@ -8,7 +8,11 @@ import {
 } from "@/lib/index-core";
 import { hubs, triage, trustOf, type Ledger, type TriageEvent } from "@/lib/trust-core";
 import { hashOf, readLedger, writeLedger } from "@/lib/browser-vault";
-import { DEFAULT_POLICY } from "@/lib/policy-defaults";
+import {
+  DEFAULT_POLICY,
+  matches,
+  type Policy,
+} from "@/lib/policy-defaults";
 import { renderHealth } from "@/lib/health-core";
 import { buildBudget } from "@/lib/tokens";
 import type { PageMeta, VaultIndex } from "@/lib/types";
@@ -92,6 +96,36 @@ function eventsFromMtimes(index: WikiIndex, since: number): TriageEvent[] {
       linesAdded: 0,
       linesRemoved: 0,
     }));
+}
+
+/**
+ * The trust policy, per folder, in this browser.
+ *
+ * It used to be answered from the constant and thrown away on save, so every
+ * control in that panel — the decay windows, the ageing window, the sign-off
+ * stamp — silently reverted the moment you touched it. Storing it beside the
+ * ledger keeps the two halves of "what do I trust" in the same place, and means
+ * the settings survive a reload like they do on the desktop.
+ */
+const policyKey = (name: string) => `lore-web-policy:${name}`;
+
+function readPolicy(name: string): Policy {
+  try {
+    const raw = localStorage.getItem(policyKey(name));
+    if (!raw) return DEFAULT_POLICY;
+    const parsed = JSON.parse(raw) as Partial<Policy>;
+    return {
+      rules: Array.isArray(parsed.rules) ? parsed.rules : DEFAULT_POLICY.rules,
+      defaultDays: parsed.defaultDays ?? DEFAULT_POLICY.defaultDays,
+      decayDays: parsed.decayDays ?? DEFAULT_POLICY.decayDays,
+      quarantined: Array.isArray(parsed.quarantined) ? parsed.quarantined : [],
+      // Never true here whatever is stored: stamping edits the markdown, and
+      // this folder was opened read-only. See the PUT below.
+      stampFrontmatter: false,
+    };
+  } catch {
+    return DEFAULT_POLICY;
+  }
 }
 
 const json = (body: unknown, status = 200) =>
@@ -180,11 +214,46 @@ async function handle(url: URL, init?: RequestInit): Promise<Response | null> {
   }
 
   if (p === "/api/policy") {
-    if (method === "PUT") return json({ ok: true, policy: DEFAULT_POLICY });
+    const current = readPolicy(s.name);
+
+    if (method === "PUT") {
+      const next: Policy = {
+        rules: ((body.rules as Policy["rules"]) ?? current.rules)
+          .filter((r) => r.match?.trim() && Number.isFinite(r.days))
+          .map((r) => ({ ...r, days: Math.max(1, Math.round(r.days)) })),
+        defaultDays: Math.max(1, Math.round((body.defaultDays as number) ?? current.defaultDays)),
+        decayDays: Math.max(1, Math.round((body.decayDays as number) ?? current.decayDays)),
+        quarantined: (body.quarantined as string[]) ?? current.quarantined,
+        /*
+         * Refused, not stored.
+         *
+         * Writing `lore_verified:` into a page edits the user's markdown, and
+         * this folder was handed over with `mode: "read"` — the browser would
+         * refuse the write even if we tried it. Accepting the tick and quietly
+         * doing nothing would be the worst of the three options, so the setting
+         * comes back off and the checkbox explains why.
+         */
+        stampFrontmatter: false,
+      };
+      localStorage.setItem(policyKey(s.name), JSON.stringify(next));
+      return json({ ok: true, policy: next });
+    }
+
+    // Real coverage, computed the same way the server computes it. Reporting
+    // zero for every rule made the panel look broken and made a rule that
+    // matched nothing indistinguishable from one that matched everything.
+    const counts = new Map<string, number>();
+    let fallback = 0;
+    for (const page of s.index.pages) {
+      const rule = current.rules.find((r) => matches(r, page.id, page.title));
+      if (rule) counts.set(rule.match, (counts.get(rule.match) ?? 0) + 1);
+      else fallback += 1;
+    }
+
     return json({
-      policy: DEFAULT_POLICY,
-      coverage: DEFAULT_POLICY.rules.map((r: { match: string }) => ({ match: r.match, pages: 0 })),
-      fallbackPages: s.index.pages.length,
+      policy: current,
+      coverage: current.rules.map((r) => ({ match: r.match, pages: counts.get(r.match) ?? 0 })),
+      fallbackPages: fallback,
       totalPages: s.index.pages.length,
     });
   }
@@ -212,7 +281,7 @@ async function handle(url: URL, init?: RequestInit): Promise<Response | null> {
     const ledger = readLedger(s.name);
     const backlinkIds = s.index.backlinks[page.id] ?? [];
     return json({
-      trust: trustOf(ledger, page.id, hashOf(page.plain)),
+      trust: trustOf(ledger, page.id, hashOf(page.plain), Date.now(), readPolicy(s.name).decayDays),
       verifiedAt: ledger[page.id]?.at ?? null,
       page: toMeta(page),
       frontmatter: page.frontmatter,
@@ -310,7 +379,10 @@ async function handle(url: URL, init?: RequestInit): Promise<Response | null> {
       s.index.pages.map((x) => [x.id, { id: x.id, title: x.title, relPath: x.relPath }]),
     );
     const counts = { verified: 0, lapsed: 0, aging: 0, unverified: 0 };
-    for (const page of s.index.pages) counts[trustOf(ledger, page.id, h.get(page.id) ?? "")] += 1;
+    const decayDays = readPolicy(s.name).decayDays;
+    for (const page of s.index.pages) {
+      counts[trustOf(ledger, page.id, h.get(page.id) ?? "", Date.now(), decayDays)] += 1;
+    }
 
     const events = eventsFromMtimes(s.index, since);
     return json({
