@@ -5,7 +5,7 @@ import { CopyCheck, Loader2 } from "lucide-react";
 import type { PageMeta, VaultIndex } from "@/lib/types";
 import { paletteVars } from "@/lib/palette";
 import { findNearDuplicates, type DuplicatePair } from "@/lib/similarity";
-import { cn, formatCount } from "@/lib/utils";
+import { cn, count, formatCount } from "@/lib/utils";
 
 type FolderSection = { page: PageMeta; raw: string };
 type FolderResponse = { sections: FolderSection[]; hasMore: boolean };
@@ -203,7 +203,7 @@ function Progress({ phase }: { phase: Extract<Phase, { kind: "reading" | "compar
         <p className="text-[15px] text-[var(--lore-text-primary)]">
           {reading
             ? `Reading folder ${formatCount(Math.min(phase.done + 1, phase.total))} of ${formatCount(phase.total)}`
-            : `Comparing ${formatCount(phase.docs)} pages`}
+            : `Comparing ${count(phase.docs, "page")}`}
         </p>
       </div>
       <div className="mt-3.5 h-1.5 overflow-hidden rounded-full bg-[var(--lore-surface-raised)]">
@@ -249,7 +249,7 @@ function Results({
           No overlapping pages
         </p>
         <p className="t-body mt-1 text-[var(--lore-text-secondary)]">
-          Nothing in {formatCount(docs)} pages shares more than a third of its wording with
+          Nothing in {count(docs, "page")} shares more than a third of its wording with
           anything else.
         </p>
       </section>
@@ -260,7 +260,7 @@ function Results({
     <>
       <p className="t-meta mb-3.5 text-[var(--lore-text-tertiary)]">
         {formatCount(pairs.length)} {pairs.length === 1 ? "pair" : "pairs"} across{" "}
-        {formatCount(docs)} pages, most overlapping first.
+        {count(docs, "page")}, most overlapping first.
       </p>
 
       <div className="space-y-3.5">

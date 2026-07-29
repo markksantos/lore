@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Loader2, ShieldCheck, ShieldAlert, Shield, Radio } from "lucide-react";
 import { ChangeDiff } from "@/components/lore/change-diff";
 import { paletteVars } from "@/lib/palette";
-import { cn, relativeTime } from "@/lib/utils";
+import { cn, count, relativeTime } from "@/lib/utils";
 
 type Trust = "verified" | "lapsed" | "aging" | "unverified";
 
@@ -126,7 +126,7 @@ export function ReviewView({ onOpenPage }: { onOpenPage: (pageId: string) => voi
             {Math.round((checked / total) * 100)}%
           </span>
           <span className="t-body text-[var(--lore-text-secondary)]">
-            of {total.toLocaleString()} pages have ever been checked by a human
+            of {count(total, "page")} {total === 1 ? "has" : "have"} ever been checked by a human
           </span>
         </div>
 

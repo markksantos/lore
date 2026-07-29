@@ -56,11 +56,22 @@ export function SchemaView({ index }: { index: VaultIndex }) {
     setStatus({ kind: "loading", done: 0, total: 0 });
 
     async function run() {
-      // Prefer the path the index already knows so casing on disk wins over
-      // our guess; the literal fallback is what produces the honest 404.
+      /*
+       * The index already knows every page, so "is there a SCHEMA.md" is a
+       * question we can answer without asking the server.
+       *
+       * It used to guess the literal filename and let the request 404. That
+       * worked, and it printed a red console error on every vault that does not
+       * have one — which is most of them. Expected states must not look like
+       * faults in the console, or the console stops being worth reading.
+       */
       const schemaPage = index.pages.find((page) => SCHEMA_FILE.test(page.relPath));
-      const schemaPath = schemaPage?.relPath ?? "SCHEMA.md";
+      if (!schemaPage) {
+        setStatus({ kind: "no-schema" });
+        return;
+      }
 
+      const schemaPath = schemaPage.relPath;
       const response = await fetch(`/api/page?path=${encodeURIComponent(schemaPath)}`).catch(
         () => null,
       );

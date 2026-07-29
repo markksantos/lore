@@ -7,7 +7,7 @@ import { AiView } from "@/components/lore/ai-view";
 import { PolicyView } from "@/components/lore/policy-view";
 import { RemoteView } from "@/components/lore/remote-view";
 import { paletteVars } from "@/lib/palette";
-import { cn, formatCount } from "@/lib/utils";
+import { cn, count, formatCount } from "@/lib/utils";
 
 type Health = {
   score: number;
@@ -193,8 +193,9 @@ export function SettingsView({
 
           {health.untagged > 0 ? (
             <p className="t-body mt-7 text-[var(--lore-text-tertiary)]">
-              {formatCount(health.untagged)} pages have no tags. Tags are the cheapest way to
-              make a page findable by an agent that doesn&apos;t already know its title.
+              {count(health.untagged, "page")} {health.untagged === 1 ? "has" : "have"} no
+              tags. Tags are the cheapest way to make a page findable by an agent that
+              doesn&apos;t already know its title.
             </p>
           ) : null}
         </>

@@ -3,7 +3,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PageMeta, VaultIndex } from "@/lib/types";
 import { paletteVars } from "@/lib/palette";
-import { cn, formatCount } from "@/lib/utils";
+import { cn, count, formatCount } from "@/lib/utils";
 
 /* -------------------------------------------------------------- the algorithm */
 
@@ -325,11 +325,11 @@ export function CoverageMap({
           <span className="font-medium text-[var(--lore-text-primary)] tabular-nums">
             {formatCount(totals.pages)}
           </span>{" "}
-          pages ·{" "}
+          {totals.pages === 1 ? "page" : "pages"} ·{" "}
           <span className="font-medium text-[var(--lore-text-primary)] tabular-nums">
             {formatCount(totals.words)}
           </span>{" "}
-          words
+          {totals.words === 1 ? "word" : "words"}
           {totals.largestName ? (
             <>
               {" "}
@@ -440,7 +440,7 @@ const MapCells = memo(function MapCells({
             // Slivers too small to carry a label are skipped in the tab order:
             // a 1500-page vault would otherwise be 1500 indistinguishable stops.
             tabIndex={showTitle ? 0 : -1}
-            aria-label={`${cell.page.title} — ${cell.page.words} words`}
+            aria-label={`${cell.page.title} — ${count(cell.page.words, "word")}`}
             onClick={() => onOpen(cell.page.id)}
             onMouseMove={(e) => onHover(cell, e.clientX, e.clientY)}
             onFocus={(e) => {
@@ -507,7 +507,7 @@ function Tooltip({
         </span>
       </p>
       <p className="mt-1.5 text-[11px] tabular-nums text-[var(--lore-text-secondary)]">
-        {formatCount(cell.page.words)} words · edited{" "}
+        {count(cell.page.words, "word")} · edited{" "}
         {cell.days === 0 ? "today" : `${formatCount(cell.days)}d ago`} ·{" "}
         {cell.degree === 0 ? "orphan" : `${cell.degree} links`}
       </p>

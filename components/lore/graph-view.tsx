@@ -14,7 +14,7 @@ import {
 import { Shuffle, Unlink } from "lucide-react";
 import type { VaultIndex } from "@/lib/types";
 import { PALETTE_SIZE, paletteVars } from "@/lib/palette";
-import { cn, formatCount } from "@/lib/utils";
+import { cn, count, formatCount } from "@/lib/utils";
 
 type GraphNode = SimulationNodeDatum & {
   id: string;
@@ -642,15 +642,15 @@ function Header({
         Graph
       </h1>
       <p className="t-body mt-1.5 text-[var(--lore-text-secondary)]">
-        {formatCount(nodeCount)} pages, {formatCount(linkCount)} links.{" "}
+        {count(nodeCount, "page")}, {count(linkCount, "link")}.{" "}
         {orphanCount > 0 ? (
           <span className="inline-flex items-center gap-1 text-[var(--lore-text-tertiary)]">
             <Unlink size={12} />
             {formatCount(orphanCount)} floating free
           </span>
-        ) : (
+        ) : nodeCount > 0 ? (
           <span className="text-[var(--lore-text-tertiary)]">Everything is connected.</span>
-        )}
+        ) : null}
       </p>
     </header>
   );

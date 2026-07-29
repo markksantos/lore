@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Loader2, Flame, HelpCircle, Gauge, Copy, Check } from "lucide-react";
 import { paletteVars } from "@/lib/palette";
 import { formatTokens } from "@/lib/tokens";
-import { cn, formatCount, relativeTime } from "@/lib/utils";
+import { cn, count, formatCount, relativeTime } from "@/lib/utils";
 
 type UsageReport = {
   totalReads: number;
@@ -45,13 +45,22 @@ const WINDOW = 200_000;
 export function InsightsView({ onOpenPage }: { onOpenPage: (pageId: string) => void }) {
   const [usage, setUsage] = useState<UsageReport | null>(null);
   const [budget, setBudget] = useState<BudgetReport | null>(null);
+  /**
+   * Whether agent telemetry exists on this host at all.
+   *
+   * `usage` being null meant two different things — still loading, and never
+   * coming — and the render guard treated both as loading. In the browser build,
+   * where the MCP server does not exist, that spun a loader forever on a screen
+   * whose other half was perfectly computable. Null is now only "loading".
+   */
+  const [noUsage, setNoUsage] = useState(false);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     fetch("/api/usage")
-      .then((r) => (r.ok ? r.json() : null))
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("unavailable"))))
       .then(setUsage)
-      .catch(() => setUsage(null));
+      .catch(() => setNoUsage(true));
     fetch("/api/budget")
       .then((r) => (r.ok ? r.json() : null))
       .then(setBudget)
@@ -73,7 +82,7 @@ export function InsightsView({ onOpenPage }: { onOpenPage: (pageId: string) => v
     ].join("\n");
   }, [usage]);
 
-  if (!usage || !budget) {
+  if (!budget || (!usage && !noUsage)) {
     return (
       <div className="flex h-full items-center justify-center text-[var(--lore-text-tertiary)]">
         <Loader2 size={18} className="animate-spin" />
@@ -82,7 +91,7 @@ export function InsightsView({ onOpenPage }: { onOpenPage: (pageId: string) => v
   }
 
   const windowsNeeded = Math.ceil(budget.totalTokens / WINDOW);
-  const maxDaily = Math.max(1, ...usage.daily.map((d) => d.reads + d.searches));
+  const maxDaily = Math.max(1, ...(usage?.daily ?? []).map((d) => d.reads + d.searches));
 
   return (
     <div className="mx-auto max-w-3xl px-8 py-9">
@@ -145,7 +154,7 @@ export function InsightsView({ onOpenPage }: { onOpenPage: (pageId: string) => v
                     {f.folder || "Root"}
                   </span>
                   <span className="t-meta shrink-0 text-[var(--lore-text-tertiary)]">
-                    {formatCount(f.pages)} pages
+                    {count(f.pages, "page")}
                   </span>
                   <span
                     className={cn(
@@ -178,7 +187,7 @@ export function InsightsView({ onOpenPage }: { onOpenPage: (pageId: string) => v
             Gaps
           </h2>
           <span className="flex-1" />
-          {usage.gaps.length > 0 ? (
+          {usage && usage.gaps.length > 0 ? (
             <button
               type="button"
               onClick={() => {
@@ -196,18 +205,20 @@ export function InsightsView({ onOpenPage }: { onOpenPage: (pageId: string) => v
         <p className="t-meta mt-1 text-[var(--lore-text-tertiary)]">
           Searches that returned nothing. Each one is a question your wiki failed to
           answer — a to-write list built from real demand instead of guesswork.
-          {usage.totalSearches > 0
+          {usage && usage.totalSearches > 0
             ? ` ${Math.round(usage.missRate * 100)}% of searches missed.`
             : ""}
         </p>
 
-        {usage.gaps.length === 0 ? (
+        {!usage || usage.gaps.length === 0 ? (
           <p className="mt-3 rounded-xl border border-dashed border-[var(--lore-border)] px-4 py-8 text-center text-[13px] text-[var(--lore-text-tertiary)]">
-            No misses recorded yet. Connect an agent over MCP and this fills itself.
+            {noUsage
+              ? "What your agents searched for is recorded by the MCP server on your machine, so a browser tab cannot see it. The desktop app fills this in."
+              : "No misses recorded yet. Connect an agent over MCP and this fills itself."}
           </p>
         ) : (
           <div className="mt-3 divide-y divide-[var(--lore-border)] overflow-hidden rounded-xl border border-[var(--lore-border)] bg-[var(--lore-surface)]">
-            {usage.gaps.slice(0, 20).map((gap) => (
+            {(usage?.gaps ?? []).slice(0, 20).map((gap) => (
               <div key={gap.query} className="flex items-center gap-3 px-4 py-2.5">
                 <span className="min-w-0 flex-1 truncate text-[13.5px] text-[var(--lore-text-primary)]">
                   “{gap.query}”
@@ -231,14 +242,15 @@ export function InsightsView({ onOpenPage }: { onOpenPage: (pageId: string) => v
           What carries the weight
         </h2>
         <p className="t-meta mt-1 text-[var(--lore-text-tertiary)]">
-          {formatCount(usage.totalReads)} reads and {formatCount(usage.totalSearches)}{" "}
-          searches in the last 30 days.{" "}
-          {usage.coldCount > 0
-            ? `${formatCount(usage.coldCount)} pages have never been opened by an agent — dead weight in the index until proven otherwise.`
+          {usage
+            ? `${count(usage.totalReads, "read")} and ${count(usage.totalSearches, "search", "searches")} in the last 30 days.`
+            : "Which pages your agents actually open is recorded by the MCP server, which runs on your machine."}{" "}
+          {usage && usage.coldCount > 0
+            ? `${count(usage.coldCount, "page")} ${usage.coldCount === 1 ? "has" : "have"} never been opened by an agent — dead weight in the index until proven otherwise.`
             : ""}
         </p>
 
-        {usage.daily.length > 1 ? (
+        {usage && usage.daily.length > 1 ? (
           <div className="mt-3 flex h-16 items-end gap-[3px]">
             {usage.daily.map((d) => (
               <div
@@ -251,9 +263,11 @@ export function InsightsView({ onOpenPage }: { onOpenPage: (pageId: string) => v
           </div>
         ) : null}
 
-        {usage.hot.length === 0 ? (
+        {!usage || usage.hot.length === 0 ? (
           <p className="mt-3 rounded-xl border border-dashed border-[var(--lore-border)] px-4 py-8 text-center text-[13px] text-[var(--lore-text-tertiary)]">
-            No reads recorded yet.
+            {noUsage
+              ? "Reads are counted by the MCP server on your machine. Open your wiki in the desktop app to see which pages your agents actually use."
+              : "No reads recorded yet."}
           </p>
         ) : (
           <div className="mt-3 divide-y divide-[var(--lore-border)] overflow-hidden rounded-xl border border-[var(--lore-border)] bg-[var(--lore-surface)]">

@@ -24,3 +24,17 @@ export function relativeTime(epochMs: number): string {
 export function formatCount(n: number): string {
   return n.toLocaleString("en-US");
 }
+
+/**
+ * A count with its noun, agreeing in number.
+ *
+ * Every "N pages" in the app was written assuming N > 1, and every one of them
+ * is reachable at 1 — a folder with one page, one page needing review, a wiki
+ * with one page in it. "1 pages" is small, but it is the kind of small that
+ * makes software feel like nobody used it.
+ *
+ * `plural` for anything that is not a bare +s.
+ */
+export function count(n: number, singular: string, plural = `${singular}s`): string {
+  return `${formatCount(n)} ${n === 1 ? singular : plural}`;
+}

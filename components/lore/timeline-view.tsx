@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { AlertTriangle, Copy, MousePointerClick } from "lucide-react";
 import type { PageMeta, VaultIndex } from "@/lib/types";
 import { colorForIndex } from "@/lib/palette";
-import { cn, formatCount, relativeTime } from "@/lib/utils";
+import { cn, count, formatCount, relativeTime } from "@/lib/utils";
 
 type Unit = "week" | "month";
 
@@ -141,8 +141,8 @@ export function TimelineView({
                 </>
               ) : (
                 <span className="t-meta text-[var(--lore-text-tertiary)]">
-                  {formatCount(chart.windowTotal)} edits in the last {chart.keys.length}{" "}
-                  {unit === "week" ? "weeks" : "months"} · hover a bar, click to open it
+                  {count(chart.windowTotal, "edit")} in the last{" "}
+                  {count(chart.keys.length, unit)} · hover a bar, click to open it
                 </span>
               )}
             </div>

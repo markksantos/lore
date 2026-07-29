@@ -11,7 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import { Menu, Monitor, Search } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, count } from "@/lib/utils";
 
 /**
  * The responsive frame around the vault.
@@ -208,7 +208,7 @@ export function AppShell({
               onClick={openDrawer}
               aria-label={
                 needsReview > 0
-                  ? `Open menu — ${needsReview} pages need review`
+                  ? `Open menu — ${count(needsReview, "page")} ${needsReview === 1 ? "needs" : "need"} review`
                   : "Open menu"
               }
               aria-expanded={open}

@@ -40,6 +40,33 @@ import type { WikiIndex } from "@/lib/index-core";
  * `mode: "read"`, so the browser itself refuses a write.
  */
 
+/**
+ * Hand the vault to the fetch shim, wired so Rescan re-reads the same folder
+ * and re-mounts itself.
+ *
+ * Recursive on purpose: each mount installs a `rescan` that scans and mounts
+ * again, so the second rescan works as well as the first. Writing it inline
+ * produced a version whose nested rescan was a no-op — a button that worked
+ * exactly once.
+ */
+function mount(
+  handle: FileSystemDirectoryHandle,
+  index: WikiIndex,
+  texts: Map<string, string>,
+): void {
+  installBrowserApi({
+    index,
+    texts,
+    name: handle.name,
+    handle,
+    rescan: async () => {
+      const fresh = await scan(handle);
+      mount(handle, fresh.index, fresh.texts);
+    },
+    forget: forgetFolder,
+  });
+}
+
 type Stage =
   | { kind: "checking" }
   | { kind: "unsupported" }
@@ -60,7 +87,7 @@ export function WebApp() {
       const { index, texts } = await scan(handle, (progress) =>
         setStage({ kind: "scanning", progress }),
       );
-      installBrowserApi({ index, texts, name: handle.name });
+      mount(handle, index, texts);
       setStage({ kind: "ready", index: toVaultIndex(index) });
     } catch (error) {
       setStage({

@@ -11,6 +11,7 @@ import {
   PageOutline,
   useActiveSection,
 } from "@/components/lore/document-rails";
+import { count } from "@/lib/utils";
 
 export type Section = {
   page: PageMeta;
@@ -147,7 +148,7 @@ export function FolderDocument({
         <p className="t-meta mt-1 text-[var(--lore-text-tertiary)]">
           {data.total === data.sections.length
             ? `${data.total} ${data.total === 1 ? "page" : "pages"}`
-            : `${data.sections.length} of ${data.total} pages · newest first`}
+            : `${data.sections.length} of ${count(data.total, "page")} · newest first`}
         </p>
       </header>
 

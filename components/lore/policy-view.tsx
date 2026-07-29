@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Loader2, Plus, Trash2 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, count } from "@/lib/utils";
 
 /**
  * Trust policy — how long a page stays true, and what a sign-off writes down.
@@ -133,7 +133,7 @@ export function PolicyView() {
                 className="h-8 w-16 rounded-lg border border-[var(--lore-border)] bg-[var(--lore-background)] px-2 text-right text-[13px] tabular-nums text-[var(--lore-text-primary)] outline-none focus:border-[var(--lore-accent)]"
               />
               <span className="t-meta w-24 text-[var(--lore-text-tertiary)]">
-                days · {coverage.get(rule.match) ?? 0} pages
+                days · {count(coverage.get(rule.match) ?? 0, "page")}
               </span>
               <button
                 type="button"

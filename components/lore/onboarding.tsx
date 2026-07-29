@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { SceneryImage } from "@/components/marketing/scenery-image";
 import { BrandMark } from "@/components/marketing/brand-mark";
-import { formatCount, cn } from "@/lib/utils";
+import { cn, count, formatCount } from "@/lib/utils";
 import type { Scene } from "@/lib/scenery";
 import { canPickFolder, desktopBridge } from "@/lib/desktop";
 
@@ -374,7 +374,7 @@ function WikiStep({
                       {s.root.replace(/^\/Users\/[^/]+/, "~")}
                     </span>
                     <span className="t-meta shrink-0 text-[var(--lore-text-tertiary)]">
-                      {formatCount(s.files)} pages
+                      {count(s.files, "page")}
                     </span>
                   </button>
                 ))}

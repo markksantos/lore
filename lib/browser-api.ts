@@ -1,10 +1,16 @@
 "use client";
 
-import { searchIndex, type WikiIndex, type WikiPage } from "@/lib/index-core";
+import {
+  renderAgentIndex,
+  searchIndex,
+  type WikiIndex,
+  type WikiPage,
+} from "@/lib/index-core";
 import { hubs, triage, trustOf, type Ledger, type TriageEvent } from "@/lib/trust-core";
 import { hashOf, readLedger, writeLedger } from "@/lib/browser-vault";
 import { DEFAULT_POLICY } from "@/lib/policy-defaults";
 import { renderHealth } from "@/lib/health-core";
+import { buildBudget } from "@/lib/tokens";
 import type { PageMeta, VaultIndex } from "@/lib/types";
 
 /**
@@ -28,6 +34,12 @@ type State = {
   index: WikiIndex;
   texts: Map<string, string>;
   name: string;
+  /** The open folder, so Rescan can re-read it and Unlink can let it go. */
+  handle: FileSystemDirectoryHandle;
+  /** Re-read the folder and swap the state in. Supplied by the page. */
+  rescan: () => Promise<void>;
+  /** Drop the stored handle and return to the picker. */
+  forget: () => Promise<void>;
 };
 
 let state: State | null = null;
@@ -104,7 +116,6 @@ const ELSEWHERE: Record<string, string> = {
     "Page history is recorded by the watcher that runs alongside the desktop app. A browser tab was not there when the change happened, so there is nothing to compare.",
   "/api/harness": "Which agent made a change is recorded by a hook on your machine.",
   "/api/usage": "Usage is measured by the local MCP server.",
-  "/api/budget": "Context budgets are measured by the local MCP server.",
   "/api/mcp": "The MCP server runs on your machine so your agents can reach it.",
 };
 
@@ -117,9 +128,38 @@ async function handle(url: URL, init?: RequestInit): Promise<Response | null> {
   const params = url.searchParams;
   const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
 
-  if (p === "/api/pages") return json(toVaultIndex(s));
+  /*
+   * Rescan means what it says. `?refresh=1` on the server re-walks the folder;
+   * here it has to re-read the directory handle, or the button reports success
+   * and shows the same index it showed before — the most quietly dishonest kind
+   * of broken.
+   */
+  if (p === "/api/pages") {
+    if (params.get("refresh") === "1") {
+      await s.rescan();
+      return json(toVaultIndex(state!));
+    }
+    return json(toVaultIndex(s));
+  }
 
   if (p === "/api/vault") {
+    // Unlink has to release the stored handle. Without this the page reloaded,
+    // found the handle still in IndexedDB and reopened the same folder, so the
+    // button looked like it did nothing at all.
+    if (method === "POST" && body.action === "unlink") {
+      await s.forget();
+      return json({ ok: true });
+    }
+    if (method === "POST") {
+      return json(
+        {
+          error:
+            "Switching folders in the browser goes through your browser's own folder picker. Use Switch folder at the top of the window.",
+          desktopOnly: true,
+        },
+        501,
+      );
+    }
     return json({
       vaults: [{ root: s.name, name: s.name, linkedAt: s.index.scannedAt }],
       activeVault: s.name,
@@ -150,6 +190,22 @@ async function handle(url: URL, init?: RequestInit): Promise<Response | null> {
   }
 
   if (p === "/api/page") {
+    /*
+     * The folder was opened with `mode: "read"`, so a write is refused by the
+     * browser before it reaches any code of ours. Saying so plainly matches
+     * what the desktop app returns in read-only mode, which is what the
+     * sidebar and the editor already know how to display.
+     */
+    if (method !== "GET") {
+      return json(
+        {
+          error:
+            "This tab has read-only access to your folder, so Lore cannot create or change pages here. The desktop app can.",
+          readOnly: true,
+        },
+        403,
+      );
+    }
     const relPath = params.get("path");
     const page = s.index.pages.find((x) => x.relPath === relPath);
     if (!page) return json({ error: "Page is not in the vault index." }, 404);
@@ -210,6 +266,26 @@ async function handle(url: URL, init?: RequestInit): Promise<Response | null> {
   }
 
   if (p === "/api/health") return json(renderHealth(s.index));
+
+  /*
+   * Context budget. Derived entirely from the index, so the browser can answer
+   * it exactly as the server does — and it is half of what Insights shows.
+   * Leaving it to 501 left that whole screen spinning forever, which is a worse
+   * failure than a missing feature: nothing on it ever said what was wrong.
+   */
+  if (p === "/api/budget") {
+    return json(
+      buildBudget(
+        s.index.pages.map((page) => ({
+          id: page.id,
+          title: page.title,
+          folder: page.folder,
+          text: page.plain,
+        })),
+        renderAgentIndex(s.index, s.name),
+      ),
+    );
+  }
 
   if (p === "/api/review") {
     const ledger = readLedger(s.name);

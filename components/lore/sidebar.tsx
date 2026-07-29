@@ -22,7 +22,7 @@ import { useShell } from "@/components/lore/app-shell";
 import { useTheme } from "@/components/lore/theme-provider";
 import { colorForIndex } from "@/lib/palette";
 import { ancestorsOf, buildFolderTree, visibleRows } from "@/lib/tree";
-import { cn, formatCount, relativeTime } from "@/lib/utils";
+import { cn, count, formatCount, relativeTime } from "@/lib/utils";
 
 /** Lives here because the nav owns the names; the mobile top bar borrows them
  *  so a view is called the same thing in both places. */
@@ -378,7 +378,7 @@ export function Sidebar({
         )}
 
         <p className="t-meta mt-2 px-2 text-[var(--lore-text-tertiary)]">
-          {formatCount(index.pages.length)} pages · scanned {relativeTime(index.scannedAt)}
+          {count(index.pages.length, "page")} · scanned {relativeTime(index.scannedAt)}
         </p>
       </div>
     </aside>
