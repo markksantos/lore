@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { Children, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, Search, X } from "lucide-react";
 import type { PageMeta, VaultIndex } from "@/lib/types";
 import { paletteVars } from "@/lib/palette";
@@ -432,6 +432,9 @@ function countBits(mask: number): number {
   return n;
 }
 
+/** How many options a facet shows before it offers the rest. */
+const FACET_VISIBLE = 12;
+
 function Rail({
   slot,
   title,
@@ -441,15 +444,40 @@ function Rail({
   title: string;
   children: React.ReactNode;
 }) {
+  const [expanded, setExpanded] = useState(false);
+  const items = Children.toArray(children);
+  const shown = expanded ? items : items.slice(0, FACET_VISIBLE);
+  const hidden = items.length - shown.length;
+
   return (
     <section style={paletteVars(slot)} className="min-w-0">
       <h2 className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em]">
         <span className="pal-bar !h-3.5" />
         <span className="pal-title">{title}</span>
       </h2>
-      {/* Rails scroll internally: a wiki with 200 tags shouldn't push the table
-          off the bottom of the page. */}
-      <div className="lore-scrollbar max-h-72 space-y-px overflow-y-auto pr-1">{children}</div>
+      {/*
+       * Deliberately NOT its own scroller.
+       *
+       * These were `max-h-72 overflow-y-auto`, which kept a wiki with 200 tags
+       * from pushing the table down — at the cost of putting two scrollable
+       * boxes inside a scrollable page. Chrome latches the wheel to whichever
+       * one the pointer is over, so you scroll, hit the end of a facet list,
+       * and the page stops dead until you scroll again. That is the "I have to
+       * scroll twice to reach the bottom" everyone runs into here.
+       *
+       * The list is capped by COUNT instead (see Facet's `visible`), which
+       * solves the same problem without a second scrollbar.
+       */}
+      <div className="space-y-px pr-1">{shown}</div>
+      {hidden > 0 || expanded ? (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="mt-1.5 text-[12px] font-medium text-[var(--lore-text-tertiary)] transition-colors hover:text-[var(--lore-text-primary)]"
+        >
+          {expanded ? "Show fewer" : `Show all ${formatCount(items.length)}`}
+        </button>
+      ) : null}
     </section>
   );
 }

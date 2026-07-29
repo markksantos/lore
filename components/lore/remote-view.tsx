@@ -10,6 +10,7 @@ import {
   Smartphone,
   TriangleAlert,
 } from "lucide-react";
+import { PanelFailed, PanelLoading } from "@/components/lore/panel-state";
 import { paletteVars } from "@/lib/palette";
 import { cn, relativeTime } from "@/lib/utils";
 
@@ -40,6 +41,9 @@ type RemoteStatus = {
  */
 export function RemoteView() {
   const [status, setStatus] = useState<RemoteStatus | null>(null);
+  /** Same split as the AI panel: a failed read must not look like a slow one. */
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const [token, setToken] = useState<string | null>(null);
   const [busy, setBusy] = useState<null | "enable" | "disable" | "rotate">(null);
   const [error, setError] = useState<string | null>(null);
@@ -61,8 +65,14 @@ export function RemoteView() {
   }, []);
 
   const load = useCallback(async () => {
-    const response = await fetch("/api/remote");
-    if (!response.ok) return;
+    setFailed(false);
+    const response = await fetch("/api/remote").catch(() => null);
+    // Returning quietly here left the panel on its spinner forever, so a dead
+    // server and a slow one looked identical. They are not.
+    if (!response?.ok) {
+      setFailed(true);
+      return;
+    }
     const next = (await response.json()) as RemoteStatus;
     setStatus(next);
     await reveal(next);
@@ -70,7 +80,8 @@ export function RemoteView() {
 
   useEffect(() => {
     load();
-  }, [load]);
+    // `attempt` is the retry button.
+  }, [load, attempt]);
 
   // Follow the machine's own addresses: a laptop that moves from ethernet to
   // wifi gets a different IP, and a selection pinned to the old one would show
@@ -132,11 +143,19 @@ export function RemoteView() {
     }
   }
 
+  if (failed) {
+    return (
+      <PanelFailed
+        title="Remote access"
+        message="Lore could not read whether phone access is switched on. If the app is still starting up, try again in a moment."
+        onRetry={() => setAttempt((n) => n + 1)}
+      />
+    );
+  }
+
   if (!status) {
     return (
-      <div className="flex h-full items-center justify-center text-[var(--lore-text-tertiary)]">
-        <Loader2 size={18} className="animate-spin" />
-      </div>
+      <PanelLoading title="Remote access" note="Checking whether phone access is switched on." />
     );
   }
 

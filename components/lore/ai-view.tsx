@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Check, Copy, Cpu, Loader2, Sparkles } from "lucide-react";
+import { PanelFailed, PanelLoading } from "@/components/lore/panel-state";
 import type { OllamaModel } from "@/lib/ollama";
 import { paletteVars } from "@/lib/palette";
 import { cn } from "@/lib/utils";
@@ -74,6 +75,9 @@ function Command({ command }: { command: string }) {
  */
 export function AiView() {
   const [data, setData] = useState<Detection | null>(null);
+  /** Distinguishes "the probe failed" from "the probe has not answered yet". */
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const [model, setModel] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [running, setRunning] = useState<Task | null>(null);
@@ -82,8 +86,9 @@ export function AiView() {
 
   useEffect(() => {
     let live = true;
+    setFailed(false);
     fetch("/api/ai")
-      .then((response) => (response.ok ? response.json() : null))
+      .then((response) => (response.ok ? response.json() : Promise.reject(new Error("probe failed"))))
       .then((detection: Detection | null) => {
         if (!live || !detection) return;
         setData(detection);
@@ -97,11 +102,14 @@ export function AiView() {
             : (detection.recommended ?? installed[0] ?? null),
         );
       })
-      .catch(() => setData(null));
+      .catch(() => {
+        if (live) setFailed(true);
+      });
     return () => {
       live = false;
     };
-  }, []);
+    // `attempt` is the retry button: bumping it re-runs the probe.
+  }, [attempt]);
 
   const choose = useCallback((name: string) => {
     setModel(name);
@@ -128,12 +136,18 @@ export function AiView() {
     setRunning(null);
   }
 
-  if (!data) {
+  if (failed) {
     return (
-      <div className="flex h-full items-center justify-center text-[var(--lore-text-tertiary)]">
-        <Loader2 size={18} className="animate-spin" />
-      </div>
+      <PanelFailed
+        title="Local AI"
+        message="Lore could not ask this machine which models are installed. If the app is still starting up, try again in a moment."
+        onRetry={() => setAttempt((n) => n + 1)}
+      />
     );
+  }
+
+  if (!data) {
+    return <PanelLoading title="Local AI" note="Looking for models installed on this machine." />;
   }
 
   return (

@@ -8,6 +8,7 @@ import {
   FileDown,
   Loader2,
   Plug,
+  RefreshCw,
   ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -43,12 +44,24 @@ const tilde = (file: string) => file.replace(/^\/Users\/[^/]+/, "~");
  */
 export function ConnectionsView({ root, installDir }: { root: string; installDir: string }) {
   const [probe, setProbe] = useState<Probe | null>(null);
+  /** A failed probe must not read as a slow one — see the note on `load`. */
+  const [failed, setFailed] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [outcomes, setOutcomes] = useState<Record<string, Outcome>>({});
 
   const load = useCallback(async () => {
-    const response = await fetch("/api/harness");
-    if (response.ok) setProbe(await response.json());
+    setFailed(false);
+    setProbe(null);
+    // Reading four config files off the local disk. It is fast or it is broken;
+    // there is no honest middle, so there is no progress bar to show — but a
+    // failure has to say so rather than leave "Checking config files…" spinning
+    // for the rest of the session, which is what it did.
+    const response = await fetch("/api/harness").catch(() => null);
+    if (!response?.ok) {
+      setFailed(true);
+      return;
+    }
+    setProbe(await response.json());
   }, []);
 
   useEffect(() => {
@@ -105,10 +118,29 @@ export function ConnectionsView({ root, installDir }: { root: string; installDir
         </p>
 
         <div className="mt-3.5 space-y-2.5">
-          {probe === null ? (
+          {failed ? (
+            <div className="rounded-xl border border-[var(--lore-border)] bg-[var(--lore-surface)] px-4 py-4">
+              <p className="flex items-center gap-2 text-[13.5px] font-medium text-[var(--lore-text-primary)]">
+                <AlertTriangle size={13} className="text-[#b45309] dark:text-[#fbbf24]" />
+                Could not read your config files
+              </p>
+              <p className="t-meta mt-1.5 text-[var(--lore-text-secondary)]">
+                Lore asks this machine which agent configs exist. If the app is still
+                starting up, try again in a moment.
+              </p>
+              <button
+                type="button"
+                onClick={load}
+                className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--lore-border)] px-3 text-[13px] font-medium text-[var(--lore-text-secondary)] transition-colors hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)]"
+              >
+                <RefreshCw size={12} />
+                Try again
+              </button>
+            </div>
+          ) : probe === null ? (
             <div className="flex items-center gap-2 rounded-xl border border-[var(--lore-border)] bg-[var(--lore-surface)] px-4 py-6 text-[13px] text-[var(--lore-text-tertiary)]">
               <Loader2 size={14} className="animate-spin" />
-              Checking config files…
+              Reading four config files on this machine…
             </div>
           ) : (
             probe.harnesses.map((row, i) => (

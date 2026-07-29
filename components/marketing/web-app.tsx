@@ -11,6 +11,7 @@ import {
   Monitor,
   Sparkles,
 } from "lucide-react";
+import { BrandMark } from "@/components/marketing/brand-mark";
 import { MarketingFooter, MarketingHeader } from "@/components/marketing/site-chrome";
 import { VaultApp } from "@/components/lore/vault-app";
 import {
@@ -162,14 +163,7 @@ export function WebApp() {
   if (stage.kind === "ready") {
     return (
       <div className="flex h-svh flex-col">
-        <BrowserBanner
-          folder={stage.index.name}
-          onSwitch={choose}
-          onForget={async () => {
-            await forgetFolder();
-            location.reload();
-          }}
-        />
+        <BrowserBanner folder={stage.index.name} onSwitch={choose} />
         <div className="min-h-0 flex-1">
           <VaultApp initialIndex={stage.index} installDir="" />
         </div>
@@ -375,21 +369,16 @@ function Body({
  * because a web page holding a handle to your disk is exactly the situation
  * where "which folder, and can it change it" should never require a click.
  */
-function BrowserBanner({
-  folder,
-  onSwitch,
-  onForget,
-}: {
-  folder: string;
-  onSwitch: () => void;
-  onForget: () => void;
-}) {
+function BrowserBanner({ folder, onSwitch }: { folder: string; onSwitch: () => void }) {
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-[var(--lore-border)] bg-[var(--lore-surface)] px-4 py-2">
+      {/* The mark belongs to the product name, not to the folder name — the
+          sidebar shows the vault, this bar shows Lore. */}
       <Link
         href="/"
-        className="text-[13px] font-semibold tracking-[-0.02em] text-[var(--lore-text-primary)]"
+        className="flex items-center gap-1.5 text-[13px] font-semibold tracking-[-0.02em] text-[var(--lore-text-primary)]"
       >
+        <BrandMark size={15} />
         Lore
       </Link>
       <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--lore-surface-raised)] px-2.5 py-1 text-[12px] text-[var(--lore-text-secondary)]">
@@ -406,13 +395,6 @@ function BrowserBanner({
         className="rounded-md px-2 py-1 text-[12.5px] font-medium text-[var(--lore-text-secondary)] transition-colors hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)]"
       >
         Switch folder
-      </button>
-      <button
-        type="button"
-        onClick={onForget}
-        className="rounded-md px-2 py-1 text-[12.5px] font-medium text-[var(--lore-text-secondary)] transition-colors hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-danger)]"
-      >
-        Close
       </button>
       <Link
         href="/download"
