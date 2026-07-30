@@ -2,17 +2,19 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  ChevronRight,
-  Search,
-  Plus,
-  BookText,
-  Plug,
-  Settings,
-  Sun,
-  Moon,
-  ShieldCheck,
   BarChart3,
+  BookText,
+  ChevronRight,
   Compass,
+  MessageCircleQuestion,
+  Moon,
+  Newspaper,
+  Plug,
+  Plus,
+  Search,
+  Settings,
+  ShieldCheck,
+  Sun,
   X,
 } from "lucide-react";
 import type { SearchResult, VaultIndex } from "@/lib/types";
@@ -27,15 +29,28 @@ import { cn, count, formatCount, relativeTime } from "@/lib/utils";
 /** Lives here because the nav owns the names; the mobile top bar borrows them
  *  so a view is called the same thing in both places. */
 export const VIEW_LABEL: Record<View, string> = {
+  brief: "Brief",
+  ask: "Ask",
   wiki: "Wiki",
-  review: "Review",
+  review: "Changes",
   insights: "Insights",
   explore: "Explore",
   connections: "Connections",
   settings: "Settings",
 };
 
+/**
+ * Order is the product's opinion about what this app is for.
+ *
+ * Brief and Ask are first because they are the two things that give you
+ * something without asking for anything. Everything below the rule is a place
+ * you go deliberately, when you already know what you want — and "Changes" used
+ * to be called Review and used to be first, which framed the whole app as a
+ * queue of work you owed it.
+ */
 const NAV: { id: View; icon: typeof BookText }[] = [
+  { id: "brief", icon: Newspaper },
+  { id: "ask", icon: MessageCircleQuestion },
   { id: "wiki", icon: BookText },
   { id: "review", icon: ShieldCheck },
   { id: "insights", icon: BarChart3 },
@@ -187,10 +202,19 @@ export function Sidebar({
             >
               <Icon size={15} className="opacity-80" />
               {VIEW_LABEL[item.id]}
+              {/*
+                * A quiet dot, not a count.
+                *
+                * This was a filled blue "12" — an unread badge, which is a
+                * promise that twelve things are waiting for you and a debt that
+                * grows on its own. Nothing in Changes is owed. The dot says
+                * "something moved" and stops there.
+                */}
               {item.id === "review" && needsReview > 0 ? (
-                <span className="ml-auto flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--lore-accent)] px-1 text-[11px] font-semibold text-white">
-                  {needsReview}
-                </span>
+                <span
+                  aria-label="Pages changed recently"
+                  className="ml-auto h-1.5 w-1.5 rounded-full bg-[var(--lore-text-tertiary)]"
+                />
               ) : null}
             </button>
           );

@@ -260,14 +260,30 @@ export async function reconcile(root: string): Promise<number> {
 
   let missed = 0;
   for (const relPath of found) {
-    const after = await fs.readFile(path.join(root, relPath), "utf8").catch(() => null);
+    const absolute = path.join(root, relPath);
+    const after = await fs.readFile(absolute, "utf8").catch(() => null);
     if (after === null) continue;
     const before = await readShadow(key, relPath);
     if (before !== null && hashOf(before) === hashOf(after)) continue;
 
+    /*
+     * When it happened, not when we noticed.
+     *
+     * These are the writes that landed while Lore was closed, which on a real
+     * machine is most of them. Stamping them `Date.now()` made four days of
+     * agent work arrive in one lump labelled "just now", so the brief's
+     * "Today" was whatever had accumulated since you last opened the app and
+     * every item claimed to be minutes old. The file's own mtime is the truth
+     * and costs one stat.
+     */
+    const at = await fs
+      .stat(absolute)
+      .then((s) => s.mtimeMs)
+      .catch(() => Date.now());
+
     const { kind, linesAdded, linesRemoved } = classify(before, after);
     await appendEvent(key, {
-      at: Date.now(),
+      at,
       relPath,
       kind,
       linesAdded,

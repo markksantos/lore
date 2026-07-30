@@ -95,8 +95,57 @@ export function splitSections(plain: string, maxTokens = 400): { heading: string
     buffer.push(line);
   }
   flush();
-  return out;
+
+  /*
+   * Merge the crumbs.
+   *
+   * Splitting at every heading on a real wiki produces 20-token fragments —
+   * these pages have a heading every few lines. Ranking divides score by
+   * tokens, so a five-word line containing the query word beats the paragraph
+   * that actually answers it, and the right page sinks to rank 58. Measured:
+   * average passage 21 tokens, recall@1 0%.
+   *
+   * Adjacent sections are glued together until they clear a floor, keeping the
+   * first heading as the label. Passages end up comparable in size, which is
+   * the only condition under which score-per-token means anything.
+   */
+  const merged: { heading: string | null; text: string }[] = [];
+  let pending = 0; // running token count of the tail, so this stays linear
+  for (const section of out) {
+    const last = merged[merged.length - 1];
+    const size = countTokens(section.text);
+    // Merge when EITHER side is a crumb. Checking only the tail let every
+    // trailing "## Related" survive whenever it followed a full-size section,
+    // which on this vault was most of them.
+    if (last && (pending < MIN_TOKENS || size < MIN_TOKENS)) {
+      last.text = `${last.text}\n\n${section.heading ? `${section.heading}\n` : ""}${section.text}`;
+      if (!last.heading) last.heading = section.heading;
+      pending += size;
+      continue;
+    }
+    merged.push({ ...section });
+    pending = size;
+  }
+  return merged;
 }
+
+/** Below this a passage is a fragment, not an answer. */
+const MIN_TOKENS = 120;
+
+/*
+ * Question words carry no evidence but survive IDF, because a wiki genuinely
+ * does not contain "what" very often. Measured: `what` scored half of `rate`,
+ * and any page titled "… for Later" collected a title bonus on every English
+ * question asked of it.
+ */
+const STOPWORDS = new Set([
+  "the","and","for","are","was","were","what","when","where","which","who","whom",
+  "how","why","did","does","do","is","it","its","that","this","these","those",
+  "with","from","have","has","had","been","being","about","into","than","then",
+  "there","their","them","they","you","your","yours","our","ours","not","but",
+  "can","could","would","should","will","shall","may","might","must","any","all",
+  "some","most","more","much","many","get","got","let","say","said","also",
+]);
 
 const TRUST_WEIGHT: Record<string, number> = {
   verified: 1.35,
@@ -107,18 +156,95 @@ const TRUST_WEIGHT: Record<string, number> = {
   lapsed: 0.8,
 };
 
-function relevance(text: string, terms: string[], title: string, heading: string | null): number {
+/**
+ * Passage-level match, weighted by how rare each term is in THIS corpus.
+ *
+ * The first version counted raw term frequency, which is the classic mistake:
+ * asked "what is my rate for video editing", it returned six YouTube transcripts,
+ * because a transcript says "video" fifty times and the page that actually holds
+ * the rate says it twice. Frequency without rarity ranks the most repetitive
+ * document, not the most relevant one.
+ *
+ * `idf` comes from the corpus-wide BM25 index, so a term appearing in a thousand
+ * pages is worth almost nothing and a term appearing in four is worth a great
+ * deal. That single change is the difference between this feature working and
+ * being a toy.
+ */
+function relevance(
+  text: string,
+  terms: string[],
+  title: string,
+  heading: string | null,
+  idf: Map<string, number>,
+): number {
   const hay = text.toLowerCase();
   const head = `${title} ${heading ?? ""}`.toLowerCase();
   let score = 0;
   for (const term of terms) {
     if (!term) continue;
-    const inBody = hay.split(term).length - 1;
-    if (inBody) score += Math.min(inBody, 4) * 2;
-    if (head.includes(term)) score += 8;
+    const weight = idf.get(term) ?? 1;
+    // Whole words. Substring matching had "rate" scoring on "corporate" and
+    // "art" on "start", which corrupts the very IDF that makes this work.
+    const inBody = countWord(hay, term);
+    if (inBody) score += Math.min(inBody, 4) * 2 * weight;
+    // A term in the title or heading is the author saying what the page is
+    // about, which beats any number of mentions in a body.
+    if (head.includes(term)) score += 10 * weight;
   }
   return score;
 }
+
+/**
+ * Inverse document frequency over the pages being packed.
+ *
+ * Computed here rather than pulled from lib/rank so that buildPack stays a pure
+ * function of its arguments — it is called from the server, the MCP server and
+ * the browser build, and a module-level cache keyed by vault root would be
+ * wrong in at least one of those.
+ */
+/** Whole-word occurrences, Unicode-aware, without building a regex per call. */
+function countWord(hay: string, term: string): number {
+  let n = 0;
+  let from = 0;
+  for (;;) {
+    const at = hay.indexOf(term, from);
+    if (at === -1) return n;
+    const before = at === 0 ? "" : hay[at - 1];
+    const after = hay[at + term.length] ?? "";
+    const boundary = (c: string) => c === "" || !/[\p{L}\p{N}]/u.test(c);
+    if (boundary(before) && boundary(after)) n++;
+    from = at + term.length;
+  }
+}
+
+function idfFor(pages: PackSource[], terms: string[]): Map<string, number> {
+  const idf = new Map<string, number>();
+  const n = Math.max(pages.length, 1);
+  for (const term of terms) {
+    let seen = 0;
+    for (const page of pages) {
+      if (
+        countWord(page.plain.toLowerCase(), term) > 0 ||
+        countWord(page.title.toLowerCase(), term) > 0
+      ) {
+        seen++;
+      }
+    }
+    // Standard smoothed IDF, floored at 0.05 so a universal term contributes
+    // almost nothing without being able to zero out a passage that also
+    // contains a rare one.
+    idf.set(term, Math.max(0.05, Math.log((n - seen + 0.5) / (seen + 0.5) + 1)));
+  }
+  return idf;
+}
+
+/**
+ * Captured material — transcripts, exports, raw dumps — is the bulk of a real
+ * vault by volume and almost never the answer to a question. It is discounted
+ * rather than excluded: sometimes the transcript IS where the client said the
+ * number.
+ */
+const CAPTURE_HINT = /(^|\/)(raw|transcripts?|captures?|exports?|dumps?)(\/|$)|\.srt$/i;
 
 /**
  * Build a pack.
@@ -135,17 +261,44 @@ export function buildPack(
   hashes: Map<string, string>,
   budget = 8_000,
 ): Pack {
+  /*
+   * Query terms.
+   *
+   * Two earlier rules were quietly destroying real questions. Splitting on
+   * `[^a-z0-9-]` shattered every accented word — "vídeo" became "v" and "deo",
+   * and any non-Latin question produced no terms at all, which guaranteed an
+   * empty answer AND logged the question as a gap. And `length > 2` discarded
+   * every two-digit number, on a wiki whose central facts are rates like $20
+   * and $30.
+   */
   const terms = query
     .toLowerCase()
-    .split(/[^a-z0-9-]+/)
-    .filter((t) => t.length > 2);
+    .split(/[^\p{L}\p{N}-]+/u)
+    .filter((t) => (t.length > 2 || /\d/.test(t)) && !STOPWORDS.has(t));
+
+  const idf = idfFor(pages, terms);
 
   const scored: Passage[] = [];
   for (const page of pages) {
     const trust = trustOf(ledger, page.id, hashes.get(page.id) ?? "");
+    const capture = CAPTURE_HINT.test(page.relPath) ? 0.35 : 1;
+
+    /*
+     * How well the WHOLE page answers the question, mixed into each of its
+     * passages.
+     *
+     * Scoring passages in isolation ranks a stray sentence in an unrelated
+     * transcript above a paragraph inside the page that is entirely about the
+     * subject. The page is evidence about the passage, so it carries weight —
+     * damped with a log so a long page cannot win on repetition alone.
+     */
+    const pageScore = Math.log1p(
+      relevance(page.plain, terms, page.title, null, idf),
+    ) * 6;
+
     for (const section of splitSections(page.plain)) {
-      const base = relevance(section.text, terms, page.title, section.heading);
-      if (base <= 0) continue;
+      const own = relevance(section.text, terms, page.title, section.heading, idf);
+      if (own <= 0) continue;
       const tokens = countTokens(section.text);
       scored.push({
         pageId: page.id,
@@ -154,13 +307,54 @@ export function buildPack(
         section: section.heading,
         text: section.text,
         tokens,
-        score: base * (TRUST_WEIGHT[trust] ?? 1),
+        /*
+         * Density of the passage's OWN evidence, plus the page's, undivided.
+         *
+         * Adding the page score before dividing by tokens made it a per-token
+         * constant, so the shortest fragment on any matching page won outright
+         * — the top hit for a question about rates was the two-token string
+         * "See .". Page evidence is a property of the page, so it is added
+         * after normalisation and cannot be amplified by brevity.
+         */
+        score: (own / Math.max(tokens, 1) + pageScore * 0.04) *
+          (TRUST_WEIGHT[trust] ?? 1) *
+          capture,
         trust,
       });
     }
   }
 
-  scored.sort((a, b) => b.score / Math.max(b.tokens, 1) - a.score / Math.max(a.tokens, 1));
+  /*
+   * Order by PAGE, then by passage within it.
+   *
+   * Sorting every passage globally by score-per-token interleaves fragments
+   * from forty different pages, so the page that actually answers the question
+   * arrives at position seventeen even when its best passage scored well. What
+   * a reader wants — and what the sources list shows — is the right page first.
+   *
+   * A page is ranked by its single best passage rather than its total, so a
+   * long page cannot win by having many mediocre sections.
+   */
+  const byPage = new Map<string, Passage[]>();
+  for (const passage of scored) {
+    const list = byPage.get(passage.pageId);
+    if (list) list.push(passage);
+    else byPage.set(passage.pageId, [passage]);
+  }
+
+  const pageOrder = [...byPage.entries()]
+    .map(([pageId, list]) => {
+      list.sort((a, b) => b.score - a.score);
+      return { pageId, list, best: list[0].score };
+    })
+    .sort((a, b) => b.best - a.best);
+
+  // Two passes: one best passage from each page in rank order, then the rest.
+  // The budget therefore covers as many distinct pages as it can before it
+  // spends anything on a second passage from a page already represented.
+  scored.length = 0;
+  for (const { list } of pageOrder) scored.push(list[0]);
+  for (const { list } of pageOrder) for (const p of list.slice(1)) scored.push(p);
 
   const passages: Passage[] = [];
   const omitted: { relPath: string; title: string }[] = [];

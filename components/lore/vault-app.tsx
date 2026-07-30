@@ -8,10 +8,20 @@ import { FolderDocument } from "@/components/lore/folder-document";
 import { ConnectionsView } from "@/components/lore/connections-view";
 import { SettingsView } from "@/components/lore/settings-view";
 import { ReviewView } from "@/components/lore/review-view";
+import { BriefView } from "@/components/lore/brief-view";
+import { AskView } from "@/components/lore/ask-view";
 import { InsightsView } from "@/components/lore/insights-view";
 import { ExploreShell } from "@/components/lore/explore-shell";
 
-export type View = "wiki" | "review" | "insights" | "explore" | "connections" | "settings";
+export type View =
+  | "brief"
+  | "ask"
+  | "wiki"
+  | "review"
+  | "insights"
+  | "explore"
+  | "connections"
+  | "settings";
 
 export function VaultApp({
   initialIndex,
@@ -21,7 +31,10 @@ export function VaultApp({
   installDir: string;
 }) {
   const [index, setIndex] = useState(initialIndex);
-  const [view, setView] = useState<View>("wiki");
+    /* The brief is home. Opening on the document put you inside a folder you did
+     not choose, on a wiki too big to browse — the first screen has to tell you
+     something rather than wait for you to go looking. */
+  const [view, setView] = useState<View>("brief");
   const [folder, setFolder] = useState<string>(initialIndex.folders[0]?.folder ?? "");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[] | null>(null);
@@ -141,6 +154,8 @@ export function VaultApp({
           }}
         />
       ) : null}
+      {view === "brief" ? <BriefView onOpenPage={openPage} /> : null}
+      {view === "ask" ? <AskView onOpenPage={openPage} /> : null}
       {view === "review" ? <ReviewView onOpenPage={openPage} /> : null}
       {view === "insights" ? <InsightsView onOpenPage={openPage} /> : null}
       {view === "explore" ? (

@@ -208,7 +208,7 @@ export function AppShell({
               onClick={openDrawer}
               aria-label={
                 needsReview > 0
-                  ? `Open menu — ${count(needsReview, "page")} ${needsReview === 1 ? "needs" : "need"} review`
+                  ? `Open menu — ${count(needsReview, "page")} changed recently`
                   : "Open menu"
               }
               aria-expanded={open}

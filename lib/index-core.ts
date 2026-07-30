@@ -100,18 +100,41 @@ export function parseIgnore(raw: string): RegExp[] {
 export const ignored = (patterns: RegExp[], relPath: string) =>
   patterns.some((re) => re.test(relPath));
 
-/** Strip markdown syntax down to readable prose, for excerpts and search. */
+/**
+ * Strip markdown syntax down to readable prose, for excerpts, search and
+ * passage splitting.
+ *
+ * Headings are KEPT, as `# text` lines, and line structure is preserved.
+ *
+ * This used to end with `.replace(/\s+/g, " ")`, which collapsed the whole page
+ * onto one line — and that one character class quietly broke retrieval for the
+ * entire product. `splitSections` looks for heading lines and blank-line
+ * paragraph breaks; given a single line it could find neither, so every page
+ * became exactly one enormous passage. Ranking then divided score by token
+ * count, which turned into a length penalty on the PAGE: a 42-token README beat
+ * a 3,400-token rate card on any question, and any page longer than the whole
+ * token budget could never be returned at all.
+ *
+ * Horizontal whitespace is still collapsed, so excerpts and substring search
+ * behave as before.
+ */
 export function toPlainText(markdown: string): string {
   return markdown
     .replace(/```[\s\S]*?```/g, " ")
-    .replace(/`[^`]*`/g, " ")
+    /* Unwrap inline code, never delete it. Stripping it removed every file
+       path, command and skill name from the searchable text, which is why the
+       top-ranked passage for a rate question could be the string "See ." */
+    .replace(/`([^`]*)`/g, "$1")
     .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
     .replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_m, target, alias) => alias || target)
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/^\s{0,3}#{1,6}\s+/gm, "")
     .replace(/^\s{0,3}>\s?/gm, "")
     .replace(/[*_~]/g, "")
-    .replace(/\s+/g, " ")
+    // Collapse runs of spaces and tabs, but never newlines.
+    .replace(/[^\S\n]+/g, " ")
+    // At most one blank line, so paragraph breaks stay detectable.
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]*\n[ \t]*/g, "\n")
     .trim();
 }
 
