@@ -86,6 +86,31 @@ const TOOLS = [
     },
   },
   {
+    /*
+     * The brief, for the agent.
+     *
+     * `wiki_changes` gives a file-level changelog — paths and line counts —
+     * which is what an agent needs to avoid re-reading. This gives the meaning:
+     * one sentence per page saying what is true now. It exists here because the
+     * brief had exactly one door, a screen at localhost, and the reader most
+     * likely to benefit from "what did the other agents learn since I last ran"
+     * is the next agent, not the human.
+     */
+    name: "wiki_brief",
+    description:
+      "What the wiki LEARNED recently, in one sentence per page — what is true now, not which files moved. Call at the start of a session to catch up on what other agents wrote without reading the pages. For raw file-level changes use wiki_changes instead.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        days: {
+          type: "number",
+          description: "How far back to look. Defaults to 1 (today).",
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: "wiki_changes",
     description:
       "List pages that changed since a timestamp, with who changed them and how much. Use at the start of a session to catch up instead of re-reading pages you have already seen.",
@@ -229,6 +254,24 @@ async function runTool(name, args = {}) {
       const found = !raw.startsWith("No passages");
       report({ t: "search", query: args.query ?? "", hits: found ? 1 : 0 });
       return raw;
+    }
+
+    case "wiki_brief": {
+      const days = Math.min(30, Math.max(1, Number(args.days) || 1));
+      const data = JSON.parse(await callLore(`/api/brief?days=${days}`));
+      if (!data.items.length) {
+        return `Nothing was written to the wiki in the last ${days === 1 ? "day" : `${days} days`}.`;
+      }
+      const lines = data.items.map(
+        (i) => `- ${i.line}\n  (\`${i.relPath}\`${i.agent ? `, by ${i.agent}` : ""})`,
+      );
+      return [
+        `What the wiki learned in the last ${days === 1 ? "day" : `${days} days`} — ${data.events} writes across ${data.pagesTouched} pages, ranked:`,
+        "",
+        ...lines,
+        "",
+        "Open any of these with wiki_read if you need the detail.",
+      ].join("\n");
     }
 
     case "wiki_changes": {

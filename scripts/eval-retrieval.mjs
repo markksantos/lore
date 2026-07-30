@@ -37,6 +37,52 @@ const OLLAMA = "http://127.0.0.1:11434";
 
 const CAPTURE = /(^|\/)(raw|transcripts?|captures?|exports?|dumps?)(\/|$)|\.srt$/i;
 
+/**
+ * The baseline: what you already have for free.
+ *
+ * A number with no control measures nothing, and the first version of this file
+ * reported "recall@1 0% -> 50%" against nothing but its own earlier self — a
+ * fix to our own bug, graded by us. The honest question is not "did retrieval
+ * improve" but "does it beat ripgrep on the same folder", because ripgrep is
+ * already installed, already fast, and already what the alternative looks like.
+ *
+ * Same query, same corpus: grep every term, rank pages by how many distinct
+ * query terms they contain, break ties by total hits. That is roughly what a
+ * person or an agent gets from a couple of `rg` calls.
+ */
+async function ripgrepRank(root, terms, limit = 40) {
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const run = promisify(execFile);
+
+  const perTerm = await Promise.all(
+    terms.map(async (term) => {
+      const out = await run("rg", ["-il", "--glob", "*.md", "--", term, root], {
+        maxBuffer: 32 * 1024 * 1024,
+      })
+        .then((r) => r.stdout)
+        .catch(() => "");
+      return new Set(
+        out.split("\n").filter(Boolean).map((f) => f.replace(`${root}/`, "").replace(/\.mdx?$/i, "")),
+      );
+    }),
+  );
+
+  const score = new Map();
+  for (const set of perTerm) {
+    for (const id of set) score.set(id, (score.get(id) ?? 0) + 1);
+  }
+  return [...score.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([id]) => id);
+}
+
+const STOP = new Set(["the","and","for","are","was","what","when","where","which","who","how","why","did","does","is","it","that","this","with","from","have","has","had","about","into","than","then","their","they","you","your","our","not","but","can","could","would","should","will","may","any","all","some","most","more","much","many"]);
+
+const queryTerms = (q) =>
+  q.toLowerCase().split(/[^\p{L}\p{N}-]+/u).filter((t) => (t.length > 2 || /\d/.test(t)) && !STOP.has(t));
+
 const QUESTION_SYSTEM = `You write one question that a specific document answers.
 
 Rules:
@@ -118,6 +164,7 @@ async function main() {
   console.log(`sampling ${N}\n`);
 
   const ranks = [];
+  const rgRanks = [];
   const misses = [];
   let asked = 0;
   let skipped = 0;
@@ -160,6 +207,11 @@ async function main() {
     const rank = seen.indexOf(page.id);
     if (result?.answer) answered++;
 
+    // Same question, ripgrep on the same folder.
+    const rgHits = await ripgrepRank(index.root, queryTerms(question)).catch(() => []);
+    const rgRank = rgHits.indexOf(page.id);
+    if (rgRank !== -1) rgRanks.push(rgRank + 1);
+
     if (rank === -1) {
       misses.push({ page: page.relPath, question, got: hits.slice(0, 3).map((h) => h.relPath) });
       process.stdout.write("·");
@@ -180,6 +232,13 @@ async function main() {
   console.log(`found anywhere         ${pct(ranks.length)}  ${ranks.length}/${asked}`);
   console.log(`median rank when found ${median(ranks) ?? "—"}`);
   console.log(`answered by the model  ${pct(answered)}`);
+
+  const rgAt = (k) => rgRanks.filter((r) => r <= k).length;
+  console.log("\n─── ripgrep baseline, same questions ───────");
+  console.log(`recall@1               ${pct(rgAt(1))}  ${rgAt(1)}/${asked}`);
+  console.log(`recall@5               ${pct(rgAt(5))}  ${rgAt(5)}/${asked}`);
+  console.log(`found anywhere         ${pct(rgRanks.length)}  ${rgRanks.length}/${asked}`);
+  console.log(`median rank when found ${median(rgRanks) ?? "—"}`);
 
   if (misses.length) {
     console.log("\n─── misses (the source page never came back) ───");

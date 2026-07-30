@@ -64,10 +64,10 @@ export type Plan = {
 
 /** Shared by every plan, because the application itself is not the paywall. */
 const APP_FEATURES = [
-  "The whole app — editor, graph, map, timeline",
-  "All seven MCP tools, and the AGENTS.md index",
-  "Verification ledger and the write journal",
-  "Context budgets and local semantic search",
+  "The whole app — brief, Ask, graph, map, timeline",
+  "All eight MCP tools, and the AGENTS.md index",
+  "Daily brief written from the real diff, locally",
+  "Ask your wiki, answered from your own pages",
 ];
 
 export const PLANS: Plan[] = [
@@ -151,7 +151,7 @@ export const PLANS: Plan[] = [
 export const FAQ: { q: string; a: string }[] = [
   {
     q: "Is Lore free?",
-    a: "Yes. Lore is open source and free to self-host, and the free build is the complete application — the editor, every MCP tool, the graph, semantic search, context budgets and the verification ledger. Nothing is held back. Hosted plans will add cross-device sync, backups, and managed auth and storage from $12 per month; they are not open yet, so today the free build is the only thing you can actually get, and it is the whole thing.",
+    a: "Yes. Lore is open source and free to self-host, and the free build is the complete application — the daily brief, Ask, every MCP tool, search, the graph and context budgets. Nothing is held back. Hosted plans will add cross-device sync, backups, and managed auth and storage from $12 per month; they are not open yet, so today the free build is the only thing you can actually get, and it is the whole thing.",
   },
   {
     q: "What do the hosted plans actually add?",

@@ -14,6 +14,8 @@
  * server, does its work, and stops it again, so `lore health` works from a cold
  * checkout with nothing else set up.
  *
+ *   lore brief [--days N] [--write [file]]
+ *   lore ask "<question>"
  *   lore health [--json] [--max-dead N] [--max-stale N] [--min-score N]
  *   lore verify <page-id>
  *   lore changes [--since ISO|ms]
@@ -24,7 +26,8 @@
  */
 
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, promises as fs } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -163,6 +166,83 @@ async function run() {
         if (breaches.length) {
           for (const b of breaches) process.stderr.write(`lore: ${b}\n`);
           return 1;
+        }
+        return 0;
+      }
+
+      /*
+       * The brief, where you already are.
+       *
+       * Twelve of sixteen reviewers asked for the same thing and it did not
+       * exist: the brief only lived on a screen at localhost:4646. A daily
+       * habit that ships as a port number is a demo, not a habit. This puts it
+       * in the terminal that is already open, and `--write` drops it on disk so
+       * a cron job or a shell profile can surface it without anyone opening
+       * anything.
+       */
+      case "brief": {
+        const raw = flag("days");
+        const days = raw === undefined || raw === true ? 1 : Number(raw) || 1;
+        const d = JSON.parse(await get(`/api/brief?days=${days}`));
+
+        if (json) {
+          process.stdout.write(JSON.stringify(d, null, 2) + "\n");
+          return 0;
+        }
+
+        const lines = [];
+        const when = days === 1 ? "today" : `the last ${days} days`;
+        lines.push(`What your agents wrote ${when}\n`);
+        if (!d.items.length) {
+          lines.push("Nothing changed in this window.\n");
+        } else {
+          for (const item of d.items) {
+            lines.push(`  • ${item.line}`);
+            lines.push(`    ${item.title}${item.agent ? ` · ${item.agent}` : ""}\n`);
+          }
+          lines.push(`${d.events} writes across ${d.pagesTouched} pages.\n`);
+        }
+        const text = lines.join("\n");
+
+        const target = flag("write");
+        if (target) {
+          const file =
+            target === true
+              ? path.join(os.homedir(), ".lore", "brief.md")
+              : String(target);
+          await fs.mkdir(path.dirname(file), { recursive: true });
+          await fs.writeFile(file, text, "utf8");
+          process.stdout.write(`${file}\n`);
+          return 0;
+        }
+
+        process.stdout.write(text);
+        return 0;
+      }
+
+      case "ask": {
+        const question = args.filter((a) => !a.startsWith("--")).slice(1).join(" ");
+        if (!question) {
+          process.stderr.write("Usage: lore ask <question>\n");
+          return 2;
+        }
+        const res = await fetch(`${BASE}/api/ask`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ question }),
+        });
+        const d = await res.json();
+        if (json) {
+          process.stdout.write(JSON.stringify(d, null, 2) + "\n");
+          return 0;
+        }
+        if (d.empty || (!d.answer && !d.passages?.length)) {
+          process.stdout.write("Nothing in the wiki answers that.\n");
+          return 0;
+        }
+        if (d.answer) process.stdout.write(`${d.answer}\n\n`);
+        for (const p of (d.passages ?? []).slice(0, 6)) {
+          process.stdout.write(`  [${p.n}] ${p.relPath}\n`);
         }
         return 0;
       }

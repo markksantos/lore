@@ -189,7 +189,7 @@ export function DownloadView() {
               <code>AGENTS.md</code>, fenced so anything you wrote in it is preserved.
             </li>
             <li>
-              Keep state inside your vault. Config, journal and the verification ledger all live
+              Keep state inside your vault. Config, the write journal and Lore's own bookkeeping all live
               in <code>~/.lore</code>, so a <code>git diff</code> of your notes stays clean.
             </li>
           </ul>

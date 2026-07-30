@@ -38,7 +38,7 @@ export function DemoView() {
             </h1>
             <p className="t-body mt-2 max-w-2xl text-[var(--lore-text-secondary)]">
               Click around. This is the real interface running on twelve made-up pages — the
-              folders, the trust states, the review list and the sign-off all behave as they do
+              folders, the search, the reading view and the change list all behave as they do
               on your own wiki.
             </p>
           </div>
@@ -85,7 +85,7 @@ export function DemoView() {
           />
           <Note
             title="What the real one adds"
-            body="Your actual pages, a live watcher that notices what your agents changed, search across everything, the MCP server your agents connect to, and the verification ledger. The interface is the one you are looking at."
+            body="Your own pages — plus the brief, which tells you in one sentence each what your agents wrote, and Ask, which answers questions from your wiki and cites the passages. Neither can be faked on sample data, which is why they are not in this demo."
           />
           <Note
             title="It is free"

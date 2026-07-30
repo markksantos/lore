@@ -16,7 +16,6 @@ import { MarketingFooter, MarketingHeader } from "@/components/marketing/site-ch
 import { HeroSimulator } from "@/components/marketing/hero-simulator";
 import {
   WriteFeedDemo,
-  SignOffDemo,
   GapsDemo,
   BudgetDemo,
   TrustPill,
@@ -257,8 +256,8 @@ function WhyNotJustAsk() {
         />
         <Plain
           slot={4}
-          title="git has no expiring sign-off"
-          body="You can commit a note saying you checked a page. Nothing invalidates that note when an agent rewrites the page underneath it. Lore pins your sign-off to the content hash, so a rewrite lapses it automatically — that is the one primitive git does not have."
+          title="git shows you diffs, not meaning"
+          body="`git log` tells you a file changed by twelve lines. It cannot tell you that a client moved their deadline or that a rate was renegotiated. Lore reads the diff and says what is true now, in a sentence — which is the difference between a changelog and knowing something."
         />
         <Plain
           slot={7}
@@ -342,9 +341,9 @@ function HowItWorks() {
     {
       icon: ShieldCheck,
       slot: 0,
-      demo: <SignOffDemo />,
-      title: "Sign off on the page you actually read",
-      body: "A sign-off is pinned to the content hash of the page as you saw it. Rewrite that page and the hash stops matching, the sign-off lapses on its own, and the page comes back to the top of Review wearing the label that says why. Trust that can never lapse is a sticker, not a signal — and it is the reason the ledger sits outside your vault, where an agent cannot edit its own grade.",
+      demo: <BudgetDemo />,
+      title: "Ask it, instead of reading it",
+      body: "A wiki this size is never going to be read, so the only way it pays you back is by answering. Lore retrieves passages from your own pages, answers from those alone, and shows every one it used — and says so plainly when your wiki does not contain the answer, rather than inventing something that sounds right. Retrieval and the model both run on your machine.",
     },
     {
       icon: Plug,
@@ -358,8 +357,8 @@ function HowItWorks() {
   return (
     <Section
       eyebrow="How it works"
-      title="Promotion, not permission."
-      lede="Nothing is blocked, because nothing local can block it. Everything lands unverified and you promote what you have read."
+      title="It reads it so you do not have to."
+      lede="Nothing is blocked and nothing is queued. Lore watches what your agents write, tells you the handful worth knowing, and answers questions from the rest."
     >
       {/* Each module sits in a thick colour frame — the pattern that carries
           most of the page's colour. */}
@@ -400,29 +399,6 @@ function HowItWorks() {
     </Section>
   );
 }
-
-const STATES = [
-  {
-    slot: 3,
-    state: "verified" as const,
-    body: "A person confirmed this page against the world, and nothing has touched it since.",
-  },
-  {
-    slot: 6,
-    state: "aging" as const,
-    body: "Signed off long enough ago that it has earned a second look. Pricing rots faster than tooling does.",
-  },
-  {
-    slot: 2,
-    state: "lapsed" as const,
-    body: "It was verified, then an agent rewrote it. The hash moved, so the sign-off came off with it.",
-  },
-  {
-    slot: 4,
-    state: "unverified" as const,
-    body: "Where every page starts, including the ones that read as authoritative because they are well written.",
-  },
-];
 
 /**
  * Ask replaced the trust-states section.
@@ -654,13 +630,13 @@ function Steps({ siteMode }: { siteMode: boolean }) {
       n: "3",
       slot: 2,
       title: "Connect over MCP",
-      body: "Copy the config — the path is already filled in — restart your client, and all seven tools are live.",
+      body: "Copy the config — the path is already filled in — restart your client, and all eight tools are live.",
     },
     {
       n: "4",
       slot: 6,
-      title: "Sign off on something",
-      body: "Open Review, read the page at the top, press the button. That is the first human mark your wiki has ever carried.",
+      title: "Read your first brief",
+      body: "It is the screen that opens. Eight sentences on what your agents wrote, or `lore brief` in the terminal you are already in. Nothing to clear, nothing to approve.",
     },
   ];
 
@@ -704,7 +680,7 @@ const FAQ = [
   },
   {
     q: "Why not just use git and a folder?",
-    a: "You should use git — Lore is not a replacement and reads a repo happily. But git only records what someone remembered to commit, and most agent writes happen between commits: one measured vault had 303 changed pages in a week and two commits. Git also has no expiring sign-off — you can commit a note saying you checked a page, and nothing invalidates it when an agent rewrites the page underneath. Lore pins the sign-off to the content hash so a rewrite lapses it by itself. And because your agents read through Lore, it sees every search that came back empty, which is a to-write list git cannot produce.",
+    a: "You should use git — Lore is not a replacement and reads a repo happily. But git only records what someone remembered to commit, and most agent writes happen between commits: one measured vault had 303 changed pages in a week and two commits. More to the point, `git log` gives you diffs, and a diff is not meaning — it can tell you a file lost twelve lines, not that a client moved their deadline. Lore reads the change and says what is true now. And because your agents read through Lore, it sees every search that came back empty, which is a to-write list git cannot produce.",
   },
   {
     q: "Can't my AI already do all of this?",
@@ -719,8 +695,8 @@ const FAQ = [
     a: "Read the index, search, read a page, pull a context pack, check health, see what changed — and write, if you let it. The write tool exists for agents that have MCP and no filesystem, like ChatGPT on a phone, which otherwise could read your wiki and never add to it. Anything written that way is attributed and lands unverified, and read-only mode blocks it like everything else.",
   },
     {
-    q: "What are the seven MCP tools?",
-    a: "wiki_index (the map of every page), wiki_search, wiki_read (a page plus its trust state), wiki_context (the best passages on a subject, assembled to a token budget, each citing its page), wiki_changes (what moved since a timestamp), wiki_health (dead links, orphans, stale pages) and wiki_write. Six read, one writes — and the write tool is blocked entirely by read-only mode.",
+    q: "What are the eight MCP tools?",
+    a: "wiki_index (the map of every page), wiki_search, wiki_read, wiki_context (the best passages on a subject, assembled to a token budget, each citing its page), wiki_brief (what the wiki learned recently, one sentence per page — so a new session can catch up without re-reading), wiki_changes (what moved since a timestamp), wiki_health (dead links, orphans, stale pages) and wiki_write. Seven read, one writes — and the write tool is blocked entirely by read-only mode.",
   },
   {
     q: "Can I use it from a script or in CI?",
