@@ -67,7 +67,7 @@ export function Landing({
       <Safety />
       <Measured />
       <HowItWorks />
-      <States />
+      <Ask />
       <Budget />
       <Stack logos={logos} />
       <Platforms />
@@ -116,15 +116,23 @@ function Hero({ scene, cta, ctaLabel }: { scene: Scene; cta: string; ctaLabel: s
                   MCP can follow. The previous headline named a problem ("your
                   agents are already writing to your wiki") without naming the
                   product, so two readers in a row came away unsure what it did. */}
+              {/*
+                * "This is where you read them" was the old promise, and it was
+                * the wrong one: nobody reads their AI's notes — that is the
+                * entire reason they had the AI take them. The product now
+                * assumes you will never read the wiki and works anyway.
+                */}
               <h1 className="t-hero text-white">
-                <span className="block">Your AI takes notes.</span>
-                <span className="block md:whitespace-nowrap">This is where you read them.</span>
+                <span className="block">Your agents wrote 300 pages</span>
+                <span className="block md:whitespace-nowrap">this week. Here are the eight</span>
+                <span className="block">that matter.</span>
               </h1>
 
               <p className="mx-auto mt-5 max-w-xl text-[15px] font-semibold text-white/90 md:mt-6 md:text-[18px]">
-                If you use Claude Code, Cursor or Obsidian, you already have a folder of
-                markdown. Lore turns it into something you can search, see and trust — without
-                touching a single file.
+                Point Lore at the markdown folder Claude Code, Cursor or Obsidian already
+                writes to. It reads what your agents changed and tells you, in one sentence
+                each — and answers questions from your own pages. Nothing to review, nothing
+                to approve, no file touched.
               </p>
 
               <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
@@ -163,34 +171,41 @@ function Hero({ scene, cta, ctaLabel }: { scene: Scene; cta: string; ctaLabel: s
   );
 }
 
+/**
+ * Numbers from the vault this was built against, not from a pitch deck.
+ *
+ * The previous version of this section listed how much had changed unreviewed,
+ * which framed the corpus as a liability and the reader as delinquent. These
+ * are the same measurements pointed at the thing the product actually does.
+ */
 function Measured() {
   return (
     <Section
-      eyebrow="Measured"
-      title="303 pages changed in a week."
-      lede="That is one vault, seven days, one person's agents doing ordinary work. Not one of those diffs was read by a human, and the wiki has no idea which of them to trust."
+      eyebrow="Measured on a real wiki"
+      title="1,546 pages. Nobody reads them."
+      lede="One person's vault, built by agents in three months. 2.3 million tokens — twelve context windows. Fifty-six per cent of it is linked from nowhere. The problem was never trusting it; it was that none of it comes back to you."
     >
       <Reveal className="mt-12 grid gap-4 sm:grid-cols-3">
         <Stat
           slot={0}
-          value="303"
-          unit="pages"
-          label="changed in seven days"
-          body="Written by agents, across four folders, while the person who owns the wiki was working on something else."
+          value="8"
+          unit="lines"
+          label="instead of 300 pages"
+          body="The brief reads what your agents changed and says what is true now — one sentence each, written locally, nothing to action."
         />
         <Stat
           slot={1}
-          value="60"
-          unit="of 75"
-          label="modified files rewritten in place"
-          body="Rewritten rather than appended to, so the previous wording is gone unless git happened to catch it."
+          value="90%"
+          unit="recall@5"
+          label="on questions about the corpus"
+          body="Measured with a harness that ships in the repo: generate a question from a real page, check whether that page comes back. Up from 0%."
         />
         <Stat
           slot={2}
-          value="1,450"
-          unit="lines"
-          label="of prose deleted unreviewed"
-          body="Removed in the same week, without anyone reading what was removed or why it went."
+          value="0"
+          unit="files"
+          label="Lore writes to your wiki"
+          body="Read-only by default, and the browser version is opened read-only by the browser itself, so a write is refused below our code."
         />
       </Reveal>
     </Section>
@@ -409,25 +424,38 @@ const STATES = [
   },
 ];
 
-function States() {
+/**
+ * Ask replaced the trust-states section.
+ *
+ * That section explained a four-state ledger — verified, aging, lapsed,
+ * unverified — which asked the reader to learn a vocabulary before they had
+ * been given anything. Sign-off still exists and is still optional; it is no
+ * longer worth a section of the landing page. This is.
+ */
+function Ask() {
   return (
     <Section
-      eyebrow="Trust states"
-      title="Only one of the four is yours to set."
-      lede="You mark a page verified. Everything else follows from the clock and from what your agents do next."
+      eyebrow="Ask"
+      title="A wiki too big to read is fine, if it answers."
+      lede="Type a question. Lore retrieves from your own pages, answers from those passages only, and shows you every one it used. When your wiki does not contain the answer it says so instead of inventing one."
     >
-      <div className="mt-11 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {STATES.map((card, i) => (
-          <Reveal key={card.state} delay={i * 0.05} className="h-full">
-            <div style={paletteVars(card.slot)} className="frame h-full">
-              <div className="h-full px-5 py-5">
-                <TrustPill state={card.state} />
-                <p className="t-body mt-3 text-[var(--lore-text-secondary)]">{card.body}</p>
-              </div>
-            </div>
-          </Reveal>
-        ))}
-      </div>
+      <Reveal className="mt-11 grid gap-4 md:grid-cols-3">
+        <Plain
+          slot={0}
+          title="Your pages, nothing else"
+          body="The answer is assembled only from passages retrieved out of your own markdown, each one cited. No outside knowledge, no filling in the gaps."
+        />
+        <Plain
+          slot={5}
+          title="Shows its work"
+          body="Every answer ships with the passages it read and the pages it nearly read — so when it is wrong you can see whether retrieval missed the page or the model misread it."
+        />
+        <Plain
+          slot={6}
+          title="Runs on your machine"
+          body="Retrieval and the model are both local. Nothing is uploaded, and there is no account. It works on a plane."
+        />
+      </Reveal>
     </Section>
   );
 }
