@@ -32,10 +32,6 @@ export const VIEW_LABEL: Record<View, string> = {
   brief: "Brief",
   ask: "Ask",
   wiki: "Wiki",
-  review: "Changes",
-  insights: "Insights",
-  explore: "Explore",
-  connections: "Connections",
   settings: "Settings",
 };
 
@@ -48,14 +44,22 @@ export const VIEW_LABEL: Record<View, string> = {
  * to be called Review and used to be first, which framed the whole app as a
  * queue of work you owed it.
  */
+/*
+ * Four, down from eight.
+ *
+ * The panel said three times that demoting is not deleting, and three times it
+ * was demoted. Changes, Insights, Explore (seven sub-lenses) and Connections
+ * are gone from the nav: they are lenses on a corpus, and a lens is not a
+ * reason to open an app. Two of them — health and connecting an agent — moved
+ * into Settings, where you go once. The rest is deleted.
+ *
+ * What is left is the two things that give you something (Brief, Ask), the
+ * thing you came for (Wiki), and the place you configure it once.
+ */
 const NAV: { id: View; icon: typeof BookText }[] = [
   { id: "brief", icon: Newspaper },
   { id: "ask", icon: MessageCircleQuestion },
   { id: "wiki", icon: BookText },
-  { id: "review", icon: ShieldCheck },
-  { id: "insights", icon: BarChart3 },
-  { id: "explore", icon: Compass },
-  { id: "connections", icon: Plug },
   { id: "settings", icon: Settings },
 ];
 
@@ -65,7 +69,6 @@ export function Sidebar({
   onView,
   folder,
   onFolder,
-  needsReview,
   query,
   onQuery,
   results,
@@ -77,7 +80,6 @@ export function Sidebar({
   onView: (view: View) => void;
   folder: string;
   onFolder: (folder: string) => void;
-  needsReview: number;
   query: string;
   onQuery: (value: string) => void;
   results: SearchResult[] | null;
@@ -210,12 +212,6 @@ export function Sidebar({
                 * grows on its own. Nothing in Changes is owed. The dot says
                 * "something moved" and stops there.
                 */}
-              {item.id === "review" && needsReview > 0 ? (
-                <span
-                  aria-label="Pages changed recently"
-                  className="ml-auto h-1.5 w-1.5 rounded-full bg-[var(--lore-text-tertiary)]"
-                />
-              ) : null}
             </button>
           );
         })}

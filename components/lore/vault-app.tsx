@@ -5,23 +5,11 @@ import type { SearchResult, VaultIndex } from "@/lib/types";
 import { AppShell } from "@/components/lore/app-shell";
 import { Sidebar, VIEW_LABEL } from "@/components/lore/sidebar";
 import { FolderDocument } from "@/components/lore/folder-document";
-import { ConnectionsView } from "@/components/lore/connections-view";
 import { SettingsView } from "@/components/lore/settings-view";
-import { ReviewView } from "@/components/lore/review-view";
 import { BriefView } from "@/components/lore/brief-view";
 import { AskView } from "@/components/lore/ask-view";
-import { InsightsView } from "@/components/lore/insights-view";
-import { ExploreShell } from "@/components/lore/explore-shell";
 
-export type View =
-  | "brief"
-  | "ask"
-  | "wiki"
-  | "review"
-  | "insights"
-  | "explore"
-  | "connections"
-  | "settings";
+export type View = "brief" | "ask" | "wiki" | "settings";
 
 export function VaultApp({
   initialIndex,
@@ -38,7 +26,6 @@ export function VaultApp({
   const [folder, setFolder] = useState<string>(initialIndex.folders[0]?.folder ?? "");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[] | null>(null);
-  const [needsReview, setNeedsReview] = useState(0);
   /** Bumped to tell the open folder document to reload itself. */
   const [revision, setRevision] = useState(0);
   /** Set when search picks a page, so the document scrolls to it. */
@@ -55,20 +42,7 @@ export function VaultApp({
    * badge that replaced the old proposal queue: it counts what happened rather
    * than what is waiting for permission, because nothing waits for permission.
    */
-  const refreshPending = useCallback(async () => {
-    const response = await fetch("/api/review?days=7");
-    if (!response.ok) return;
-    const data = await response.json();
-    setNeedsReview(
-      (data.triage as { trust: string }[]).filter((t) => t.trust !== "verified").length,
-    );
-  }, []);
 
-  useEffect(() => {
-    refreshPending();
-    const timer = setInterval(refreshPending, 10_000);
-    return () => clearInterval(timer);
-  }, [refreshPending]);
 
   useEffect(() => {
     const q = query.trim();
@@ -111,8 +85,6 @@ export function VaultApp({
     <AppShell
       title={title}
       titleHint={view === "wiki" ? folder || "Root" : undefined}
-      needsReview={needsReview}
-      mainScrolls={view !== "explore"}
       onSearchShortcut={() => setView("wiki")}
       sidebar={
         <Sidebar
@@ -125,8 +97,7 @@ export function VaultApp({
             setView("wiki");
             setFocusPage(null);
           }}
-          needsReview={needsReview}
-          query={query}
+              query={query}
           onQuery={setQuery}
           results={results}
           onOpenPage={openPage}
@@ -150,20 +121,12 @@ export function VaultApp({
           focusPage={focusPage}
           onOpenPage={openPage}
           onChanged={async () => {
-            await Promise.all([refresh(), refreshPending()]);
+            await refresh();
           }}
         />
       ) : null}
       {view === "brief" ? <BriefView onOpenPage={openPage} /> : null}
       {view === "ask" ? <AskView onOpenPage={openPage} /> : null}
-      {view === "review" ? <ReviewView onOpenPage={openPage} /> : null}
-      {view === "insights" ? <InsightsView onOpenPage={openPage} /> : null}
-      {view === "explore" ? (
-        <ExploreShell index={index} pageTitles={pageTitles} onOpenPage={openPage} />
-      ) : null}
-      {view === "connections" ? (
-        <ConnectionsView root={index.root} installDir={installDir} />
-      ) : null}
       {view === "settings" ? (
         <SettingsView index={index} onOpenPage={openPage} onChanged={refresh} />
       ) : null}

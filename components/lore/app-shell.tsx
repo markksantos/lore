@@ -74,7 +74,6 @@ export function useShell(): ShellState {
 export function AppShell({
   title,
   titleHint,
-  needsReview,
   sidebar,
   mainScrolls = true,
   onSearchShortcut,
@@ -86,7 +85,6 @@ export function AppShell({
   titleHint?: string;
   /** Surfaced as a dot on the menu button, since the sidebar badge is hidden
    *  behind the drawer on a phone. */
-  needsReview: number;
   sidebar: ReactNode;
   /** False for views that manage their own height (the Explore lenses). */
   mainScrolls?: boolean;
@@ -206,22 +204,12 @@ export function AppShell({
             <button
               type="button"
               onClick={openDrawer}
-              aria-label={
-                needsReview > 0
-                  ? `Open menu — ${count(needsReview, "page")} changed recently`
-                  : "Open menu"
-              }
+              aria-label="Open menu"
               aria-expanded={open}
               aria-controls="lore-sidebar"
               className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-[var(--lore-text-secondary)] transition-colors active:bg-[var(--lore-surface-raised)]"
             >
               <Menu size={19} />
-              {needsReview > 0 ? (
-                <span
-                  aria-hidden
-                  className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[var(--lore-accent)]"
-                />
-              ) : null}
             </button>
 
             <span
