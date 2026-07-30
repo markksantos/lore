@@ -18,7 +18,6 @@ import {
   WriteFeedDemo,
   GapsDemo,
   BudgetDemo,
-  TrustPill,
 } from "@/components/marketing/demos";
 import { StackWall } from "@/components/marketing/stack-wall";
 import { Reveal } from "@/components/marketing/motion-bits";
