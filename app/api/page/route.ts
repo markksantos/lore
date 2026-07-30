@@ -1,5 +1,6 @@
 import { fail, requireVault, toMeta } from "@/lib/server";
 import { readPolicy } from "@/lib/policy";
+import { markSeen } from "@/lib/seen";
 import { readLedger, trustOf } from "@/lib/verify";
 import crypto from "node:crypto";
 import { recordAttribution } from "@/lib/harness";
@@ -49,6 +50,14 @@ export async function GET(request: Request) {
     const ledger = await readLedger(vault.root);
     const hash = crypto.createHash("sha1").update(page.plain).digest("hex").slice(0, 16);
     const trust = trustOf(ledger, page.id, hash, Date.now(), policy.decayDays);
+
+    /*
+     * Opening a page is the strongest possible signal that you now know what is
+     * on it, so the brief should stop offering it to you. Recorded here rather
+     * than in the client because every surface that opens a page — the brief,
+     * search, Ask's citations, a wikilink — comes through this one route.
+     */
+    void markSeen(vault.root, [page.id]).catch(() => {});
 
     const backlinkIds = index.backlinks[page.id] ?? [];
     return Response.json({

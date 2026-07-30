@@ -27,6 +27,7 @@ type Item = {
   kind: "created" | "appended" | "rewritten" | "deleted";
   at: number;
   agent: string | null;
+  repeat: boolean;
 };
 
 type Brief = {
@@ -34,6 +35,7 @@ type Brief = {
   events: number;
   pagesTouched: number;
   items: Item[];
+  fresh: number;
   threads: { subject: string; pages: string[]; titles: string[] }[];
   synthesised: boolean;
 };
@@ -84,7 +86,9 @@ export function BriefView({ onOpenPage }: { onOpenPage: (pageId: string) => void
           <p className="t-body mt-1.5 text-[var(--lore-text-secondary)]">
             {data && !loading
               ? data.events > 0
-                ? `${count(data.events, "write")} across ${count(data.pagesTouched, "page")}. These are the ones worth thirty seconds.`
+                ? data.fresh > 0
+                  ? `${count(data.fresh, "new item")} since you last looked, from ${count(data.events, "write")}.`
+                  : "You are up to date — nothing new since you last looked. Older items below."
                 : "Nothing written in this window."
               : "Reading the journal…"}
           </p>
@@ -148,6 +152,13 @@ export function BriefView({ onOpenPage }: { onOpenPage: (pageId: string) => void
                   {item.line}
                 </span>
                 <span className="t-meta mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[var(--lore-text-tertiary)]">
+                  {/* Labelled rather than hidden. A repeat presented as news is
+                      the mirror; a repeat presented as a repeat is a reminder. */}
+                  {item.repeat ? (
+                    <span className="rounded bg-[var(--lore-surface-raised)] px-1.5 py-px">
+                      seen
+                    </span>
+                  ) : null}
                   <span className="font-medium text-[var(--lore-text-secondary)]">
                     {KIND_LABEL[item.kind]}
                   </span>

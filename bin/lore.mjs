@@ -183,7 +183,10 @@ async function run() {
       case "brief": {
         const raw = flag("days");
         const days = raw === undefined || raw === true ? 1 : Number(raw) || 1;
-        const d = JSON.parse(await get(`/api/brief?days=${days}`));
+        // `--peek` reads without marking anything seen, so a scripted preview
+        // does not burn tomorrow's brief.
+        const mark = flag("peek") ? "&mark=0" : "";
+        const d = JSON.parse(await get(`/api/brief?days=${days}${mark}`));
 
         if (json) {
           process.stdout.write(JSON.stringify(d, null, 2) + "\n");

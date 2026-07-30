@@ -6,6 +6,7 @@ import { buildBrief, changedText, lineFrom, type Brief } from "@/lib/brief";
 import { listVersions, readVersion } from "@/lib/history";
 import { readRaw } from "@/lib/wiki";
 import { detectOllama, generate, recommendModel } from "@/lib/ollama";
+import { markSeen, readSeen } from "@/lib/seen";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -154,10 +155,11 @@ export async function GET(request: Request) {
     const withModel = params.get("plain") !== "1";
     const since = Date.now() - days * 86_400_000;
 
-    const [index, events, attributions] = await Promise.all([
+    const [index, events, attributions, seen] = await Promise.all([
       getIndex(vault.root),
       readJournal(vaultKey(vault.root), since),
       readAttribution(since),
+      readSeen(vault.root),
     ]);
 
     const brief = buildBrief(
@@ -166,10 +168,23 @@ export async function GET(request: Request) {
       since,
       8,
       attributionByPath(attributions, vault.root),
+      seen,
     );
 
     const withChanges = await withDiffs(vault.root, vaultKey(vault.root), brief);
-    return Response.json(withModel ? await synthesise(withChanges) : withChanges);
+    const final = withModel ? await synthesise(withChanges) : withChanges;
+
+    /*
+     * Record what we just showed, so tomorrow's brief is not today's.
+     *
+     * Deliberately after synthesis and only for what actually made the cut —
+     * marking candidates would burn pages the reader never saw. `mark=0` exists
+     * for the CLI and for previewing without consuming the news.
+     */
+    if (params.get("mark") !== "0") {
+      await markSeen(vault.root, final.items.map((i) => i.pageId)).catch(() => {});
+    }
+    return Response.json(final);
   } catch (error) {
     return fail(error, 409);
   }

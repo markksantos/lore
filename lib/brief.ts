@@ -1,6 +1,7 @@
 import { countTokens } from "@/lib/tokens";
 import type { WikiIndex, WikiPage } from "@/lib/index-core";
 import type { WriteEvent } from "@/lib/journal";
+import { seenPenalty, type Seen } from "@/lib/seen";
 
 /**
  * The brief: what your agents learned, in ten lines.
@@ -36,6 +37,16 @@ export type BriefItem = {
   agent: string | null;
   /** The passage the line was drawn from, so a claim can be checked. */
   evidence: string;
+  /**
+   * You have been shown this before.
+   *
+   * When everything in the window has been seen, the penalty applies evenly and
+   * the ranking degrades back to its original order — so a brief opened twice
+   * in an afternoon starts repeating. Showing stale items dressed as news is
+   * the mirror problem again; showing nothing is worse. So they are shown, and
+   * labelled, and the header says how many were new.
+   */
+  repeat: boolean;
 };
 
 export type Brief = {
@@ -45,6 +56,8 @@ export type Brief = {
   events: number;
   pagesTouched: number;
   items: BriefItem[];
+  /** How many of `items` you have not been shown before. */
+  fresh: number;
   /** Subjects that moved across several pages at once. */
   threads: { subject: string; pages: string[]; titles: string[] }[];
   /** True when a local model wrote the lines rather than the fallback. */
@@ -94,6 +107,8 @@ export function scoreForBrief(
    * does not.
    */
   attributionWorking: boolean,
+  /** Pages you have already been shown or opened. See lib/seen. */
+  seen: Seen = {},
 ): { score: number; reason: string } {
   const reasons: string[] = [];
   let score = 0;
@@ -141,6 +156,16 @@ export function scoreForBrief(
    */
   if (attributionWorking && !agent) score *= 0.3;
   else if (agent) reasons.unshift(`by ${agent}`);
+
+  /*
+   * The repeat penalty — the part that does not need a hook installed.
+   *
+   * Authorship was the wrong lever to reach for first: it only works where the
+   * Claude Code hook is recording, and on the machine this was built for it was
+   * not. "Have I already been told this" is observable by Lore alone, on day
+   * one, and it is the thing that actually makes a brief feel like a mirror.
+   */
+  score *= seenPenalty(seen, page.id, event.at);
 
   return {
     score: Math.round(score),
@@ -312,6 +337,7 @@ export function buildBrief(
   since: number,
   limit = 8,
   agentByPath: Record<string, { agent: string } | undefined> = {},
+  seen: Seen = {},
 ): Brief {
   const collapsed = collapseEvents(withoutRenames(events));
   const byId = new Map(index.pages.map((p) => [p.relPath, p]));
@@ -343,6 +369,7 @@ export function buildBrief(
         /* High, not infinite. At 1000 a single deletion outranked every real
            item and a handful of them took the whole brief. */
         score: 120 + Math.min(event.linesRemoved, 200) * 0.3,
+        repeat: false,
         agent: agentByPath[relPath]?.agent ?? null,
         evidence: "",
       });
@@ -355,6 +382,7 @@ export function buildBrief(
       inbound,
       agentByPath[relPath]?.agent ?? null,
       attributionWorking,
+      seen,
     );
     scored.push({
       pageId: page.id,
@@ -369,6 +397,7 @@ export function buildBrief(
       score,
       agent: agentByPath[relPath]?.agent ?? null,
       evidence: evidenceFor(page),
+      repeat: Boolean(seen[page.id]) && event.at <= (seen[page.id] ?? 0) + 60_000,
     });
   }
 
@@ -405,6 +434,7 @@ export function buildBrief(
     events: events.length,
     pagesTouched: collapsed.size,
     items,
+    fresh: items.filter((i) => !i.repeat).length,
     threads: findThreads(scored.slice(0, 40)),
     synthesised: false,
   };
