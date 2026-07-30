@@ -76,6 +76,24 @@ export function scoreForBrief(
   event: WriteEvent,
   page: WikiPage,
   inbound: number,
+  /**
+   * Which agent wrote it, when the harness hook recorded one.
+   *
+   * This was resolved by the caller, attached to the OUTPUT, and never allowed
+   * to touch a score — so the screen headed "what your agents wrote" ranked a
+   * page you typed yourself an hour ago above one an agent produced overnight.
+   * Fourteen of sixteen reviewers found that on their own week. It is not a
+   * busy-week artifact; it is arithmetic, and this is the term that was
+   * missing.
+   */
+  agent: string | null,
+  /**
+   * Whether attribution is working at all in this window. Without it every page
+   * looks unattributed, and penalising all of them would empty the brief — so
+   * the penalty only applies when some pages DO carry an agent and this one
+   * does not.
+   */
+  attributionWorking: boolean,
 ): { score: number; reason: string } {
   const reasons: string[] = [];
   let score = 0;
@@ -112,6 +130,17 @@ export function scoreForBrief(
   // Captured material is the bulk of a real vault and the least briefable part
   // of it. Not excluded — a new transcript can matter — just made to earn it.
   if (RAW_HINT.test(page.relPath)) score *= 0.35;
+
+  /*
+   * You are not news to yourself.
+   *
+   * A brief is worth opening only if the reader is not also the writer. Pages
+   * with no recorded agent, on a vault where attribution is otherwise working,
+   * are almost always the ones the person wrote by hand — and handing those
+   * back is what made the whole screen read as a mirror.
+   */
+  if (attributionWorking && !agent) score *= 0.3;
+  else if (agent) reasons.unshift(`by ${agent}`);
 
   return {
     score: Math.round(score),
@@ -286,6 +315,8 @@ export function buildBrief(
 ): Brief {
   const collapsed = collapseEvents(withoutRenames(events));
   const byId = new Map(index.pages.map((p) => [p.relPath, p]));
+  // Is the Claude Code hook actually recording anything this window?
+  const attributionWorking = Object.keys(agentByPath).length > 0;
 
   const scored: BriefItem[] = [];
   for (const [relPath, event] of collapsed) {
@@ -318,7 +349,13 @@ export function buildBrief(
       continue;
     }
     const inbound = index.backlinks[page.id]?.length ?? 0;
-    const { score, reason } = scoreForBrief(event, page, inbound);
+    const { score, reason } = scoreForBrief(
+      event,
+      page,
+      inbound,
+      agentByPath[relPath]?.agent ?? null,
+      attributionWorking,
+    );
     scored.push({
       pageId: page.id,
       relPath,

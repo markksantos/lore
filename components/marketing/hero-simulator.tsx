@@ -3,22 +3,23 @@
 import { useCallback, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  BookText,
-  ShieldCheck,
   BarChart3,
-  Plug,
-  Search,
-  Shield,
+  BookText,
   Check,
-  RotateCcw,
+  Clock,
   Copy,
   FileDown,
-  Clock,
-  Pencil,
-  Radio,
-  PenLine,
   Flame,
   HelpCircle,
+  Newspaper,
+  PenLine,
+  Pencil,
+  Plug,
+  Radio,
+  RotateCcw,
+  Search,
+  Shield,
+  ShieldCheck,
 } from "lucide-react";
 import { BrandMark } from "@/components/marketing/brand-mark";
 import { BrowserChrome } from "@/components/marketing/browser-chrome";
@@ -387,7 +388,10 @@ export function HeroSimulator({ fullHeight = false }: { fullHeight?: boolean } =
           <div className="mt-4 space-y-0.5">
             {(
               [
-                { id: "review", label: "Review", icon: ShieldCheck },
+                /* The product shot has to be the product. This showed Review
+                   first — the round-1 app — under a headline promising there is
+                   nothing to approve. */
+                { id: "review", label: "Brief", icon: Newspaper },
                 { id: "wiki", label: "Wiki", icon: BookText },
                 { id: "insights", label: "Insights", icon: BarChart3 },
                 { id: "connections", label: "Connections", icon: Plug },
@@ -557,7 +561,7 @@ function ReviewPane({
             {Math.round((checked / total) * 100)}%
           </motion.span>
           <span className="text-[15px] leading-[1.6] text-[var(--lore-text-secondary)]">
-            of {total} pages have ever been checked by a human
+            of what your agents wrote this week is worth thirty seconds
           </span>
         </div>
 
@@ -649,7 +653,7 @@ function ReviewPane({
                   )}
                 >
                   {page.trust === "verified" ? <Check size={12} /> : <Shield size={12} />}
-                  {page.trust === "verified" ? "Signed off" : "Sign off"}
+                  {page.trust === "verified" ? "Read" : "Open"}
                 </button>
               </div>
               <p className="mt-1.5 text-[13px] leading-[1.55] text-[var(--lore-text-secondary)]">

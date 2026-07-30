@@ -221,7 +221,7 @@ async function run() {
       }
 
       case "ask": {
-        const question = args.filter((a) => !a.startsWith("--")).slice(1).join(" ");
+        const question = argv.filter((a) => !a.startsWith("--")).slice(1).join(" ");
         if (!question) {
           process.stderr.write("Usage: lore ask <question>\n");
           return 2;
@@ -314,6 +314,8 @@ async function run() {
           [
             "lore <command>",
             "",
+            "  brief    [--days N] [--write [file]]",
+            "  ask      \"<question>\"",
             "  health   [--json] [--max-dead N] [--max-stale N] [--min-score N]",
             "  changes  [--since ISO|ms] [--json]",
             "  gaps     [--json]",
