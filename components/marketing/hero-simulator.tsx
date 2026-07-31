@@ -11,6 +11,7 @@ import {
   FileDown,
   Flame,
   HelpCircle,
+  MessageCircleQuestion,
   Newspaper,
   PenLine,
   Pencil,
@@ -18,6 +19,7 @@ import {
   Radio,
   RotateCcw,
   Search,
+  Settings,
   Shield,
   ShieldCheck,
 } from "lucide-react";
@@ -158,7 +160,7 @@ const INITIAL: DemoPage[] = [
   },
   {
     id: "checklist",
-    title: "Review checklist",
+    title: "Today's brief",
     path: "operating/review-checklist.md",
     folder: "operating",
     slot: 1,
@@ -393,8 +395,11 @@ export function HeroSimulator({ fullHeight = false }: { fullHeight?: boolean } =
                    nothing to approve. */
                 { id: "review", label: "Brief", icon: Newspaper },
                 { id: "wiki", label: "Wiki", icon: BookText },
-                { id: "insights", label: "Insights", icon: BarChart3 },
-                { id: "connections", label: "Connections", icon: Plug },
+                /* The app has four screens now, not eight. A product shot that
+                   shows tabs the product does not have is a promise it cannot
+                   keep the moment someone installs it. */
+                { id: "insights", label: "Ask", icon: MessageCircleQuestion },
+                { id: "connections", label: "Settings", icon: Settings },
               ] as const
             ).map((item) => {
               const Icon = item.icon;

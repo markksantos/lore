@@ -2,304 +2,124 @@
 
 # Lore
 
-**The wiki for all your agents.**
+**Your agents wrote 300 pages this week. Here are the eight that matter.**
 
-Point Lore at the markdown folder you already have. It maps every page, watches
-every write, and shows you which of it a human has actually checked — without
-moving a single file.
+Point Lore at the markdown folder your agents already write to. It reads what
+changed and tells you what is now true — one sentence each — and answers
+questions from your own pages. Nothing to review, nothing to approve, no file
+touched.
 
 </div>
 
 ---
 
-## What it is
-
-You already wrote it down. Your agents already write into it. Nothing in the
-folder records which of it anybody trusts.
-
-Lore is a local app that sits on top of a folder of markdown and does four
-things:
-
-1. **Reads it where it sits.** No import, no migration, no new format. Your
-   headings, your frontmatter, your `[[wikilinks]]`, your folder names. Delete
-   Lore tomorrow and the wiki is what it was.
-2. **Watches every write.** Lore watches the filesystem, not a tool — so it sees
-   Claude Code, Cursor, a shell script, Obsidian and your own hand equally.
-   Nothing has to opt in, and nothing is blocked.
-3. **Records what you have checked.** Every page starts `unverified`. You sign
-   off on what you have actually read, and the sign-off is pinned to a content
-   hash — so an agent rewriting a verified page lapses it automatically.
-4. **Tells you what your agents ask for.** Lore is the MCP server, which makes it
-   a sensor: it sees which pages get opened and every search that returned
-   nothing. The misses are a to-write list built from real demand.
-
-It is not a note-taking app. Keep writing in Obsidian, or vim, or whatever you
-already use. Lore is the layer that makes the same folder legible — to your
-agents, and to you.
-
-## Promotion, not permission
-
-An earlier version of Lore was an approval gate: an MCP `propose_edit` tool that
-queued agent changes for review. It was removed, because it did not work and
-could not work.
-
-Measured against a real 1,424-page vault:
-
-| | |
-| --- | --- |
-| Pages changed in 7 days | 303 |
-| Changed in the last 24h | 56 |
-| Modified files that were in-place rewrites, not appends | 60 of 75 |
-| Pages carrying an agent-written `confidence:` field | 1,156 — 959 "high", 202 "medium", **2 "low"** |
-| Pages carrying any human `reviewed` or `verified` field | **0** |
-
-Three things follow from that.
-
-The gate was **unenforceable**: a plain `Write` to a file bypasses a proposal
-tool entirely, and the tool competes with every agent's built-in file writer and
-loses. It was **redundant**: Claude Code already asks before editing files. And
-even a perfect gate would **fail anyway** — 303 changes a week through a gate is
-a 303-item queue, which resolves to "Accept All" and manufactures confidence.
-That is worse than no gate.
-
-So nothing is blocked. Agents write freely. Everything lands unverified, Lore
-ranks what happened by how much it could cost you, and you promote the handful
-you actually checked. Trust that cannot lapse is not trust, it is a sticker.
-
-## Quickstart
-
-Requires **Node 20.9+** (what Next 16 needs). Nothing else — no database, no
-account, no API key.
+## Thirty seconds
 
 ```bash
-cd "path/to/lore"
-npm install
-npm run dev          # → http://localhost:4646, bound to 127.0.0.1
+npx lore-wiki brief                 # what your agents wrote today
+npx lore-wiki ask "what do I charge Phil Walsh?"
 ```
 
-`/` is the landing page; the app itself is at <http://localhost:4646/vault>,
-which is where the button on the landing page goes. With nothing linked yet it
-opens onboarding: pick your wiki folder. On macOS that opens a real native
-folder picker (`osascript`); everywhere else the picker returns 501 and you
-paste a path instead. If Lore finds a likely vault already on the machine it
-offers it. That is the whole setup.
+```
+What your agents wrote today
 
-## The six destinations
+  • Maja requested a long-form wedding editor role for $500, significantly below
+    the calculated project rate
+    maja - Sonia / Fiverr Pro Talent Sourcing
 
-**Wiki** — the sidebar lists your folders, each with its own colour. Pick one and
-it opens as a *single scrolling document*: every page in that folder is a
-coloured section, editable in place. You do not open files; you read a folder.
-Long folders page in 40 sections at a time, most recently edited first.
-
-**Review** — what changed, ranked. One bar shows how much of the whole corpus a
-human has ever confirmed, split four ways (verified / aging / lapsed /
-unverified). Below it, the week's writes ranked by lines deleted, how many pages
-link to the page, whether the page was rewritten in place rather than appended
-to, and whether you had previously signed it off — the top twelve, so you read a
-dozen things instead of three hundred. Sign off or withdraw sign-off inline. A
-standing **Blast radius** list shows the ten most-linked pages, because those
-deserve verification as policy rather than by accident.
-
-**Insights** — the two reports only Lore can produce, plus the number that
-governs everything. **Context budget**: what the wiki costs in tokens, measured
-with a real BPE tokenizer rather than chars ÷ 4, per folder, with the pages that
-crowd a window on their own. **Gaps**: every search your agents ran that returned
-nothing, copyable as a prompt. **What carries the weight**: the most-read pages,
-and how many have never been opened at all.
-
-**Explore** — seven lenses on the corpus, behind one nav item: Browse (faceted
-table), Graph (d3-force link graph), Map (squarified treemap by word count),
-Timeline (how the wiki grew, from mtime), Compare (two pages side by side, read
-or diff), Duplicates (near-duplicate prose via MinHash + LSH), Schema
-(frontmatter drift against your own `SCHEMA.md`).
-
-**Connections** — how agents get in: write `AGENTS.md` into the vault, or wire up
-an MCP client from a config generated with the paths already filled in for this
-machine.
-
-**Settings** — the linked folder, a rescan, unlink, the health report (orphans,
-dead links, stale pages, untagged), and the local-model panel: if Ollama is
-running on this machine, paste a page's text in and a local model will draft a
-summary, a set of tags, or a title. It is a scratchpad — nothing it returns is
-written back to the vault. Lore detects Ollama, it never ships it — absent, the
-panel says so and nothing else changes.
-
-Settings also holds **remote access**, off until you switch it on. Turning it on
-mints a 32-byte token that every non-loopback request must then carry, and shows
-a pairing link and QR code. Read the limits exactly: it is plain HTTP on a local
-network with no TLS, so anyone who can read packets on that network can lift the
-token — and nothing in this repository binds anything but `127.0.0.1`, so today
-pairing a phone mints a token but the phone still cannot reach the socket. The
-panel reports that rather than promising a connection that cannot happen.
-
-## Connecting agents
-
-### Any agent that reads files
-
-**Connections → Write AGENTS.md** drops one file at your vault root: every page,
-its folder, its tags, and a one-line summary. Any agent that reads files finds it
-without being told to.
-
-The generated map lives inside a `<!-- lore:begin -->` / `<!-- lore:end -->`
-fence. Everything you wrote outside the fence is preserved verbatim, and a file
-with no fence gets the map appended below what is already there — Lore never
-overwrites a hand-written `AGENTS.md`.
-
-### Agents that speak MCP
-
-```json
-{
-  "mcpServers": {
-    "lore": {
-      "command": "node",
-      "args": ["/path/to/lore/mcp/server.mjs"],
-      "env": { "LORE_URL": "http://127.0.0.1:4646" }
-    }
-  }
-}
+  • Carlos from Orobi Cybersecurity drafted a $100 order-5 offer including
+    specific footage and address masking
+    carcerv - Carlos (Flipper Zero TikTok)
 ```
 
-Four tools, deliberately — an agent choosing between twenty-one overlapping tools
-spends its budget choosing:
+That is the product. Everything below is detail.
 
-| Tool | What it does |
-| --- | --- |
-| `wiki_index` | The whole map: every page with path, folder, tags, one-line summary. Call it first |
-| `wiki_search` | Keyword search with a snippet around each match |
-| `wiki_read` | One page in full, plus the pages that link to it and the pages it links to |
-| `wiki_health` | Orphans, dead links, pages past their review window |
+## Why
 
-**There is no write tool, no delete tool, no shell, and no `propose_edit`.** Not
-because writing is forbidden — agents write with their own tools, and Lore
-watches — but because a second write path would only make Lore's picture of the
-vault disagree with the filesystem's.
+A wiki your agents write to grows faster than you can read it. One measured
+vault: **1,546 pages, 2.3M tokens, ~300 writes a week, 56% of it linked from
+nowhere.** Nobody reads that, which is the entire reason the agent was told to
+write it down.
 
-Every call is journalled, which is what produces the Insights reports. The
-zero-result searches are the valuable half.
+So Lore assumes you will never read your wiki, and works anyway.
 
-### Anything else
+**The brief** reads what changed — the actual diff, not the top of the page —
+and says what is true now, in a sentence. A local model writes the lines; the
+wiki never leaves your machine. Pages you have already been shown, or already
+opened, fade out, so tomorrow's brief is not today's.
 
-Every surface the MCP server uses is a plain local HTTP endpoint. Full reference
-in [DOCUMENTATION.md](./DOCUMENTATION.md#10-http-api).
+**Ask** retrieves from your own pages, answers only from those passages, cites
+every one, and says so plainly when your wiki does not contain the answer
+instead of inventing something that sounds right.
+
+## Does the retrieval actually work
+
+A synthetic-QA harness ships in the repo: it generates a question from a real
+page, then checks whether that page comes back. Run it on your own vault.
 
 ```bash
-curl -s localhost:4646/api/agent                    # the map, as markdown
-curl -s "localhost:4646/api/search?q=pricing"       # search
-curl -s "localhost:4646/api/review?days=7"          # triage + trust split
+node scripts/eval-retrieval.mjs --n 20
 ```
 
-## What data lives where
+On the 1,546-page vault above, against `ripgrep` on the same folder and the
+same questions:
 
-Everything Lore keeps for itself lives in `~/.lore` (created `0700`), never in
-your vault — so a journal entry or a verification record never shows up in a
-`git diff` of your notes.
+|                | Lore | ripgrep |
+| -------------- | ---- | ------- |
+| recall@1       | 40%  | 20%     |
+| recall@5       | 80%  | 50%     |
+| median rank    | 2    | 5       |
 
-| Path | What it holds |
-| --- | --- |
-| `~/.lore/config.json` | Which folders you linked and which one is open. Delete it and you are unlinked; the wiki is untouched |
-| `~/.lore/usage.jsonl` | Append-only log of MCP tool calls: reads, searches and their hit counts, index pulls, health checks |
-| `~/.lore/journal-<key>.jsonl` | Append-only write journal per vault: path, kind, lines added/removed |
-| `~/.lore/shadow/<key>/` | A copy of each page as Lore last saw it, so the next write can be diffed and classified |
-| `~/.lore/verified-<key>.json` | The verification ledger: page → hash, timestamp, who, optional note |
-| `~/.lore/attribution.jsonl` | Which agent wrote which file. Only exists if you install the optional Claude Code hook. Collected, not yet displayed — nothing reads it back |
-| `~/.lore/remote.json` | The remote-access token and port, written `0600`. Only exists once you switch remote access on |
-| `~/.lore/models/`, `~/.lore/embeddings-<key>.json` | The local embedding model and the vectors built from your pages |
+Small sample, and questions are model-generated per run, so treat recall@5 and
+the median as the signal rather than any single figure. The harness is in the
+repo so you can disagree with it.
 
-`<key>` is the first 10 hex characters of a SHA-1 of the vault's absolute path,
-so two linked wikis never share a journal or a ledger.
+## For your agents
 
-A filesystem watcher can see *what* changed but never *who* changed it. The
-journal is therefore harness-agnostic and author-blind; attribution is a separate,
-opt-in, single-harness addition, and everything in Review works without it.
-
-Inside your vault, Lore writes exactly two things, both only when you ask:
-`AGENTS.md` when you press the button, and pages you create or edit in the app
-itself. (`/api/page` also implements DELETE, but nothing in the interface calls
-it.)
-
-## Privacy
-
-None of your wiki is uploaded by this build. Lore is a local Next.js server talking
-to your own filesystem; there is no account, no database, and no telemetry, and no
-code in this repository that could send a page anywhere. The MCP server talks to the
-app over `127.0.0.1`.
-
-Hosted plans (sync, backups, a remote MCP endpoint) are a separate opt-in service,
-described on the site's `/pricing` page. Turning sync on is the one action that puts
-an encrypted copy of your wiki on a server; self-hosting stays free and unrestricted,
-with no licence check to remove.
-
-One exception, stated plainly: semantic search runs a small model on this machine,
-and the first time it is used it downloads roughly 23MB of model weights into
-`~/.lore/models`. Weights come down; no page content goes up. Everything after
-that is offline, which is the whole reason the model is local — a corpus with
-client names in it should not be shipped to an embedding API for a "related
-pages" list.
-
-Path traversal is blocked at the filesystem layer: every read and write resolves
-against the vault root and is rejected if it escapes.
-
-The shadow copies in `~/.lore/shadow/` are full copies of your pages. If your
-vault is sensitive, that directory is too.
-
-## What's in the box
+The brief is not only for you. The reader who most needs "what did the other
+agents learn since I last ran" is the next agent.
 
 ```
-app/            Next.js App Router — landing page, /vault app, /install,
-                /offline, the PWA manifest, /api routes
-proxy.ts        The security boundary. Two deployment shapes: local (full app,
-                loopback only) and site (LORE_MODE=site, marketing only, every
-                filesystem route 404s and /vault redirects to /install)
-components/
-  lore/         The app: onboarding, sidebar, folder document, review,
-                insights, explore lenses, connections, settings
-  marketing/    The landing page, the hero simulator, site chrome
-lib/
-  config.ts     ~/.lore/config.json — which folder is linked
-  wiki.ts       Scanning, frontmatter, wikilinks, backlinks, search, health
-  journal.ts    The filesystem watcher and the write journal
-  verify.ts     The verification ledger and the triage ranking
-  usage.ts      What agents read, and what they searched for and missed
-  tokens.ts     Context budgeting with a real tokenizer
-  similarity.ts Near-duplicate detection (MinHash + LSH)
-  schema-check.ts  Frontmatter conformance against your own SCHEMA.md
-  palette.ts    The eight-slot colour assignment
-  markdown.ts   Rendering, wikilink and tag resolution
-  embeddings.ts Local MiniLM vectors for semantic search and related pages
-  ollama.ts     Detects a local Ollama and runs the three extraction tasks
-  harness.ts    Reads and writes agent config files (MCP entry, Claude hook)
-mcp/server.mjs  The MCP server (stdio, no dependencies)
-electron/       Desktop shell — spawns the Next standalone server and frames it
-                in a window. Packaging config in electron-builder.yml
-docs/           Build log, competitive research, style options
+wiki_brief     what the wiki learned recently, one sentence per page
+wiki_context   the best passages on a subject, to a token budget, each cited
+wiki_index     the map of every page
+wiki_search    keyword search
+wiki_read      a page
+wiki_changes   what moved since a timestamp
+wiki_health    dead links, orphans, stale pages
+wiki_write     the one that writes — blocked entirely by read-only mode
 ```
 
-## Documentation
+Connect it in Settings, or point your MCP config at `mcp/server.mjs`.
 
-| Document | What it covers |
-| --- | --- |
-| [docs/HANDBOOK.md](./docs/HANDBOOK.md) | **Start here.** The complete account — what was built, how it works, why it is shaped this way, every bug found, every decision reversed, and the limitations |
-| [DOCUMENTATION.md](./DOCUMENTATION.md) | Architecture and the full HTTP API reference |
-| [DEPLOY.md](./DEPLOY.md) | The two deployment shapes, and how to verify one is locked down |
-| [electron/README.md](./electron/README.md) | Desktop packaging, per platform |
-| [docs/BUILD-LOG.md](./docs/BUILD-LOG.md) | Chronological record, including designs later replaced |
-| [docs/COMPETITIVE-RESEARCH.md](./docs/COMPETITIVE-RESEARCH.md) | The landscape survey that shaped the feature set |
+## Your files
 
-## Credits
+Lore never moves, renames or reformats anything. It is **read-only by default**,
+and the browser build is opened read-only by the browser itself, so a write is
+refused below our code. Its own state lives in `~/.lore`, outside your vault, so
+`git diff` of your notes stays clean.
 
-The visual language — the sky-framed hero, the fade-band closing section, the
-two-surface light/dark token system, the squircle bullets, the eight-slot plate
-palette — is adapted from [**Creed**](https://github.com/connorhpbrn/creed) by
-Connor Hepburn, used under its MIT licence. Creed manages one context file; Lore
-takes the same design sensibility to a whole wiki. If you want the single-file
-version, use Creed — it is the better tool for that job.
+## Install
 
-Sky photography generated for this project. See
-[docs/COMPETITIVE-RESEARCH.md](./docs/COMPETITIVE-RESEARCH.md) for the landscape
-survey that shaped the feature set, and [docs/BUILD-LOG.md](./docs/BUILD-LOG.md)
-for the record of what was built and why — including the approval gate that was
-removed.
+```bash
+git clone https://github.com/markksantos/lore.git
+cd lore && npm install && npm run dev     # http://127.0.0.1:4646
+```
+
+Needs Node 20.9+. A local model via [Ollama](https://ollama.com) is optional —
+without one the brief falls back to plainer extraction and Ask returns the
+passages without writing them up.
+
+## CLI
+
+```bash
+lore brief [--days N] [--write [file]] [--peek]
+lore ask "<question>"
+lore health [--json] [--max-dead N] [--min-score N]   # exits non-zero: gates CI
+lore changes [--since ISO|ms]
+lore gaps
+```
 
 ## Licence
 
-MIT.
+MIT. Design system adapted from [Creed](https://github.com/connorhpbrn/creed).

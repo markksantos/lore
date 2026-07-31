@@ -1,8 +1,7 @@
 {
-  "name": "lore",
+  "name": "lore-wiki",
   "version": "0.1.0",
-  "private": true,
-  "description": "The wiki for all your agents. A local-first markdown wiki manager that every AI agent can read.",
+  "description": "Your agents wrote 300 pages this week. Here are the eight that matter.",
   "scripts": {
     "dev": "next dev -H 127.0.0.1 -p 4646",
     "build": "next build",
@@ -65,6 +64,31 @@
   "homepage": "https://github.com/markksantos/lore",
   "license": "MIT",
   "bin": {
-    "lore": "bin/lore.mjs"
-  }
+    "lore": "bin/lore.mjs",
+    "lore-mcp": "mcp/server.mjs"
+  },
+  "files": [
+    "bin",
+    "mcp",
+    "lib",
+    "app",
+    "components",
+    "scripts",
+    "public",
+    "next.config.ts",
+    "tsconfig.json",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20.9"
+  },
+  "keywords": [
+    "mcp",
+    "obsidian",
+    "markdown",
+    "wiki",
+    "agents",
+    "claude",
+    "local-first"
+  ]
 }
