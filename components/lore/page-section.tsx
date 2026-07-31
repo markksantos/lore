@@ -37,6 +37,8 @@ export function PageSection({
   const [draft, setDraft] = useState(raw);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** The section element, watched so its body renders just before it is seen. */
+  const ref = useRef<HTMLElement | null>(null);
 
   // An agent writing to the file on disk reloads the folder, so the section can
   // be handed new source while it is mounted. Re-seed the draft unless the user
@@ -47,9 +49,42 @@ export function PageSection({
 
   const palette = useMemo(() => paletteVars(index), [index]);
 
+  /*
+   * Render this page's markdown only once it is near the viewport.
+   *
+   * A folder document renders every page in the folder, and markdown-to-HTML is
+   * not cheap: the vault root here is five pages holding just over a megabyte
+   * of append-only log, so opening it parsed 1MB and built the DOM for all of
+   * it before anything appeared. Folders with a single 405KB transcript behaved
+   * the same way.
+   *
+   * The observer starts 800px early, so by the time a section scrolls into
+   * sight it is already drawn and the reader never sees the swap. Sections
+   * already on screen at mount render immediately, because the first frame is
+   * the one that has to be fast.
+   */
+  const [visible, setVisible] = useState(index < 3);
+
+  useEffect(() => {
+    if (visible) return;
+    const node = ref.current;
+    if (!node) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) setVisible(true);
+      },
+      { rootMargin: "800px 0px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [visible]);
+
   const html = useMemo(
-    () => renderMarkdown(stripLeadingTitle(stripFrontmatter(raw), page.title), pageTitles),
-    [raw, page.title, pageTitles],
+    () =>
+      visible
+        ? renderMarkdown(stripLeadingTitle(stripFrontmatter(raw), page.title), pageTitles)
+        : "",
+    [visible, raw, page.title, pageTitles],
   );
 
   const save = useCallback(async () => {
@@ -83,7 +118,12 @@ export function PageSection({
   );
 
   return (
-    <section id={id} style={palette} className="group mt-9 scroll-mt-8 first:mt-6">
+    <section
+      id={id}
+      ref={ref}
+      style={palette}
+      className="group mt-9 scroll-mt-8 first:mt-6"
+    >
       <div className="flex flex-wrap items-center gap-2.5">
         <span className="pal-bar" />
         <h2 className="pal-title text-[17px] font-semibold tracking-[-0.02em]">{page.title}</h2>
@@ -164,6 +204,10 @@ export function PageSection({
       ) : (
         <div
           ref={proseRef}
+          /* A height floor while unrendered, so the page does not collapse and
+             then jolt as sections fill in — scroll position must not move under
+             the reader. Roughly the height the words will occupy. */
+          style={visible ? undefined : { minHeight: Math.min(page.words * 0.6 + 60, 900) }}
           className="lore-prose mt-2.5 text-[15px]"
           onClick={onProseClick}
           dangerouslySetInnerHTML={{ __html: html }}

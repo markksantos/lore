@@ -151,7 +151,9 @@ export async function GET(request: Request) {
     await watchVault(vault.root);
 
     const params = new URL(request.url).searchParams;
-    const days = Math.min(30, Math.max(1, Number(params.get("days") ?? 1) || 1));
+    const days = Math.min(365, Math.max(1, Number(params.get("days") ?? 1) || 1));
+    const offset = Math.max(0, Number(params.get("offset") ?? 0) || 0);
+    const limit = Math.min(30, Math.max(1, Number(params.get("limit") ?? 8) || 8));
     const withModel = params.get("plain") !== "1";
     const since = Date.now() - days * 86_400_000;
 
@@ -166,9 +168,10 @@ export async function GET(request: Request) {
       index,
       events,
       since,
-      8,
+      limit,
       attributionByPath(attributions, vault.root),
       seen,
+      offset,
     );
 
     const withChanges = await withDiffs(vault.root, vaultKey(vault.root), brief);

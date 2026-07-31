@@ -1,7 +1,16 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { ArrowRight, ChevronRight, CornerDownLeft, Loader2, Search } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  ArrowRight,
+  ChevronRight,
+  CornerDownLeft,
+  Loader2,
+  Plus,
+  Search,
+  Sparkles,
+  X,
+} from "lucide-react";
 import { cn, count } from "@/lib/utils";
 
 /**
@@ -79,13 +88,39 @@ function Cited({ text, onJump }: { text: string; onJump: (n: number) => void }) 
   );
 }
 
+type Turn = {
+  id: string;
+  at: number;
+  question: string;
+  answer: string | null;
+  sources: { n: number; pageId: string; relPath: string; title: string }[];
+};
+
 export function AskView({ onOpenPage }: { onOpenPage: (pageId: string) => void }) {
   const [question, setQuestion] = useState("");
+  const [history, setHistory] = useState<Turn[]>([]);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [openThread, setOpenThread] = useState<Turn | null>(null);
   const [asking, setAsking] = useState(false);
   const [result, setResult] = useState<Answer | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showSources, setShowSources] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
+
+  /* The sidebar loads on its own so it paints immediately, rather than waiting
+     on an answer that takes tens of seconds. */
+  const loadSidebar = useCallback(async () => {
+    const d = await fetch("/api/asked")
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null);
+    if (!d) return;
+    setHistory(d.history ?? []);
+    setSuggestions(d.suggestions ?? []);
+  }, []);
+
+  useEffect(() => {
+    loadSidebar();
+  }, [loadSidebar]);
 
   async function ask(q: string) {
     const trimmed = q.trim();
@@ -102,6 +137,8 @@ export function AskView({ onOpenPage }: { onOpenPage: (pageId: string) => void }
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "That question could not be answered.");
       setResult(data as Answer);
+      setOpenThread(null);
+      loadSidebar();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong.");
     } finally {
@@ -109,7 +146,83 @@ export function AskView({ onOpenPage }: { onOpenPage: (pageId: string) => void }
     }
   }
 
+  const shown = openThread
+    ? ({
+        question: openThread.question,
+        answer: openThread.answer,
+        passages: openThread.sources.map((x) => ({ ...x, section: null, text: "", trust: "", tokens: 0 })),
+        omitted: [],
+      } as unknown as Answer)
+    : result;
+
   return (
+    <div className="flex h-full min-h-0">
+      {/*
+       * History rail.
+       *
+       * Ask used to forget everything the moment you left the screen, which
+       * makes it a search field rather than somewhere you return to. What you
+       * have asked is also the most honest map of what you actually use the
+       * wiki for.
+       */}
+      <aside className="hidden w-60 shrink-0 flex-col border-r border-[var(--lore-border)] lg:flex">
+        <button
+          type="button"
+          onClick={() => {
+            setOpenThread(null);
+            setResult(null);
+            setQuestion("");
+            input.current?.focus();
+          }}
+          className="m-3 inline-flex h-9 items-center gap-2 rounded-lg border border-[var(--lore-border)] px-3 text-[13px] font-medium text-[var(--lore-text-secondary)] transition-colors hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)]"
+        >
+          <Plus size={13} />
+          New question
+        </button>
+
+        <div className="lore-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-3">
+          {history.length ? (
+            <p className="t-meta px-2 pb-1.5 pt-1 font-semibold uppercase tracking-[0.08em] text-[var(--lore-text-tertiary)]">
+              Asked before
+            </p>
+          ) : null}
+          {history.map((turn) => (
+            <div key={turn.id} className="group/row relative">
+              <button
+                type="button"
+                onClick={() => {
+                  setOpenThread(turn);
+                  setResult(null);
+                  setShowSources(false);
+                }}
+                className={cn(
+                  "w-full truncate rounded-lg px-2 py-1.5 pr-7 text-left text-[13px] transition-colors",
+                  openThread?.id === turn.id
+                    ? "bg-[var(--lore-surface-raised)] text-[var(--lore-text-primary)]"
+                    : "text-[var(--lore-text-secondary)] hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)]",
+                )}
+                title={turn.question}
+              >
+                {turn.question}
+              </button>
+              <button
+                type="button"
+                aria-label="Forget this question"
+                onClick={async () => {
+                  await fetch(`/api/asked?id=${encodeURIComponent(turn.id)}`, { method: "DELETE" });
+                  if (openThread?.id === turn.id) setOpenThread(null);
+                  loadSidebar();
+                }}
+                className="absolute right-1 top-1.5 rounded p-1 text-[var(--lore-text-tertiary)] opacity-0 transition-opacity hover:text-[var(--lore-danger)] group-hover/row:opacity-100"
+              >
+                <X size={11} />
+              </button>
+            </div>
+          ))}
+        </div>
+      </aside>
+
+      <div className="lore-scrollbar min-h-0 flex-1 overflow-y-auto">
     <div className="mx-auto max-w-3xl px-8 py-9">
       <header className="mb-5">
         <h1 className="text-[26px] font-semibold tracking-[-0.035em] text-[var(--lore-text-primary)]">
@@ -159,6 +272,38 @@ export function AskView({ onOpenPage }: { onOpenPage: (pageId: string) => void }
         </button>
       </form>
 
+      {/*
+        * Starter questions, drawn from this wiki rather than invented.
+        *
+        * A blank box over 1,500 pages is a hard prompt: you have to guess both
+        * what is in there and how to phrase it. These are built from the pages
+        * the vault leans on most, one per folder, so the first question someone
+        * asks is one their own wiki can answer.
+        */}
+      {!shown && !asking && suggestions.length ? (
+        <div className="mt-5">
+          <p className="t-meta mb-2 flex items-center gap-1.5 text-[var(--lore-text-tertiary)]">
+            <Sparkles size={12} />
+            Try one of these — built from your own pages
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {suggestions.map((q) => (
+              <button
+                key={q}
+                type="button"
+                onClick={() => {
+                  setQuestion(q);
+                  ask(q);
+                }}
+                className="rounded-xl border border-[var(--lore-border)] bg-[var(--lore-surface)] px-3.5 py-2.5 text-left text-[13.5px] leading-[1.5] text-[var(--lore-text-secondary)] transition-colors hover:border-[var(--lore-accent)]/40 hover:text-[var(--lore-text-primary)]"
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       {asking ? (
         <p className="t-meta mt-3 flex items-center gap-2 text-[var(--lore-text-tertiary)]">
           <Search size={12} />
@@ -172,11 +317,11 @@ export function AskView({ onOpenPage }: { onOpenPage: (pageId: string) => void }
         </p>
       ) : null}
 
-      {result && !asking ? (
+      {shown && !asking ? (
         <div className="mt-6">
-          {result.empty ? (
+          {shown.empty ? (
             <div className="rounded-xl border border-dashed border-[var(--lore-border)] px-5 py-8 text-center">
-              <p className="text-[14px] text-[var(--lore-text-secondary)]">{result.reason}</p>
+              <p className="text-[14px] text-[var(--lore-text-secondary)]">{shown.reason}</p>
               {/* It used to answer a failure with a writing assignment. Failing
                   to help and then handing out homework is the exact move that
                   killed the last two designs. */}
@@ -186,11 +331,11 @@ export function AskView({ onOpenPage }: { onOpenPage: (pageId: string) => void }
             </div>
           ) : (
             <>
-              {result.answer ? (
+              {shown.answer ? (
                 <div className="rounded-xl border border-[var(--lore-border)] bg-[var(--lore-surface)] px-5 py-4">
                   <p className="whitespace-pre-wrap text-[15px] leading-[1.7] text-[var(--lore-text-primary)]">
                     <Cited
-                      text={result.answer}
+                      text={shown.answer}
                       onJump={(n) => {
                         setShowSources(true);
                         // Sources may be collapsed; let them mount first.
@@ -208,7 +353,7 @@ export function AskView({ onOpenPage }: { onOpenPage: (pageId: string) => void }
                    model timed out, or errored — used to render an empty page
                    with a collapsed toggle under it and no explanation. */
                 <p className="rounded-xl border border-[var(--lore-border)] px-4 py-3 text-[13.5px] text-[var(--lore-text-secondary)]">
-                  {result.needsModel
+                  {shown.needsModel
                     ? "No local model is installed, so Lore found the right passages but cannot write the answer up. They are below — install a model with Ollama and it will answer properly."
                     : "Lore found the passages below but the local model did not answer in time. The sources are still here, and asking again usually works."}
                 </p>
@@ -228,12 +373,12 @@ export function AskView({ onOpenPage }: { onOpenPage: (pageId: string) => void }
                 />
                 {/* Not "from 1,528 pages" — that is boasting about corpus size
                     to someone whose complaint is that the corpus is too big. */}
-                Show sources ({result.passages.length})
+                Show sources ({shown.passages.length})
               </button>
 
               {showSources ? (
                 <div className="mt-2 space-y-2">
-                  {result.passages.map((p) => (
+                  {shown.passages.map((p) => (
                     <div
                       key={`${p.pageId}-${p.n}`}
                       id={`src-${p.n}`}
@@ -261,11 +406,11 @@ export function AskView({ onOpenPage }: { onOpenPage: (pageId: string) => void }
                     </div>
                   ))}
 
-                  {result.omitted.length ? (
+                  {shown.omitted.length ? (
                     <p className="t-meta pt-1 text-[var(--lore-text-tertiary)]">
                       Also matched but did not fit:{" "}
-                      {result.omitted.slice(0, 6).map((o) => o.title).join(", ")}
-                      {result.omitted.length > 6 ? `, +${result.omitted.length - 6} more` : ""}.
+                      {shown.omitted.slice(0, 6).map((o) => o.title).join(", ")}
+                      {shown.omitted.length > 6 ? `, +${shown.omitted.length - 6} more` : ""}.
                     </p>
                   ) : null}
                 </div>
@@ -274,6 +419,8 @@ export function AskView({ onOpenPage }: { onOpenPage: (pageId: string) => void }
           )}
         </div>
       ) : null}
+    </div>
+      </div>
     </div>
   );
 }

@@ -58,6 +58,9 @@ export type Brief = {
   items: BriefItem[];
   /** How many of `items` you have not been shown before. */
   fresh: number;
+  hasMore: boolean;
+  /** Everything that qualified in this window, not just what is shown. */
+  total: number;
   /** Subjects that moved across several pages at once. */
   threads: { subject: string; pages: string[]; titles: string[] }[];
   /** True when a local model wrote the lines rather than the fallback. */
@@ -357,6 +360,8 @@ export function buildBrief(
   limit = 8,
   agentByPath: Record<string, { agent: string } | undefined> = {},
   seen: Seen = {},
+  /** Skip this many ranked items — the cursor for scrolling further back. */
+  offset = 0,
 ): Brief {
   const collapsed = collapseEvents(withoutRenames(events));
   const byId = new Map(index.pages.map((p) => [p.relPath, p]));
@@ -431,12 +436,16 @@ export function buildBrief(
    * folder may take more than a third of the slots while other folders still
    * have something to say.
    */
-  const perFolder = Math.max(2, Math.ceil(limit / 3));
+  // The diversity cap applies to the whole window being paged through, not to
+      // each page of it — otherwise page two re-applies the cap to what is left
+      // and the spread collapses.
+  const window = limit + offset;
+  const perFolder = Math.max(2, Math.ceil(window / 3));
   const taken = new Map<string, number>();
   const items: BriefItem[] = [];
   for (const pass of [0, 1]) {
     for (const item of scored) {
-      if (items.length >= limit) break;
+      if (items.length >= window) break;
       if (items.includes(item)) continue;
       const folder = dirOf(item.relPath);
       const n = taken.get(folder) ?? 0;
@@ -452,8 +461,11 @@ export function buildBrief(
     until: Date.now(),
     events: events.length,
     pagesTouched: collapsed.size,
-    items,
-    fresh: items.filter((i) => !i.repeat).length,
+    items: items.slice(offset),
+    fresh: items.slice(offset).filter((i) => !i.repeat).length,
+    /** More ranked items exist beyond this page. */
+    hasMore: scored.length > window,
+    total: scored.length,
     threads: findThreads(scored.slice(0, 40)),
     synthesised: false,
   };

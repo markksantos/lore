@@ -36,6 +36,8 @@ type Brief = {
   pagesTouched: number;
   items: Item[];
   fresh: number;
+  hasMore: boolean;
+  total: number;
   threads: { subject: string; pages: string[]; titles: string[] }[];
   synthesised: boolean;
 };
@@ -44,7 +46,11 @@ const WINDOWS = [
   { days: 1, label: "Today" },
   { days: 7, label: "This week" },
   { days: 30, label: "This month" },
+  { days: 365, label: "Everything" },
 ];
+
+/** How many more the "keep reading" fetch pulls each time. */
+const PAGE = 8;
 
 const KIND_LABEL: Record<Item["kind"], string> = {
   created: "New",
@@ -74,6 +80,10 @@ export function BriefView({ onOpenPage }: { onOpenPage: (pageId: string) => void
    * allowed to write state.
    */
   const run = useRef(0);
+  const sentinel = useRef<HTMLDivElement | null>(null);
+  const [more, setMore] = useState<Item[]>([]);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [exhausted, setExhausted] = useState(false);
 
   const load = useCallback(async (window: number) => {
     const mine = ++run.current;
@@ -88,6 +98,8 @@ export function BriefView({ onOpenPage }: { onOpenPage: (pageId: string) => void
       setLoading(false);
       return;
     }
+    setMore([]);
+    setExhausted(false);
     setData(await plain.json());
     setLoading(false);
 
@@ -99,6 +111,43 @@ export function BriefView({ onOpenPage }: { onOpenPage: (pageId: string) => void
   useEffect(() => {
     load(days);
   }, [load, days]);
+
+  /*
+   * Keep reading.
+   *
+   * The brief showed eight items and stopped, so a week with sixty changes had
+   * fifty-two you could not reach at all — the ranking decided what you were
+   * allowed to see rather than what you saw first. Scrolling to the bottom pulls
+   * the next page, which makes it a record you can go back through rather than
+   * a snapshot that discards the rest.
+   */
+  const loadMore = useCallback(async () => {
+    if (loadingMore || exhausted || !data) return;
+    setLoadingMore(true);
+    const offset = data.items.length + more.length;
+    const response = await fetch(
+      `/api/brief?days=${days}&offset=${offset}&limit=${PAGE}&mark=0`,
+    ).catch(() => null);
+    setLoadingMore(false);
+    if (!response?.ok) return setExhausted(true);
+    const next = (await response.json()) as Brief;
+    if (!next.items.length) return setExhausted(true);
+    setMore((m) => [...m, ...next.items]);
+    if (!next.hasMore) setExhausted(true);
+  }, [data, more.length, days, loadingMore, exhausted]);
+
+  useEffect(() => {
+    const node = sentinel.current;
+    if (!node) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) loadMore();
+      },
+      { rootMargin: "400px 0px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [loadMore]);
 
   return (
     <div className="mx-auto max-w-3xl px-8 py-9">
@@ -162,7 +211,7 @@ export function BriefView({ onOpenPage }: { onOpenPage: (pageId: string) => void
         </p>
       ) : (
         <div className="divide-y divide-[var(--lore-border)] overflow-hidden rounded-xl border border-[var(--lore-border)] bg-[var(--lore-surface)]">
-          {data.items.map((item) => (
+          {[...data.items, ...more].map((item) => (
             <button
               key={item.pageId}
               type="button"
@@ -206,6 +255,26 @@ export function BriefView({ onOpenPage }: { onOpenPage: (pageId: string) => void
           ))}
         </div>
       )}
+
+      {data && !exhausted ? (
+        <div ref={sentinel} className="flex justify-center py-6">
+          {loadingMore ? (
+            <Loader2 size={15} className="animate-spin text-[var(--lore-text-tertiary)]" />
+          ) : (
+            <button
+              type="button"
+              onClick={loadMore}
+              className="t-meta rounded-lg px-3 py-1.5 text-[var(--lore-text-tertiary)] transition-colors hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)]"
+            >
+              Keep reading
+            </button>
+          )}
+        </div>
+      ) : data && more.length ? (
+        <p className="t-meta py-6 text-center text-[var(--lore-text-tertiary)]">
+          That is everything in this window.
+        </p>
+      ) : null}
 
       {data?.threads.length ? (
         <p className="t-meta mt-4 text-[var(--lore-text-tertiary)]">

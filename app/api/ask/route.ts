@@ -5,6 +5,7 @@ import { readLedger } from "@/lib/verify";
 import { buildPack, clampBudget } from "@/lib/pack";
 import { detectOllama, generate, recommendModel } from "@/lib/ollama";
 import { record } from "@/lib/usage";
+import { recordAsked } from "@/lib/asked";
 import { embeddingStatus, semanticSearch } from "@/lib/embeddings";
 
 export const runtime = "nodejs";
@@ -134,7 +135,23 @@ export async function POST(request: Request) {
         }).catch(() => "")
       : "";
 
+    const turn = {
+      id: `${Date.now().toString(36)}-${Math.round(Math.random() * 1e6).toString(36)}`,
+      at: Date.now(),
+      question,
+      answer: answer.trim() || null,
+      sources: pack.passages.slice(0, 12).map((p, i) => ({
+        n: i + 1,
+        pageId: p.pageId,
+        relPath: p.relPath,
+        title: p.title,
+      })),
+    };
+    // Kept so the sidebar can reopen this thread without a second model call.
+    await recordAsked(vault.root, turn).catch(() => {});
+
     return Response.json({
+      id: turn.id,
       question,
       // Without a local model this still returns the ranked passages, which is
       // a worse answer but a real one — and better than the search results the
