@@ -8,8 +8,20 @@ import { FolderDocument } from "@/components/lore/folder-document";
 import { SettingsView } from "@/components/lore/settings-view";
 import { BriefView } from "@/components/lore/brief-view";
 import { AskView } from "@/components/lore/ask-view";
+import { ReviewView } from "@/components/lore/review-view";
+import { InsightsView } from "@/components/lore/insights-view";
+import { ExploreShell } from "@/components/lore/explore-shell";
+import { ConnectionsView } from "@/components/lore/connections-view";
 
-export type View = "brief" | "ask" | "wiki" | "settings";
+export type View =
+  | "brief"
+  | "ask"
+  | "wiki"
+  | "review"
+  | "insights"
+  | "explore"
+  | "connections"
+  | "settings";
 
 export function VaultApp({
   initialIndex,
@@ -127,6 +139,14 @@ export function VaultApp({
       ) : null}
       {view === "brief" ? <BriefView onOpenPage={openPage} /> : null}
       {view === "ask" ? <AskView onOpenPage={openPage} /> : null}
+      {view === "review" ? <ReviewView onOpenPage={openPage} /> : null}
+      {view === "insights" ? <InsightsView onOpenPage={openPage} /> : null}
+      {view === "explore" ? (
+        <ExploreShell index={index} pageTitles={pageTitles} onOpenPage={openPage} />
+      ) : null}
+      {view === "connections" ? (
+        <ConnectionsView root={index.root} installDir={installDir} />
+      ) : null}
       {view === "settings" ? (
         <SettingsView index={index} onOpenPage={openPage} onChanged={refresh} />
       ) : null}

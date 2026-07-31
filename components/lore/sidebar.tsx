@@ -32,6 +32,10 @@ export const VIEW_LABEL: Record<View, string> = {
   brief: "Brief",
   ask: "Ask",
   wiki: "Wiki",
+  review: "Changes",
+  insights: "Insights",
+  explore: "Explore",
+  connections: "Connections",
   settings: "Settings",
 };
 
@@ -56,10 +60,26 @@ export const VIEW_LABEL: Record<View, string> = {
  * What is left is the two things that give you something (Brief, Ask), the
  * thing you came for (Wiki), and the place you configure it once.
  */
+/*
+ * Order is an opinion; absence is a decision, and it was the wrong one.
+ *
+ * These were deleted on the theory that a lens is not a reason to open an app.
+ * That confused "not the headline" with "not useful" — and Connections is not a
+ * lens at all: it is how an agent gets connected over MCP, so removing it broke
+ * the setup path the rest of the product depends on.
+ *
+ * Brief and Ask stay first because they are what gives you something without
+ * asking for anything. Everything below them is a place you go deliberately,
+ * which is a reason to rank it lower, not to remove it.
+ */
 const NAV: { id: View; icon: typeof BookText }[] = [
   { id: "brief", icon: Newspaper },
   { id: "ask", icon: MessageCircleQuestion },
   { id: "wiki", icon: BookText },
+  { id: "review", icon: ShieldCheck },
+  { id: "insights", icon: BarChart3 },
+  { id: "explore", icon: Compass },
+  { id: "connections", icon: Plug },
   { id: "settings", icon: Settings },
 ];
 

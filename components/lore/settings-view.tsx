@@ -5,6 +5,7 @@ import { Loader2, RefreshCw, Unlink } from "lucide-react";
 import type { VaultIndex } from "@/lib/types";
 import { AiView } from "@/components/lore/ai-view";
 import { SafetyView, type Safety } from "@/components/lore/safety-view";
+import { PolicyView } from "@/components/lore/policy-view";
 import { RemoteView } from "@/components/lore/remote-view";
 import { paletteVars } from "@/lib/palette";
 import { cn, count, formatCount } from "@/lib/utils";
@@ -126,6 +127,10 @@ export function SettingsView({
           already holding. */}
       <div className="mt-4">
         <SafetyView safety={safety} onChange={setSafety} />
+      </div>
+
+      <div className="mt-8">
+        <PolicyView safety={safety} />
       </div>
 
       <div className="mt-8">
