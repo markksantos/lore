@@ -151,8 +151,23 @@ export function BriefView({ onOpenPage }: { onOpenPage: (pageId: string) => void
 
   return (
     <div className="mx-auto max-w-3xl px-8 py-9">
-      <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
-        <div>
+      {/*
+        * The window pills are anchored, not floated.
+        *
+        * This was `flex-wrap` with an unconstrained text column, so the row
+        * reflowed on the CONTENT of the subtitle: "1 new item … from 560
+        * writes." kept the pills on the title line, and "8 new items … from
+        * 1,062 writes." pushed them onto a second row where they landed on top
+        * of the sentence they had displaced. The controls appeared to move
+        * every time the numbers changed.
+        *
+        * Now the text column shrinks (`min-w-0 flex-1`) and wraps inside
+        * itself, and the controls never shrink and never wrap — so they sit in
+        * the same place whatever the copy says. Below `sm` the two stack
+        * deliberately rather than by accident.
+        */}
+      <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 flex-1">
           <h1 className="text-[26px] font-semibold tracking-[-0.035em] text-[var(--lore-text-primary)]">
             What your agents learned
           </h1>
@@ -167,7 +182,7 @@ export function BriefView({ onOpenPage }: { onOpenPage: (pageId: string) => void
           </p>
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1 self-start">
           {WINDOWS.map((w) => (
             <button
               key={w.days}
