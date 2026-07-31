@@ -189,7 +189,18 @@ export function AskView({ onOpenPage }: { onOpenPage: (pageId: string) => void }
               {result.answer ? (
                 <div className="rounded-xl border border-[var(--lore-border)] bg-[var(--lore-surface)] px-5 py-4">
                   <p className="whitespace-pre-wrap text-[15px] leading-[1.7] text-[var(--lore-text-primary)]">
-                    {result.answer}
+                    <Cited
+                      text={result.answer}
+                      onJump={(n) => {
+                        setShowSources(true);
+                        // Sources may be collapsed; let them mount first.
+                        requestAnimationFrame(() =>
+                          document
+                            .getElementById(`src-${n}`)
+                            ?.scrollIntoView({ behavior: "smooth", block: "center" }),
+                        );
+                      }}
+                    />
                   </p>
                 </div>
               ) : (
