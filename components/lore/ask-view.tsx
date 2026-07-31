@@ -41,6 +41,44 @@ type Answer = {
   pagesConsidered?: number;
 };
 
+/**
+ * Turn `[3]` and `[1, 4, 7]` in the answer into buttons that open that source.
+ *
+ * The header promises you can check an answer in one click. Before this the
+ * citations were plain text and there could be thirty sources, so checking [13]
+ * meant expanding the list and counting down to it — which is not one click,
+ * and is why nobody would have done it.
+ */
+function Cited({ text, onJump }: { text: string; onJump: (n: number) => void }) {
+  const parts = text.split(/(\[\d+(?:\s*,\s*\d+)*\])/g);
+  return (
+    <>
+      {parts.map((part, i) => {
+        const match = /^\[(\d+(?:\s*,\s*\d+)*)\]$/.exec(part);
+        if (!match) return <span key={i}>{part}</span>;
+        const numbers = match[1].split(/\s*,\s*/).map(Number);
+        return (
+          <span key={i}>
+            {numbers.map((n, j) => (
+              <span key={n}>
+                {j > 0 ? ", " : ""}
+                <button
+                  type="button"
+                  onClick={() => onJump(n)}
+                  title={`Show source ${n}`}
+                  className="rounded px-1 text-[13px] font-medium text-[var(--lore-accent)] tabular-nums transition-colors hover:bg-[var(--lore-accent-tint)]"
+                >
+                  {n}
+                </button>
+              </span>
+            ))}
+          </span>
+        );
+      })}
+    </>
+  );
+}
+
 export function AskView({ onOpenPage }: { onOpenPage: (pageId: string) => void }) {
   const [question, setQuestion] = useState("");
   const [asking, setAsking] = useState(false);
@@ -187,7 +225,8 @@ export function AskView({ onOpenPage }: { onOpenPage: (pageId: string) => void }
                   {result.passages.map((p) => (
                     <div
                       key={`${p.pageId}-${p.n}`}
-                      className="rounded-xl border border-[var(--lore-border)] bg-[var(--lore-surface)] px-4 py-3"
+                      id={`src-${p.n}`}
+                      className="scroll-mt-6 rounded-xl border border-[var(--lore-border)] bg-[var(--lore-surface)] px-4 py-3"
                     >
                       <button
                         type="button"

@@ -3,7 +3,7 @@ import { fail, requireVault } from "@/lib/server";
 import { getIndex } from "@/lib/wiki";
 import { readLedger } from "@/lib/verify";
 import { readPolicy } from "@/lib/policy";
-import { buildPack, renderPack } from "@/lib/pack";
+import { buildPack, clampBudget, renderPack } from "@/lib/pack";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,7 +28,7 @@ export async function GET(request: Request) {
     const query = params.get("q")?.trim() ?? "";
     if (!query) return fail(new Error("Pass ?q="));
 
-    const budget = Math.min(120_000, Math.max(500, Number(params.get("budget") ?? 8000) || 8000));
+    const budget = clampBudget(params.get("budget"));
 
     const [index, ledger, policy] = await Promise.all([
       getIndex(vault.root),

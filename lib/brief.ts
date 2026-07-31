@@ -142,6 +142,17 @@ export function scoreForBrief(
     reasons.push(`${inbound} pages depend on it`);
   }
 
+  /*
+   * Recency, as a multiplier rather than a tiebreaker.
+   *
+   * `event.at` was read nowhere in this function — it only broke ties in the
+   * final sort. So on a 30-day window a page created four weeks ago outranked a
+   * rewrite from an hour ago, in a feature whose entire premise is telling you
+   * what just happened.
+   */
+  const ageDays = Math.max(0, (Date.now() - event.at) / 86_400_000);
+  score *= 1 / (1 + ageDays * 0.12);
+
   // Captured material is the bulk of a real vault and the least briefable part
   // of it. Not excluded — a new transcript can matter — just made to earn it.
   if (RAW_HINT.test(page.relPath)) score *= 0.35;
@@ -226,8 +237,16 @@ export function findThreads(
 ): { subject: string; pages: string[]; titles: string[] }[] {
   const byFolder = new Map<string, { pages: string[]; titles: string[] }>();
   for (const item of items) {
-    const folder = item.relPath.split("/").slice(0, 2).join("/");
-    if (!folder.includes("/")) continue;
+    /*
+     * The containing folder, not the first two path segments.
+     *
+     * `slice(0, 2)` made `concepts/foo.md` its own group, so pages in the same
+     * folder never grouped and the only thread this could ever emit was
+     * "conversations" — the one folder on this vault nested deeply enough to
+     * work by accident.
+     */
+    const folder = dirOf(item.relPath);
+    if (!folder) continue;
     const entry = byFolder.get(folder) ?? { pages: [], titles: [] };
     entry.pages.push(item.pageId);
     entry.titles.push(item.title);
@@ -419,7 +438,7 @@ export function buildBrief(
     for (const item of scored) {
       if (items.length >= limit) break;
       if (items.includes(item)) continue;
-      const folder = item.relPath.split("/").slice(0, 2).join("/");
+      const folder = dirOf(item.relPath);
       const n = taken.get(folder) ?? 0;
       // Second pass ignores the cap, so a quiet week still fills the brief.
       if (pass === 0 && n >= perFolder) continue;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowRight, Loader2, RefreshCw, Sparkles } from "lucide-react";
 import { cn, count, relativeTime } from "@/lib/utils";
 
@@ -59,17 +59,41 @@ export function BriefView({ onOpenPage }: { onOpenPage: (pageId: string) => void
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
 
+  /**
+   * Two passes: show it, then improve it.
+   *
+   * The whole brief used to sit behind one request that waited on eight local
+   * model calls — a blank spinner for twelve seconds on the app's home screen,
+   * while the fallback lines were ready in under one. So the plain brief is
+   * fetched first and rendered immediately, and the written version replaces it
+   * when it arrives. The rows do not move; only the sentences get better.
+   *
+   * `run` guards against the window toggle: clicking Today, then Week, then
+   * Month fired three long requests and whichever RESOLVED last won, so the
+   * pill and the content could disagree indefinitely. Only the newest run is
+   * allowed to write state.
+   */
+  const run = useRef(0);
+
   const load = useCallback(async (window: number) => {
+    const mine = ++run.current;
     setLoading(true);
     setFailed(false);
-    const response = await fetch(`/api/brief?days=${window}`).catch(() => null);
-    if (!response?.ok) {
+
+    // `mark=0` — the fast pass must not consume the news before it is shown.
+    const plain = await fetch(`/api/brief?days=${window}&plain=1&mark=0`).catch(() => null);
+    if (mine !== run.current) return;
+    if (!plain?.ok) {
       setFailed(true);
       setLoading(false);
       return;
     }
-    setData(await response.json());
+    setData(await plain.json());
     setLoading(false);
+
+    const written = await fetch(`/api/brief?days=${window}`).catch(() => null);
+    if (mine !== run.current || !written?.ok) return;
+    setData(await written.json());
   }, []);
 
   useEffect(() => {

@@ -67,7 +67,7 @@ export function splitSections(plain: string, maxTokens = 400): { heading: string
     const text = buffer.join("\n").trim();
     buffer = [];
     if (!text) return;
-    if (countTokens(text) <= maxTokens) {
+    if (tokensFor(text) <= maxTokens) {
       out.push({ heading, text });
       return;
     }
@@ -75,7 +75,7 @@ export function splitSections(plain: string, maxTokens = 400): { heading: string
     let chunk: string[] = [];
     for (const para of text.split(/\n{2,}/)) {
       const candidate = [...chunk, para].join("\n\n");
-      if (chunk.length && countTokens(candidate) > maxTokens) {
+      if (chunk.length && tokensFor(candidate) > maxTokens) {
         out.push({ heading, text: chunk.join("\n\n") });
         chunk = [para];
       } else {
@@ -113,7 +113,7 @@ export function splitSections(plain: string, maxTokens = 400): { heading: string
   let pending = 0; // running token count of the tail, so this stays linear
   for (const section of out) {
     const last = merged[merged.length - 1];
-    const size = countTokens(section.text);
+    const size = tokensFor(section.text);
     // Merge when EITHER side is a crumb. Checking only the tail let every
     // trailing "## Related" survive whenever it followed a full-size section,
     // which on this vault was most of them.
@@ -129,8 +129,54 @@ export function splitSections(plain: string, maxTokens = 400): { heading: string
   return merged;
 }
 
+/**
+ * The one place the budget is bounded.
+ *
+ * /api/ask capped at 24,000 and /api/pack at 120,000 — the same function, the
+ * same vault, two different ceilings, so the answer you got depended on which
+ * door you came through. The lower bound also differed (1,000 vs 500).
+ *
+ * 120k is the ceiling because an agent with a large window may legitimately ask
+ * for one; the human-facing default stays 8k.
+ */
+export function clampBudget(value: unknown, fallback = 8_000): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.min(120_000, Math.max(500, n)) : fallback;
+}
+
 /** Below this a passage is a fragment, not an answer. */
 const MIN_TOKENS = 120;
+
+/*
+ * Per-page work that does not depend on the question, kept between queries.
+ *
+ * Splitting a page into passages and BPE-encoding every one of them is the
+ * expensive half of answering, and none of it varies with what you asked — yet
+ * it ran in full on every request, over a 2.3M-token corpus. That was most of
+ * the thirty seconds. So was `idfFor`, which lowercased the entire corpus once
+ * per query term: a seven-word question meant seven passes over ten megabytes.
+ *
+ * Keyed by page id plus content length, which is not a hash but is wrong only
+ * if an edit leaves the byte count identical — in which case the passages are
+ * near enough the same anyway. Bounded, because a long-lived process on a big
+ * vault would otherwise hold the whole corpus twice.
+ */
+type PageCache = { sections: { heading: string | null; text: string }[]; lower: string };
+const pageCache = new Map<string, PageCache>();
+const PAGE_CACHE_MAX = 4_000;
+
+function cached(page: PackSource): PageCache {
+  const key = `${page.id}:${page.plain.length}`;
+  const hit = pageCache.get(key);
+  if (hit) return hit;
+  const entry: PageCache = {
+    sections: splitSections(page.plain),
+    lower: page.plain.toLowerCase(),
+  };
+  if (pageCache.size > PAGE_CACHE_MAX) pageCache.clear();
+  pageCache.set(key, entry);
+  return entry;
+}
 
 /*
  * Question words carry no evidence but survive IDF, because a wiki genuinely
@@ -203,6 +249,18 @@ function relevance(
  * wrong in at least one of those.
  */
 /** Whole-word occurrences, Unicode-aware, without building a regex per call. */
+/** Memoised token count. The tokenizer is the single hottest call in a query. */
+const tokenCache = new Map<string, number>();
+function tokensFor(text: string): number {
+  const key = text.length > 200 ? `${text.length}:${text.slice(0, 120)}` : text;
+  const hit = tokenCache.get(key);
+  if (hit !== undefined) return hit;
+  const n = countTokens(text);
+  if (tokenCache.size > 20_000) tokenCache.clear();
+  tokenCache.set(key, n);
+  return n;
+}
+
 function countWord(hay: string, term: string): number {
   let n = 0;
   let from = 0;
@@ -224,7 +282,7 @@ function idfFor(pages: PackSource[], terms: string[]): Map<string, number> {
     let seen = 0;
     for (const page of pages) {
       if (
-        countWord(page.plain.toLowerCase(), term) > 0 ||
+        countWord(cached(page).lower, term) > 0 ||
         countWord(page.title.toLowerCase(), term) > 0
       ) {
         seen++;
@@ -260,6 +318,12 @@ export function buildPack(
   ledger: Ledger,
   hashes: Map<string, string>,
   budget = 8_000,
+  /**
+   * Optional per-page semantic similarity, 0..1. Additive to the page term, so
+   * a page the embedding model likes surfaces even when the wording missed —
+   * without letting it outrank a page that literally answers the question.
+   */
+  semanticBoost: Map<string, number> = new Map(),
 ): Pack {
   /*
    * Query terms.
@@ -292,14 +356,17 @@ export function buildPack(
      * subject. The page is evidence about the passage, so it carries weight —
      * damped with a log so a long page cannot win on repetition alone.
      */
-    const pageScore = Math.log1p(
-      relevance(page.plain, terms, page.title, null, idf),
-    ) * 6;
+    const pageScore =
+      Math.log1p(relevance(page.plain, terms, page.title, null, idf)) * 6 +
+      (semanticBoost.get(page.id) ?? 0) * 14;
 
-    for (const section of splitSections(page.plain)) {
+    const semantic = semanticBoost.get(page.id) ?? 0;
+    for (const section of cached(page).sections) {
       const own = relevance(section.text, terms, page.title, section.heading, idf);
-      if (own <= 0) continue;
-      const tokens = countTokens(section.text);
+      // A page the embedding model matched may contain none of the query's
+      // literal words — which is the entire point of having it.
+      if (own <= 0 && semantic <= 0) continue;
+      const tokens = tokensFor(section.text);
       scored.push({
         pageId: page.id,
         relPath: page.relPath,

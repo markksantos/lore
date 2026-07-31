@@ -2,9 +2,10 @@ import crypto from "node:crypto";
 import { fail, requireVault } from "@/lib/server";
 import { getIndex } from "@/lib/wiki";
 import { readLedger } from "@/lib/verify";
-import { buildPack } from "@/lib/pack";
+import { buildPack, clampBudget } from "@/lib/pack";
 import { detectOllama, generate, recommendModel } from "@/lib/ollama";
 import { record } from "@/lib/usage";
+import { embeddingStatus, semanticSearch } from "@/lib/embeddings";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,23 +54,32 @@ export async function POST(request: Request) {
     const question = (body.question ?? "").trim();
     if (!question) return fail(new Error("Ask something."));
 
-    /*
-     * Finite, or the default.
-     *
-     * `Math.max(1000, "abc")` is NaN, and every later `used + tokens > NaN`
-     * comparison is false — so a non-numeric budget disabled the budget check
-     * entirely and returned the whole corpus. Measured: a 9.7 MB response
-     * carrying 2.3M tokens, which was then fed to the local model as a prompt.
-     */
-    const requested = Number(body.budget);
-    const budget = Number.isFinite(requested)
-      ? Math.min(24_000, Math.max(1_000, requested))
-      : 8_000;
+    // Shared clamp — see lib/pack. A non-finite budget used to disable the
+    // check entirely and return the whole 2.3M-token corpus.
+    const budget = clampBudget(body.budget);
 
     const [index, ledger] = await Promise.all([
       getIndex(vault.root),
       readLedger(vault.root),
     ]);
+
+    /*
+     * Semantic recall, folded in before ranking.
+     *
+     * 517 lines of local embeddings shipped in this repo and Ask never called
+     * them — it was pure keyword ranking, which loses precisely the case a
+     * person asking from memory produces: the right words for the idea and the
+     * wrong words for the page. Search already blended the two; Ask did not.
+     *
+     * Strictly additive and never blocking. If the index is still building or
+     * the model is not resident, `semanticSearch` returns nothing and this is a
+     * no-op — a keyword answer now beats a semantic answer later.
+     */
+    let semanticBoost = new Map<string, number>();
+    if (embeddingStatus().ready) {
+      const hits = await semanticSearch(vault.root, question, 24).catch(() => []);
+      semanticBoost = new Map(hits.map((h) => [h.id, h.score]));
+    }
 
     const hashes = new Map(index.pages.map((p) => [p.id, hashOf(p.plain)]));
     const pack = buildPack(
@@ -84,6 +94,7 @@ export async function POST(request: Request) {
       ledger,
       hashes,
       budget,
+      semanticBoost,
     );
 
     // Recorded either way. A question that found nothing is the most useful
