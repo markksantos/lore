@@ -166,3 +166,36 @@ export function stripLeadingTitle(source: string, title: string): string {
   if (heading !== title.trim().toLowerCase()) return source;
   return source.slice(0, match.index).trimStart() + source.slice(match.index! + match[0].length);
 }
+
+
+/**
+ * Render an answer from Ask.
+ *
+ * Deliberately not `renderMarkdown`: that one resolves wikilinks, tags and
+ * embeds against the vault, which is right for a page and wrong for a sentence
+ * the model just wrote — a stray `[[` in an answer should not become a link to
+ * a page nobody cited.
+ *
+ * The answer was previously printed as plain text, so a model that replied with
+ * a bulleted list rendered as a wall of literal asterisks and `**bold**`. The
+ * system prompt asks for no markdown and the model emits it anyway, which is
+ * the normal state of the world: render it rather than argue with it.
+ *
+ * Citations become buttons. `[3]` and `[1, 4, 7]` are turned into spans the
+ * view binds a single delegated click handler to, which is why this returns
+ * HTML rather than React — one listener on the container beats one per
+ * citation, and there can be thirty.
+ */
+export function renderAnswer(markdown: string): string {
+  const html = marked.parse(markdown, { async: false }) as string;
+  return html.replace(/\[(\d+(?:\s*,\s*\d+)*)\]/g, (_match, group: string) => {
+    const numbers = group.split(/\s*,\s*/).map((n) => n.trim());
+    const chips = numbers
+      .map(
+        (n) =>
+          `<button type="button" class="lore-cite" data-cite="${n}" title="Show source ${n}">${n}</button>`,
+      )
+      .join("");
+    return chips;
+  });
+}

@@ -665,3 +665,50 @@
   color: var(--lore-danger);
   font-family: var(--font-mono), monospace;
 }
+
+
+/* A citation inside an answer. Sits on the baseline like a footnote marker
+   rather than a chip, so a sentence with four of them still reads as a
+   sentence. */
+.lore-cite {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.15rem;
+  height: 1.15rem;
+  margin: 0 0.1rem;
+  padding: 0 0.25rem;
+  border-radius: 0.3rem;
+  background: var(--lore-accent-tint);
+  color: var(--lore-accent);
+  font-size: 11.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  vertical-align: baseline;
+  transition: background-color 120ms ease;
+}
+.lore-cite:hover {
+  background: var(--lore-accent);
+  color: #fff;
+}
+
+/* Answer prose. Tighter than page prose — an answer is three paragraphs, not a
+   document, so it should not carry a document's vertical rhythm. */
+.lore-answer > * + * { margin-top: 0.85em; }
+.lore-answer ul, .lore-answer ol { padding-left: 1.25rem; }
+.lore-answer ul { list-style: disc; }
+.lore-answer ol { list-style: decimal; }
+.lore-answer li + li { margin-top: 0.3em; }
+.lore-answer strong { font-weight: 600; color: var(--lore-text-primary); }
+.lore-answer code {
+  padding: 0.1em 0.35em;
+  border-radius: 0.3rem;
+  background: var(--lore-surface-raised);
+  font-family: var(--font-mono), monospace;
+  font-size: 0.9em;
+}
+.lore-answer blockquote {
+  padding-left: 0.9rem;
+  border-left: 2px solid var(--lore-border-strong);
+  color: var(--lore-text-secondary);
+}
