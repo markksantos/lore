@@ -1,6 +1,7 @@
 import { countTokens } from "@/lib/tokens";
 import { trustOf, type Ledger } from "@/lib/verify";
 import type { Attribution } from "@/lib/harness";
+import { extractClaims, findConflicts } from "@/lib/claims";
 
 /**
  * The analyses that make a wiki improve rather than merely be measured.
@@ -24,90 +25,70 @@ export type AnalysisPage = {
 
 // ------------------------------------------------------------ contradictions
 
-export type Contradiction = {
-  subject: string;
-  claims: { pageId: string; relPath: string; title: string; text: string; trust: string; at: number }[];
-};
-
 /**
  * Numeric claims about the same subject that disagree.
  *
- * Two agents six weeks apart will write "the timeout is 30 seconds" and "the
- * timeout is 5 seconds" on different pages, and nothing in a wiki notices. This
- * is the narrow, high-precision case: same subject phrase, different number.
- *
- * Deliberately not an LLM pass. A model asked to find contradictions across
- * 1,400 pages will confabulate them, and a false contradiction costs more
- * attention than a missed one — the whole feature is only useful if a flagged
- * pair is nearly always genuinely inconsistent.
+ * The implementation moved to lib/claims.ts. What was here matched
+ * `subject is NUMBER unit` and grouped by the literal subject string, which
+ * scored 0 of 9 known disagreements on the real wiki and produced one group
+ * keyed on the pronoun "those". This wrapper keeps the shape its callers
+ * expect and adds the trust state, which claims.ts has no business knowing
+ * about.
  */
-const CLAIM = /\b([a-z][a-z\s-]{3,40}?)\s+(?:is|are|was|were|=|:)\s+(?:about\s+|roughly\s+|~)?([\d.,]+)\s*([a-z%]{0,12})/gi;
-
-const NOISE = new Set(["it", "this", "that", "there", "he", "she", "they", "which", "what"]);
+export type Contradiction = {
+  subject: string;
+  kind: string;
+  /** 0-1. Shown, because a 0.5 and a 0.95 deserve different attention. */
+  confidence: number;
+  /** True when the claims come from pages about different subjects. */
+  crossSubject: boolean;
+  claims: {
+    pageId: string;
+    relPath: string;
+    title: string;
+    text: string;
+    line: number;
+    value: number;
+    unit: string;
+    trust: string;
+    at: number;
+  }[];
+};
 
 export function findContradictions(
   pages: AnalysisPage[],
   ledger: Ledger,
   hashes: Map<string, string>,
   limit = 30,
+  includeCrossSubject = false,
 ): Contradiction[] {
-  type Claim = { pageId: string; relPath: string; title: string; text: string; value: string; unit: string; at: number };
-  const bySubject = new Map<string, Claim[]>();
+  const claims = pages.flatMap((page) =>
+    extractClaims({
+      id: page.id,
+      relPath: page.relPath,
+      title: page.title,
+      plain: page.plain,
+      mtime: page.mtime,
+    }),
+  );
 
-  for (const page of pages) {
-    for (const match of page.plain.matchAll(CLAIM)) {
-      const subject = match[1].trim().toLowerCase().replace(/\s+/g, " ");
-      if (subject.length < 4 || NOISE.has(subject.split(" ")[0])) continue;
-
-      const at = match.index ?? 0;
-      const lineStart = page.plain.lastIndexOf("\n", at) + 1;
-      const lineEnd = page.plain.indexOf("\n", at);
-      bySubject.set(subject, [
-        ...(bySubject.get(subject) ?? []),
-        {
-          pageId: page.id,
-          relPath: page.relPath,
-          title: page.title,
-          text: page.plain.slice(lineStart, lineEnd === -1 ? undefined : lineEnd).trim().slice(0, 200),
-          value: match[2].replace(/,/g, ""),
-          unit: (match[3] ?? "").toLowerCase(),
-          at: page.mtime,
-        },
-      ]);
-    }
-  }
-
-  const out: Contradiction[] = [];
-  for (const [subject, claims] of bySubject) {
-    // Same unit only. "30 seconds" and "30 minutes" are not a contradiction,
-    // and comparing across units would flag every one of them.
-    const byUnit = new Map<string, Claim[]>();
-    for (const c of claims) byUnit.set(c.unit, [...(byUnit.get(c.unit) ?? []), c]);
-
-    for (const group of byUnit.values()) {
-      const distinct = new Set(group.map((c) => c.value));
-      const pages_ = new Set(group.map((c) => c.pageId));
-      if (distinct.size < 2 || pages_.size < 2) continue;
-
-      out.push({
-        subject,
-        claims: group.map((c) => ({
-          pageId: c.pageId,
-          relPath: c.relPath,
-          title: c.title,
-          text: c.text,
-          trust: trustOf(ledger, c.pageId, hashes.get(c.pageId) ?? ""),
-          at: c.at,
-        })),
-      });
-    }
-  }
-
-  // Most recently touched first: a disagreement involving a page edited
-  // yesterday is far more likely to be live than one between two old notes.
-  return out
-    .sort((a, b) => Math.max(...b.claims.map((c) => c.at)) - Math.max(...a.claims.map((c) => c.at)))
-    .slice(0, limit);
+  return findConflicts(claims, limit, includeCrossSubject).map((conflict) => ({
+    subject: conflict.subject,
+    kind: conflict.kind,
+    confidence: conflict.confidence,
+    crossSubject: conflict.crossSubject,
+    claims: conflict.claims.map((c) => ({
+      pageId: c.pageId,
+      relPath: c.relPath,
+      title: c.title,
+      text: c.text,
+      line: c.line,
+      value: c.value,
+      unit: c.unit,
+      trust: trustOf(ledger, c.pageId, hashes.get(c.pageId) ?? ""),
+      at: c.at,
+    })),
+  }));
 }
 
 // ------------------------------------------------------------- calibration

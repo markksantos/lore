@@ -119,6 +119,8 @@ function readPolicy(name: string): Policy {
       defaultDays: parsed.defaultDays ?? DEFAULT_POLICY.defaultDays,
       decayDays: parsed.decayDays ?? DEFAULT_POLICY.decayDays,
       quarantined: Array.isArray(parsed.quarantined) ? parsed.quarantined : [],
+      protectedPaths: Array.isArray(parsed.protectedPaths) ? parsed.protectedPaths : [],
+      quarantineFolders: Array.isArray(parsed.quarantineFolders) ? parsed.quarantineFolders : [],
       // Never true here whatever is stored: stamping edits the markdown, and
       // this folder was opened read-only. See the PUT below.
       stampFrontmatter: false,
@@ -224,6 +226,10 @@ async function handle(url: URL, init?: RequestInit): Promise<Response | null> {
         defaultDays: Math.max(1, Math.round((body.defaultDays as number) ?? current.defaultDays)),
         decayDays: Math.max(1, Math.round((body.decayDays as number) ?? current.decayDays)),
         quarantined: (body.quarantined as string[]) ?? current.quarantined,
+        protectedPaths:
+          ((body.protectedPaths as string[]) ?? current.protectedPaths ?? []).filter(Boolean),
+        quarantineFolders:
+          ((body.quarantineFolders as string[]) ?? current.quarantineFolders ?? []).filter(Boolean),
         /*
          * Refused, not stored.
          *

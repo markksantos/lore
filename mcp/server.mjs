@@ -270,7 +270,9 @@ async function runTool(name, args = {}) {
           `\`${args.path}\` is outside \`${SCOPE}\`, the part of the wiki this agent can read.`,
         );
       }
-      const raw = await callLore(`/api/page?path=${encodeURIComponent(args.path ?? "")}`);
+      const raw = await callLore(
+        `/api/page?for=agent&path=${encodeURIComponent(args.path ?? "")}`,
+      );
       const data = JSON.parse(raw);
       report({ t: "read", page: data.page.id });
       const linked = data.backlinks.map((p) => p.relPath);

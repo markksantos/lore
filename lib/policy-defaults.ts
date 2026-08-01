@@ -42,6 +42,30 @@ export type Policy = {
    * diff in exchange for a queryable field, which is a trade only they can make.
    */
   stampFrontmatter: boolean;
+  /**
+   * Folders where an agent write is an event rather than a line in a log.
+   *
+   * A wiki holds things that are merely private and things that are
+   * radioactive, and the difference is not visible to a tool that treats every
+   * page as a page. A write into `raw/finance/` should be noticed the day it
+   * happens; a write into `notes/` should not.
+   *
+   * Matched as path prefixes. Empty by default, because guessing which of
+   * somebody's folders are sensitive is how you produce alerts they learn to
+   * dismiss.
+   */
+  protectedPaths: string[];
+  /**
+   * Folders whose new pages are held back from agents until promoted.
+   *
+   * Quarantine already existed per page, applied after a human read something
+   * wrong. This is the same idea one step earlier: a landing area agents can
+   * write into freely, which does not become part of what the wiki tells
+   * anyone until somebody looks. It is not the approval gate returning — the
+   * write always succeeds — it is Lore declining to SERVE what nobody has read,
+   * which is the one thing it genuinely controls.
+   */
+  quarantineFolders: string[];
 };
 
 export const DEFAULT_POLICY: Policy = {
@@ -56,6 +80,8 @@ export const DEFAULT_POLICY: Policy = {
   decayDays: 120,
   quarantined: [],
   stampFrontmatter: false,
+  protectedPaths: [],
+  quarantineFolders: [],
 };
 
 

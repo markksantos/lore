@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
+  Eye,
   BookText,
   ChevronRight,
   Compass,
@@ -33,6 +34,7 @@ export const VIEW_LABEL: Record<View, string> = {
   ask: "Ask",
   wiki: "Wiki",
   review: "Changes",
+  watch: "Watch",
   insights: "Insights",
   explore: "Explore",
   connections: "Connections",
@@ -77,6 +79,9 @@ const NAV: { id: View; icon: typeof BookText }[] = [
   { id: "ask", icon: MessageCircleQuestion },
   { id: "wiki", icon: BookText },
   { id: "review", icon: ShieldCheck },
+  // Watch sits above Insights because it is the only screen with a queue on
+  // it: Insights is something you read, Watch is something you answer.
+  { id: "watch", icon: Eye },
   { id: "insights", icon: BarChart3 },
   { id: "explore", icon: Compass },
   { id: "connections", icon: Plug },

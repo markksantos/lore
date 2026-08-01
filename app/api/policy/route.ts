@@ -55,6 +55,13 @@ export async function PUT(request: Request) {
       decayDays: Math.max(1, Math.round(body.decayDays ?? current.decayDays)),
       quarantined: body.quarantined ?? current.quarantined,
       stampFrontmatter: body.stampFrontmatter ?? current.stampFrontmatter,
+      /** Prefixes only: a trailing-slash-free entry would match siblings. */
+      protectedPaths: (body.protectedPaths ?? current.protectedPaths ?? [])
+        .map((f) => f.trim())
+        .filter(Boolean),
+      quarantineFolders: (body.quarantineFolders ?? current.quarantineFolders ?? [])
+        .map((f) => f.trim())
+        .filter(Boolean),
     };
 
     await writePolicy(vault.root, next);

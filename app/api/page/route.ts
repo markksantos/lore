@@ -1,5 +1,7 @@
 import { fail, requireVault, toMeta } from "@/lib/server";
-import { readPolicy } from "@/lib/policy";
+import { inQuarantineFolder, isProtected, readPolicy } from "@/lib/policy";
+import { raise } from "@/lib/alerts";
+import { canonViolations, readCanon } from "@/lib/canon";
 import { currentVersion, expiryOf, supersessions } from "@/lib/page-facts";
 import { markSeen } from "@/lib/seen";
 import { readLedger, trustOf } from "@/lib/verify";
@@ -34,8 +36,22 @@ export async function GET(request: Request) {
     // Withheld rather than 404'd: an agent that gets "not found" concludes the
     // page does not exist and may helpfully write it again. Saying the page is
     // quarantined is both true and the only answer that stops that loop.
+    /*
+     * Quarantine withholds from AGENTS, not from you.
+     *
+     * A per-page quarantine is a human saying "this is wrong, stop serving it",
+     * and it applies to every reader including the app. A quarantine FOLDER is
+     * a landing area — pages agents may write freely and nobody has read yet —
+     * and withholding those from the person whose job is to read them would
+     * make the feature impossible to use. `?for=agent` is set by the MCP
+     * server, which is the only caller that is not a human.
+     */
+    const forAgent = new URL(request.url).searchParams.get("for") === "agent";
     const policy = await readPolicy(vault.root);
-    if (policy.quarantined.includes(page.id)) {
+    if (
+      policy.quarantined.includes(page.id) ||
+      (forAgent && inQuarantineFolder(policy, page.relPath))
+    ) {
       return Response.json(
         {
           quarantined: true,
@@ -206,6 +222,27 @@ export async function POST(request: Request) {
       const who = agent?.trim() || "MCP agent";
       if (before === null) recordCreation(who, relPath);
 
+      /*
+       * The two writes worth being told about.
+       *
+       * A protected path is the user saying "tell me when anything touches
+       * this", and it is the only way a write into a sensitive folder differs
+       * from any other line in a three-hundred-item journal. Contradicting
+       * canon is the other: canon is the short list of facts the human asserts
+       * directly, so a page that disagrees with one is not a difference of
+       * opinion between two agents — it is the wiki going wrong in the one
+       * place there was a right answer.
+       */
+      if (isProtected(policy, relPath)) {
+        void raise(vault.root, {
+          at: Date.now(),
+          kind: "protected-write",
+          relPath,
+          agent: who,
+          message: `${who} wrote to ${relPath}, which you marked protected.`,
+        }).catch(() => {});
+      }
+
       let feedback: WriteFeedback = { notes: [], text: "" };
       try {
         feedback = reviewWrite({
@@ -217,6 +254,37 @@ export async function POST(request: Request) {
         });
       } catch {
         // Advice is best-effort; the write is not.
+      }
+
+      if (page) {
+        const canon = await readCanon(vault.root).catch(() => []);
+        const violations = canonViolations(canon, [
+          {
+            id: page.id,
+            relPath: page.relPath,
+            title: page.title,
+            plain: page.plain,
+            mtime: page.mtime,
+          },
+        ]);
+        for (const v of violations.slice(0, 1)) {
+          void raise(vault.root, {
+            at: Date.now(),
+            kind: "canon-contradicted",
+            relPath,
+            agent: who,
+            message: `${relPath} says ${v.claim.value}${v.claim.unit === "usd" ? " USD" : ` ${v.claim.unit}`}, but canon says ${v.canonValue}: "${v.fact.text}"`,
+          }).catch(() => {});
+          feedback.notes.unshift({
+            kind: "contradiction",
+            pageId: page.id,
+            relPath,
+            text: `This contradicts a fact you have pinned as canon: "${v.fact.text}". Canon wins — either this page is wrong, or the canon entry needs updating by the human.`,
+          });
+          feedback.text = feedback.notes.length
+            ? ["", "Notes on what you wrote:", ...feedback.notes.map((n) => `- ${n.text}`)].join("\n")
+            : "";
+        }
       }
 
       return Response.json({

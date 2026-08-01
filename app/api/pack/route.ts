@@ -1,10 +1,12 @@
 import crypto from "node:crypto";
 import { fail, requireVault } from "@/lib/server";
+import { inQuarantineFolder } from "@/lib/policy";
 import { getIndex } from "@/lib/wiki";
 import { readLedger } from "@/lib/verify";
 import { readPolicy } from "@/lib/policy";
 import { buildPack, clampBudget, renderPack, aliasesOf } from "@/lib/pack";
 import { detectOllama, recommendModel } from "@/lib/ollama";
+import { readCanon, renderCanon } from "@/lib/canon";
 import { rerankPack } from "@/lib/rerank";
 
 export const runtime = "nodejs";
@@ -54,6 +56,9 @@ export async function GET(request: Request) {
       query,
       index.pages
         .filter((p) => !withheld.has(p.id))
+        // A page in a landing folder nobody has read yet must not be quoted
+        // back as though the wiki stands behind it.
+        .filter((p) => !inQuarantineFolder(policy, p.relPath))
         .filter((p) => !scope || p.relPath.startsWith(scope))
         .map((p) => ({
           id: p.id,
@@ -86,7 +91,15 @@ export async function GET(request: Request) {
     }
 
     if (params.get("format") === "md") {
-      return new Response(renderPack(pack), {
+      /*
+       * Canon goes above the passages and outside the budget.
+       *
+       * It is a few dozen tokens, it is the only part of the wiki guaranteed
+       * true, and paying for it out of the passage allowance — where a long
+       * question could crowd it out — would be exactly backwards.
+       */
+      const canon = renderCanon(await readCanon(vault.root));
+      return new Response(canon ? `${canon}\n${renderPack(pack)}` : renderPack(pack), {
         headers: { "content-type": "text/markdown; charset=utf-8" },
       });
     }

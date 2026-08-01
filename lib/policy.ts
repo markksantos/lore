@@ -36,6 +36,8 @@ export async function readPolicy(root: string): Promise<Policy> {
       decayDays: parsed.decayDays ?? DEFAULT_POLICY.decayDays,
       quarantined: Array.isArray(parsed.quarantined) ? parsed.quarantined : [],
       stampFrontmatter: parsed.stampFrontmatter === true,
+      protectedPaths: Array.isArray(parsed.protectedPaths) ? parsed.protectedPaths : [],
+      quarantineFolders: Array.isArray(parsed.quarantineFolders) ? parsed.quarantineFolders : [],
     };
   } catch {
     return DEFAULT_POLICY;
@@ -46,6 +48,14 @@ export async function writePolicy(root: string, policy: Policy): Promise<void> {
   await fs.mkdir(DIR, { recursive: true, mode: 0o700 });
   await fs.writeFile(policyPath(vaultKey(root)), JSON.stringify(policy, null, 2), "utf8");
 }
+
+/** Is this page inside a folder whose pages are held back until promoted? */
+export const inQuarantineFolder = (policy: Policy, relPath: string) =>
+  (policy.quarantineFolders ?? []).some((folder) => folder && relPath.startsWith(folder));
+
+/** Is this path one the user asked to be told about? */
+export const isProtected = (policy: Policy, relPath: string) =>
+  (policy.protectedPaths ?? []).some((folder) => folder && relPath.startsWith(folder));
 
 export const isQuarantined = (policy: Policy, pageId: string) =>
   policy.quarantined.includes(pageId);
