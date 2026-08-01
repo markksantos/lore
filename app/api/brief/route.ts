@@ -10,6 +10,7 @@ import { markSeen, readSeen } from "@/lib/seen";
 import { embeddingStatus, ensureIndex } from "@/lib/embeddings";
 import { isMuted, readMuted, toggleMuted } from "@/lib/muted";
 import { askGate } from "@/lib/gate";
+import { ensureListener } from "@/lib/listen";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -242,6 +243,10 @@ export async function GET(request: Request) {
     const events = muted.length
       ? rawEvents.filter((event) => !isMuted(muted, event.relPath))
       : rawEvents;
+
+    // The listener rides the same lazy-start: enabled config + open app =
+    // running listener, with no daemon to install and nothing new to remember.
+    void ensureListener(vault.root, Number(process.env.PORT) || 4646).catch(() => {});
 
     warmEmbeddings(
       vault.root,

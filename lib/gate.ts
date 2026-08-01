@@ -32,13 +32,20 @@ type Waiter = {
 export class Gate {
   private running = 0;
   private queue: Waiter[] = [];
+  // Plain fields, not constructor parameter properties: the test scripts run
+  // the real source under Node's strip-only TypeScript mode, which rejects
+  // parameter properties because they are syntax with runtime semantics.
+  private readonly name: string;
+  private readonly limit: number;
+  private readonly queueCap: number;
+  private readonly queueTimeoutMs: number;
 
-  constructor(
-    private readonly name: string,
-    private readonly limit: number,
-    private readonly queueCap: number,
-    private readonly queueTimeoutMs: number,
-  ) {}
+  constructor(name: string, limit: number, queueCap: number, queueTimeoutMs: number) {
+    this.name = name;
+    this.limit = limit;
+    this.queueCap = queueCap;
+    this.queueTimeoutMs = queueTimeoutMs;
+  }
 
   /** How loaded this gate is, for status endpoints and honest error bodies. */
   status(): { running: number; queued: number } {
@@ -109,16 +116,17 @@ export class Gate {
 }
 
 export class GateBusyError extends Error {
-  constructor(
-    gate: string,
-    public readonly load: { running: number; queued: number },
-    public readonly timedOut = false,
-  ) {
+  public readonly load: { running: number; queued: number };
+  public readonly timedOut: boolean;
+
+  constructor(gate: string, load: { running: number; queued: number }, timedOut = false) {
     super(
       timedOut
         ? `Waited too long for the ${gate} to free up.`
         : `The ${gate} is busy (${load.running} running, ${load.queued} queued).`,
     );
+    this.load = load;
+    this.timedOut = timedOut;
     this.name = "GateBusyError";
   }
 }

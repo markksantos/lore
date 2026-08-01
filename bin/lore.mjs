@@ -599,6 +599,46 @@ end run`;
         return 0;
       }
 
+      /*
+       * `lore listen` — the auto-wiki, from a shell.
+       *
+       * `--sweep` runs one pass right now (useful after dropping an export
+       * into the inbox); bare `listen` prints status. The daemon itself lives
+       * inside the app server, so there is nothing here to keep running.
+       */
+      case "listen": {
+        if (flag("sweep")) {
+          const res = await fetch(`${BASE}/api/listen`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ action: "sweep" }),
+          });
+          const body = await res.json();
+          if (!res.ok || body.error) fail(body.error ?? `Lore returned ${res.status}`);
+          const r = body.result;
+          process.stdout.write(
+            `scanned ${r.scanned}, distilled ${r.distilled}, filed ${r.filed}` +
+              (r.skipped.noModel ? " — no local model, nothing written" : "") +
+              (r.wrote.length ? `\n  ${r.wrote.join("\n  ")}` : "") +
+              "\n",
+          );
+          return 0;
+        }
+        const d = JSON.parse(await get("/api/listen"));
+        process.stdout.write(
+          [
+            `auto-wiki: ${d.config.enabled ? "ON" : "off"}   model: ${d.modelReady ? "ready" : "missing"}`,
+            `sources: ${Object.entries(d.config.sources).filter(([, v]) => v).map(([k]) => k).join(", ")}`,
+            `inbox:   ${d.inbox}  (drop ChatGPT/Claude exports here)`,
+            d.lastSweep
+              ? `last sweep: ${new Date(d.lastSweep.at).toLocaleTimeString()} — scanned ${d.lastSweep.result.scanned}, filed ${d.lastSweep.result.filed}`
+              : "last sweep: never",
+            "",
+          ].join("\n"),
+        );
+        return 0;
+      }
+
       case "sync": {
         const res = await fetch(`${BASE}/api/sync`, { method: "POST" });
         const body = await res.json();
@@ -639,6 +679,7 @@ end run`;
             "  eval     [--json] [--rerank] [--max-drop N]   run the golden set",
             "  digest   [--days N] [--notify] [--install]   the brief, on a schedule",
             "  sync     pull then push, if the vault is a git repo",
+            "  listen   [--sweep]   auto-wiki status, or run a pass now",
             "",
             "Exit 1 when a health threshold is breached, so it can gate CI.",
             "",

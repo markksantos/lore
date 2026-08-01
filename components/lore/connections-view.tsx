@@ -11,7 +11,7 @@ import {
   RefreshCw,
   ShieldCheck,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, relativeTime } from "@/lib/utils";
 import { paletteVars } from "@/lib/palette";
 import { APP_PORT } from "@/lib/brand";
 
@@ -107,6 +107,8 @@ export function ConnectionsView({ root, installDir }: { root: string; installDir
       </header>
 
       <Consent />
+
+      <AutoWiki />
 
       <section className="mt-7">
         <h2 className="text-[18px] font-semibold tracking-[-0.02em] text-[var(--lore-text-primary)]">
@@ -417,5 +419,153 @@ function CopyBlock({ label, content }: { label: string; content: string }) {
         {content}
       </pre>
     </div>
+  );
+}
+
+type ListenState = {
+  config: {
+    enabled: boolean;
+    sources: Record<string, boolean>;
+  };
+  inbox: string;
+  modelReady: boolean;
+  lastSweep: {
+    at: number;
+    result: { scanned: number; distilled: number; filed: number; wrote: string[] };
+  } | null;
+};
+
+/**
+ * Auto-wiki — the conversations you already have, becoming pages.
+ *
+ * Off by default and loud about what it does, because it reads private
+ * transcripts. The card states the three facts a person needs before flipping
+ * the switch: which sources exist on this machine, that distillation happens
+ * on this machine, and where the inbox is for the tools whose conversations
+ * live where no local app can honestly reach (ChatGPT, Claude's own app —
+ * their official exports go in the inbox and get the identical treatment).
+ */
+function AutoWiki() {
+  const [state, setState] = useState<ListenState | null>(null);
+  const [sweeping, setSweeping] = useState(false);
+
+  const load = useCallback(() => {
+    fetch("/api/listen", { signal: AbortSignal.timeout(12_000) })
+      .then((r) => (r.ok ? r.json() : null))
+      .then(setState)
+      .catch(() => setState(null));
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const update = async (patch: Record<string, unknown>) => {
+    await fetch("/api/listen", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(patch),
+    }).catch(() => null);
+    load();
+  };
+
+  const sweepNow = async () => {
+    setSweeping(true);
+    await fetch("/api/listen", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "sweep" }),
+    }).catch(() => null);
+    setSweeping(false);
+    load();
+  };
+
+  if (!state) return null;
+  const { config } = state;
+
+  const SOURCES: { key: string; label: string; hint: string }[] = [
+    { key: "claude-code", label: "Claude Code", hint: "session transcripts on this machine" },
+    { key: "codex", label: "Codex", hint: "session transcripts on this machine" },
+    { key: "inbox", label: "Inbox", hint: "ChatGPT / Claude app exports you drop in" },
+  ];
+
+  return (
+    <section className="mt-7 rounded-xl border border-[var(--lore-border)] bg-[var(--lore-surface)] px-5 py-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-[var(--lore-text-primary)]">
+            Auto-wiki
+          </h2>
+          <p className="t-meta mt-1 text-[var(--lore-text-tertiary)]">
+            Reads your AI conversations after they go quiet, distils what was durable with
+            the local model — decisions, corrections, setups — and files it under{" "}
+            <code className="rounded bg-[var(--lore-surface-raised)] px-1 py-px">auto/</code>.
+            Secrets are scrubbed before the model ever sees the text. Nothing leaves this
+            machine, and without a local model nothing is written at all.
+          </p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={config.enabled}
+          onClick={() => update({ enabled: !config.enabled })}
+          className={cn(
+            "relative h-6 w-10 shrink-0 rounded-full transition-colors",
+            config.enabled ? "bg-[var(--lore-accent)]" : "bg-[var(--lore-surface-raised)]",
+          )}
+        >
+          <span
+            className={cn(
+              "absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform",
+              config.enabled ? "translate-x-[18px]" : "translate-x-0.5",
+            )}
+          />
+        </button>
+      </div>
+
+      {config.enabled ? (
+        <>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {SOURCES.map((source) => (
+              <button
+                key={source.key}
+                type="button"
+                onClick={() =>
+                  update({ sources: { ...config.sources, [source.key]: !config.sources[source.key] } })
+                }
+                title={source.hint}
+                className={cn(
+                  "t-meta rounded-lg border px-2.5 py-1 transition-colors",
+                  config.sources[source.key]
+                    ? "border-[var(--lore-accent)] text-[var(--lore-text-primary)]"
+                    : "border-[var(--lore-border)] text-[var(--lore-text-tertiary)]",
+                )}
+              >
+                {source.label}
+              </button>
+            ))}
+          </div>
+
+          <p className="t-meta mt-2.5 text-[var(--lore-text-tertiary)]">
+            {!state.modelReady
+              ? "No local model is running — the listener will wait rather than dump raw transcripts."
+              : state.lastSweep
+                ? `Last sweep ${relativeTime(state.lastSweep.at)}: ${state.lastSweep.result.scanned} transcripts checked, ${state.lastSweep.result.filed} filed.`
+                : "Waiting for the first sweep."}{" "}
+            Inbox for exports:{" "}
+            <code className="rounded bg-[var(--lore-surface-raised)] px-1 py-px">{state.inbox}</code>
+          </p>
+
+          <button
+            type="button"
+            onClick={sweepNow}
+            disabled={sweeping}
+            className="t-meta mt-2.5 rounded-lg border border-[var(--lore-border)] px-3 py-1.5 text-[var(--lore-text-secondary)] transition-colors hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)] disabled:opacity-40"
+          >
+            {sweeping ? "Sweeping…" : "Sweep now"}
+          </button>
+        </>
+      ) : null}
+    </section>
   );
 }
