@@ -42,6 +42,40 @@ const AGENT = process.env.LORE_AGENT_NAME ?? "MCP agent";
  */
 const SESSION = process.env.LORE_SESSION_ID ?? process.env.CLAUDE_SESSION_ID ?? "";
 const SESSION_URL = process.env.LORE_SESSION_URL ?? "";
+
+/*
+ * The boundary this agent is allowed to see.
+ *
+ * `LORE_SCOPE=clients/` restricts every tool to that prefix — a research agent
+ * that has no business in `raw/finance/` simply cannot reach it, and a
+ * per-client agent cannot leak one client's notes into another's context.
+ *
+ * Enforced here, in the server the harness launches, because that is where the
+ * boundary is declared: it is part of THIS agent's configuration, not a
+ * property of the wiki. A different agent with a different scope talks to the
+ * same Lore and sees a different wiki, which is the whole point.
+ */
+const SCOPE = (process.env.LORE_SCOPE ?? "").trim().replace(/^\/+/, "");
+
+const inScope = (relPath) => !SCOPE || String(relPath ?? "").startsWith(SCOPE);
+
+/** Drop lines naming a page outside the scope. */
+function filterLines(text, extract) {
+  if (!SCOPE) return text;
+  return text
+    .split("\n")
+    .filter((line) => {
+      const target = extract(line);
+      return target === null || inScope(target);
+    })
+    .join("\n");
+}
+
+/** The `path` a rendered list line refers to, or null when it names none. */
+const pathInLine = (line) => {
+  const match = line.match(/`([^`]+\.mdx?)`/);
+  return match ? match[1] : null;
+};
 const PROTOCOL_VERSION = "2025-06-18";
 
 const TOOLS = [
@@ -194,9 +228,12 @@ function report(event) {
 async function runTool(name, args = {}) {
   switch (name) {
     case "wiki_index": {
-      const map = await callLore("/api/agent");
+      const raw = await callLore("/api/agent");
+      const map = filterLines(raw, pathInLine);
       report({ t: "index", tokens: Math.round(map.length / 4) });
-      return map;
+      return SCOPE
+        ? `${map}\n\n(Scoped to \`${SCOPE}\`. Pages outside it are not listed and cannot be read.)`
+        : map;
     }
 
     case "wiki_search": {
@@ -209,7 +246,11 @@ async function runTool(name, args = {}) {
       if (!results?.length) {
         return `No pages match "${args.query}". This gap has been logged for the human to fill.`;
       }
-      return results
+      const visible = results.filter((hit) => inScope(hit.page.relPath));
+      if (!visible.length) {
+        return `No pages match "${args.query}" within \`${SCOPE}\`, which is the part of the wiki you can see.`;
+      }
+      return visible
         .map(
           (hit) =>
             `- \`${hit.page.relPath}\` — ${hit.page.title}` +
@@ -219,6 +260,11 @@ async function runTool(name, args = {}) {
     }
 
     case "wiki_read": {
+      if (!inScope(args.path)) {
+        throw new Error(
+          `\`${args.path}\` is outside \`${SCOPE}\`, the part of the wiki this agent can read.`,
+        );
+      }
       const raw = await callLore(`/api/page?path=${encodeURIComponent(args.path ?? "")}`);
       const data = JSON.parse(raw);
       report({ t: "read", page: data.page.id });
@@ -269,11 +315,12 @@ async function runTool(name, args = {}) {
 
     case "wiki_context": {
       const budget = Number(args.budget) || 8000;
-      const raw = await callLore(
+      const rawPack = await callLore(
         `/api/pack?format=md&budget=${budget}&q=${encodeURIComponent(args.query ?? "")}`,
       );
       // Logged as a search so a pack that finds nothing counts as a gap, the
       // same as a bare search would. The question failed either way.
+      const raw = SCOPE ? filterLines(rawPack, pathInLine) : rawPack;
       const found = !raw.startsWith("No passages");
       report({
         t: "context",
@@ -291,9 +338,12 @@ async function runTool(name, args = {}) {
       if (!data.items.length) {
         return `Nothing was written to the wiki in the last ${days === 1 ? "day" : `${days} days`}.`;
       }
-      const lines = data.items.map(
-        (i) => `- ${i.line}\n  (\`${i.relPath}\`${i.agent ? `, by ${i.agent}` : ""})`,
-      );
+      const lines = data.items
+        .filter((i) => inScope(i.relPath))
+        .map((i) => `- ${i.line}\n  (\`${i.relPath}\`${i.agent ? `, by ${i.agent}` : ""})`);
+      if (!lines.length) {
+        return `Nothing was written within \`${SCOPE}\` in the last ${days === 1 ? "day" : `${days} days`}.`;
+      }
       return [
         `What the wiki learned in the last ${days === 1 ? "day" : `${days} days`} — ${data.events} writes across ${data.pagesTouched} pages, ranked:`,
         "",
@@ -310,7 +360,7 @@ async function runTool(name, args = {}) {
       if (!data.changes.length) {
         return `Nothing changed in the wiki since ${new Date(since).toISOString()}.`;
       }
-      const lines = data.changes.map((c) => {
+      const lines = data.changes.filter((c) => inScope(c.relPath)).map((c) => {
         const who = c.agent ? ` by ${c.agent}` : "";
         const trust = c.gone ? "DELETED" : (c.trust ?? "unknown");
         return `- \`${c.relPath}\` — ${c.kinds.join("/")}${who}, +${c.linesAdded}/-${c.linesRemoved} (${trust})`;
@@ -324,6 +374,11 @@ async function runTool(name, args = {}) {
     }
 
     case "wiki_write": {
+      if (!inScope(args.path)) {
+        throw new Error(
+          `\`${args.path}\` is outside \`${SCOPE}\`, the part of the wiki this agent can write to.`,
+        );
+      }
       const mode = args.mode === "replace" ? "replace" : "append";
       const raw = await callLore("/api/page", {
         method: "POST",

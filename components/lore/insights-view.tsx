@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, Flame, HelpCircle, Gauge, Copy, Check } from "lucide-react";
+import { Loader2, Flame, HelpCircle, Gauge, Copy, Check, Users } from "lucide-react";
 import { paletteVars } from "@/lib/palette";
 import { formatTokens } from "@/lib/tokens";
 import { cn, count, formatCount, relativeTime } from "@/lib/utils";
@@ -16,6 +16,20 @@ type UsageReport = {
   gaps: { query: string; misses: number; lastAsked: number; agents: string[] }[];
   daily: { day: string; reads: number; searches: number }[];
   agents: { agent: string; events: number }[];
+  receipts: {
+    agent: string;
+    human: boolean;
+    reads: number;
+    searches: number;
+    writes: number;
+    context: number;
+    briefs: number;
+    tokens: number;
+    lastAt: number;
+  }[];
+  agentEvents: number;
+  lastAgentAt: number;
+  agentSilentDays: number;
 };
 
 type BudgetReport = {
@@ -105,8 +119,11 @@ export function InsightsView({ onOpenPage }: { onOpenPage: (pageId: string) => v
         </p>
       </header>
 
+      {/* ---------------------------------------------------------- receipts */}
+      {usage ? <Receipts usage={usage} /> : null}
+
       {/* ------------------------------------------------------------ budget */}
-      <section>
+      <section className="mt-10">
         <h2 className="flex items-center gap-2 text-[18px] font-semibold tracking-[-0.02em] text-[var(--lore-text-primary)]">
           <Gauge size={16} className="text-[var(--lore-text-tertiary)]" />
           Context budget
@@ -293,5 +310,103 @@ export function InsightsView({ onOpenPage }: { onOpenPage: (pageId: string) => v
         )}
       </section>
     </div>
+  );
+}
+
+/**
+ * Who is actually using this wiki.
+ *
+ * The number that produced this panel: over five days the usage log held 197
+ * calls, 193 of them the human clicking Ask and 3 an actual agent. Lore was
+ * being used as a reader by one person, and the loop it exists for had run
+ * three times — a fact that required a shell script to discover, which means
+ * nobody would ever have discovered it.
+ *
+ * So it is the first thing on the screen, and the human is held apart from the
+ * agents. Counting Ask as a caller would make the only question that matters —
+ * is anything other than me using this — always answer yes.
+ */
+function Receipts({ usage }: { usage: UsageReport }) {
+  const agents = usage.receipts.filter((r) => !r.human);
+  const humans = usage.receipts.filter((r) => r.human);
+  const humanEvents = humans.reduce(
+    (sum, r) => sum + r.reads + r.searches + r.writes + r.context + r.briefs,
+    0,
+  );
+
+  return (
+    <section>
+      <h2 className="flex items-center gap-2 text-[18px] font-semibold tracking-[-0.02em] text-[var(--lore-text-primary)]">
+        <Users size={16} className="text-[var(--lore-text-tertiary)]" />
+        Who is using the wiki
+      </h2>
+      <p className="t-meta mt-1 text-[var(--lore-text-tertiary)]">
+        Every call your agents make, split by what they asked for. Reading is the
+        point; writing without reading is a wiki filling up rather than being used.
+      </p>
+
+      {/*
+        * The silence banner.
+        *
+        * A wiki nothing reads is not a wiki, and Lore is the only thing in a
+        * position to notice. Stated as a fact with the fix attached, because
+        * "0 agent calls" on its own reads as a broken chart rather than a
+        * disconnected setup.
+        */}
+      {usage.agentSilentDays === -1 || usage.agentSilentDays >= 3 ? (
+        <div className="mt-3.5 rounded-xl border border-[var(--lore-border)] bg-[var(--lore-surface)] px-4 py-3.5">
+          <p className="text-[13.5px] leading-relaxed text-[var(--lore-text-primary)]">
+            {usage.agentSilentDays === -1
+              ? "No agent has ever read this wiki."
+              : `No agent has read this wiki in ${count(usage.agentSilentDays, "day")}.`}{" "}
+            <span className="text-[var(--lore-text-secondary)]">
+              You have made {count(humanEvents, "call")} yourself in the same window.
+            </span>
+          </p>
+          <p className="t-meta mt-1.5 text-[var(--lore-text-tertiary)]">
+            Run <code className="rounded bg-[var(--lore-surface-raised)] px-1 py-px">lore install</code>{" "}
+            to wire Lore into every agent on this machine at once — MCP config, the skill,
+            and the session hooks that open with the brief and close by recording what
+            changed. Connections has the same buttons.
+          </p>
+        </div>
+      ) : null}
+
+      {agents.length ? (
+        <div className="mt-3.5 overflow-x-auto">
+          <table className="w-full min-w-[520px] border-collapse text-left">
+            <thead>
+              <tr className="t-meta text-[var(--lore-text-tertiary)]">
+                <th className="pb-2 pr-3 font-medium">Agent</th>
+                <th className="pb-2 pr-3 text-right font-medium">Context</th>
+                <th className="pb-2 pr-3 text-right font-medium">Reads</th>
+                <th className="pb-2 pr-3 text-right font-medium">Searches</th>
+                <th className="pb-2 pr-3 text-right font-medium">Writes</th>
+                <th className="pb-2 text-right font-medium">Last seen</th>
+              </tr>
+            </thead>
+            <tbody className="text-[13.5px] text-[var(--lore-text-primary)]">
+              {[...agents, ...humans].map((r) => (
+                <tr key={r.agent} className="border-t border-[var(--lore-border)]">
+                  <td className="py-2 pr-3">
+                    {r.agent}
+                    {r.human ? (
+                      <span className="t-meta ml-1.5 text-[var(--lore-text-tertiary)]">you</span>
+                    ) : null}
+                  </td>
+                  <td className="py-2 pr-3 text-right tabular-nums">{r.context || "—"}</td>
+                  <td className="py-2 pr-3 text-right tabular-nums">{r.reads || "—"}</td>
+                  <td className="py-2 pr-3 text-right tabular-nums">{r.searches || "—"}</td>
+                  <td className="py-2 pr-3 text-right tabular-nums">{r.writes || "—"}</td>
+                  <td className="t-meta py-2 text-right text-[var(--lore-text-tertiary)]">
+                    {relativeTime(r.lastAt)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </section>
   );
 }

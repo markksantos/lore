@@ -125,6 +125,36 @@ export type UsageReport = {
   /** Reads per day, oldest first, for a sparkline. */
   daily: { day: string; reads: number; searches: number }[];
   agents: { agent: string; events: number }[];
+  /**
+   * The receipt: what each caller actually did, split by kind.
+   *
+   * This is the number that should have been on screen from day one. Five days
+   * of the log said 193 calls from the app's own Ask box and 3 from a real
+   * agent — Lore was a reader for one person, and the loop it exists for had
+   * run three times. Finding that out required a shell script, which means
+   * nobody would ever have found it out.
+   */
+  receipts: AgentReceipt[];
+  /** Events from something other than the human at the keyboard. */
+  agentEvents: number;
+  /** Last time a real agent touched the wiki, or 0 if never. */
+  lastAgentAt: number;
+  /** Whole days since then. -1 when no agent has ever called. */
+  agentSilentDays: number;
+};
+
+export type AgentReceipt = {
+  agent: string;
+  /** True for the app's own Ask box, which is the human, not an agent. */
+  human: boolean;
+  reads: number;
+  searches: number;
+  writes: number;
+  context: number;
+  briefs: number;
+  /** Tokens of context pulled out of the wiki — what it actually delivered. */
+  tokens: number;
+  lastAt: number;
 };
 
 /**
@@ -134,6 +164,15 @@ export type UsageReport = {
  * gaps under noise.
  */
 const isMiss = (e: UsageEvent) => e.t === "search" && e.hits === 0;
+
+/**
+ * Callers that are the person, not an agent.
+ *
+ * Ask records itself so its reads count towards the hot-pages report. Counting
+ * it as an agent would mean the one number that matters — is anything other
+ * than me using this wiki — always reads as yes.
+ */
+const HUMAN_CALLERS = /^you\b|\(ask\)|^browser$/i;
 
 export function buildReport(
   events: UsageEvent[],
@@ -186,7 +225,49 @@ export function buildReport(
   const agentMap = new Map<string, number>();
   for (const e of recent) agentMap.set(e.agent, (agentMap.get(e.agent) ?? 0) + 1);
 
+  /*
+   * Who is actually calling.
+   *
+   * The app labels its own Ask box as a caller so that its reads show up in
+   * the hot-pages report, which is right — but it means the totals flatter the
+   * product badly unless the human is held apart from the agents. That
+   * separation is the entire diagnostic value of this screen.
+   */
+  const receiptMap = new Map<string, AgentReceipt>();
+  for (const e of recent) {
+    const entry: AgentReceipt = receiptMap.get(e.agent) ?? {
+      agent: e.agent,
+      human: HUMAN_CALLERS.test(e.agent),
+      reads: 0,
+      searches: 0,
+      writes: 0,
+      context: 0,
+      briefs: 0,
+      tokens: 0,
+      lastAt: 0,
+    };
+    entry.lastAt = Math.max(entry.lastAt, e.at);
+    if (e.t === "read") entry.reads += 1;
+    else if (e.t === "search") entry.searches += 1;
+    else if (e.t === "write") entry.writes += 1;
+    else if (e.t === "brief") entry.briefs += 1;
+    else if (e.t === "context") {
+      entry.context += 1;
+      entry.tokens += e.tokens;
+    } else if (e.t === "index") entry.tokens += e.tokens;
+    receiptMap.set(e.agent, entry);
+  }
+
+  const receipts = [...receiptMap.values()].sort((a, b) => b.lastAt - a.lastAt);
+  const fromAgents = recent.filter((e) => !HUMAN_CALLERS.test(e.agent));
+  const lastAgentAt = fromAgents.reduce((max, e) => Math.max(max, e.at), 0);
+
   return {
+    receipts,
+    agentEvents: fromAgents.length,
+    lastAgentAt,
+    agentSilentDays:
+      lastAgentAt === 0 ? -1 : Math.floor((Date.now() - lastAgentAt) / 86_400_000),
     since,
     totalReads: reads.length,
     totalSearches: searches.length,

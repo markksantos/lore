@@ -47,6 +47,57 @@ function flag(name, fallback = undefined) {
 
 const json = argv.includes("--json");
 
+async function readStdin() {
+  if (process.stdin.isTTY) return "";
+  const chunks = [];
+  for await (const chunk of process.stdin) chunks.push(chunk);
+  return Buffer.concat(chunks).toString("utf8").trim();
+}
+
+/**
+ * What a session was about, from its transcript.
+ *
+ * Claude Code writes one JSONL record per message. The first human turn is the
+ * closest thing to a stated goal, and the `file_path` of every write-shaped
+ * tool call is what the session actually touched. Both are facts — no model
+ * call, nothing to hallucinate, and it costs a single file read.
+ */
+async function summariseTranscript(file) {
+  const raw = await fs.readFile(file, "utf8").catch(() => null);
+  if (!raw) return null;
+
+  const files = new Set();
+  let goal = "";
+
+  for (const line of raw.split("\n")) {
+    if (!line.trim()) continue;
+    let record;
+    try {
+      record = JSON.parse(line);
+    } catch {
+      continue; // A torn line costs one record, not the summary.
+    }
+
+    const message = record.message ?? record;
+    if (!goal && record.type === "user" && typeof message?.content === "string") {
+      goal = message.content.replace(/\s+/g, " ").trim().slice(0, 120);
+    }
+    const content = Array.isArray(message?.content) ? message.content : [];
+    for (const part of content) {
+      if (!goal && part?.type === "text" && record.type === "user") {
+        goal = String(part.text ?? "").replace(/\s+/g, " ").trim().slice(0, 120);
+      }
+      if (part?.type !== "tool_use") continue;
+      const target = part.input?.file_path ?? part.input?.path;
+      if (typeof target === "string" && /Write|Edit|NotebookEdit/i.test(String(part.name))) {
+        files.add(target.replace(os.homedir(), "~"));
+      }
+    }
+  }
+
+  return { goal, files: [...files] };
+}
+
 async function reachable(url) {
   try {
     const res = await fetch(`${url}/api/vault`, { signal: AbortSignal.timeout(1200) });
@@ -298,6 +349,112 @@ async function run() {
         return 0;
       }
 
+
+      /*
+       * `lore install` — the command that makes everything else reachable.
+       *
+       * Measured over five days, 193 of 197 calls to this wiki came from the
+       * human clicking Ask and 3 from an actual agent. Not because agents
+       * cannot use it, but because wiring them up meant hand-editing four
+       * config files in three formats. This does all of them.
+       */
+      case "install": {
+        const only = flag("only");
+        const res = await fetch(`${BASE}/api/install`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            harnesses:
+              typeof only === "string"
+                ? only.split(",").map((t) => t.trim()).filter(Boolean)
+                : undefined,
+            scope: typeof flag("scope") === "string" ? String(flag("scope")) : undefined,
+            hooks: !flag("no-hooks"),
+            dryRun: Boolean(flag("dry-run")),
+            port: Number(new URL(BASE).port || 4646),
+          }),
+        });
+        const body = await res.json();
+        if (!res.ok || body.error) fail(body.error ?? `Lore returned ${res.status}`);
+
+        const results = body.results ?? [];
+        if (json) {
+          process.stdout.write(JSON.stringify(results, null, 2) + "\n");
+          return results.some((r) => r.state === "failed") ? 1 : 0;
+        }
+        if (!results.length) {
+          process.stdout.write("No agent harnesses found on this machine.\n");
+          return 0;
+        }
+
+        const MARK = { installed: "+", already: "=", skipped: "\u00b7", failed: "!" };
+        for (const r of results) {
+          process.stdout.write(`${MARK[r.state]} ${r.harness} — ${r.step}: ${r.detail}\n    ${r.path}\n`);
+        }
+        process.stdout.write(
+          `\nRestart each app to pick up the change.${flag("dry-run") ? " (Nothing was written — this was a dry run.)" : ""}\n`,
+        );
+        return results.some((r) => r.state === "failed") ? 1 : 0;
+      }
+
+      /*
+       * `lore capture` — the session-end half of the loop.
+       *
+       * Reads Claude Code's SessionEnd payload on stdin and writes one page
+       * recording what the session touched. Deliberately mechanical: Lore
+       * cannot make a model choose to document its work, and pretending
+       * otherwise is the same mistake as the approval queue this product
+       * already removed. What it CAN do is make sure the facts nobody disputes
+       * — which files, under what goal, in which session — land in the wiki
+       * every time, attributed, without anyone remembering to.
+       */
+      case "capture": {
+        const payload = await readStdin();
+        if (!payload) return 0;
+
+        let hook = {};
+        try {
+          hook = JSON.parse(payload);
+        } catch {
+          return 0; // Not our payload shape; do nothing rather than guess.
+        }
+
+        const session = String(hook.session_id ?? hook.sessionId ?? "").slice(0, 12);
+        const transcript = hook.transcript_path ?? hook.transcriptPath;
+        const summary = transcript ? await summariseTranscript(transcript) : null;
+
+        // A session that touched nothing is not worth a page. Writing one
+        // anyway is how a wiki fills with noise nobody can retrieve from.
+        if (!summary || (!summary.files.length && !summary.goal)) return 0;
+
+        const day = new Date().toISOString().slice(0, 10);
+        const body = [
+          `## ${new Date().toISOString().slice(11, 16)} — ${summary.goal || "session"}`,
+          "",
+          summary.files.length
+            ? `Touched: ${summary.files.slice(0, 12).map((f) => `\`${f}\``).join(", ")}`
+            : null,
+          session ? `Session: ${session}` : null,
+          "",
+        ]
+          .filter((line) => line !== null)
+          .join("\n");
+
+        const res = await fetch(`${BASE}/api/page`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            path: `sessions/${day}.md`,
+            content: body,
+            mode: "append",
+            agent: "Claude Code",
+            session,
+          }),
+        });
+        if (!res.ok) return 0;
+        return 0;
+      }
+
       case "verify": {
         const pageId = argv[1];
         if (!pageId || pageId.startsWith("--")) fail("usage: lore verify <page-id>");
@@ -324,6 +481,8 @@ async function run() {
             "  gaps     [--json]",
             "  context  \"<question>\" [--budget N]",
             "  verify   <page-id>",
+            "  install  [--only a,b] [--scope prefix] [--no-hooks] [--dry-run]",
+            "  capture  (reads a SessionEnd hook payload on stdin)",
             "",
             "Exit 1 when a health threshold is breached, so it can gate CI.",
             "",
