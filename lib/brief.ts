@@ -265,56 +265,60 @@ export function findThreads(
   items: { pageId: string; title: string; relPath: string }[],
   minPages = 3,
 ): { subject: string; pages: string[]; titles: string[] }[] {
-  const byFolder = new Map<string, { pages: string[]; titles: string[] }>();
-  for (const item of items) {
-    /*
-     * The containing folder, not the first two path segments.
-     *
-     * `slice(0, 2)` made `concepts/foo.md` its own group, so pages in the same
-     * folder never grouped and the only thread this could ever emit was
-     * "conversations" — the one folder on this vault nested deeply enough to
-     * work by accident.
-     */
-    const folder = dirOf(item.relPath);
-    if (!folder) continue;
-    const entry = byFolder.get(folder) ?? { pages: [], titles: [] };
-    entry.pages.push(item.pageId);
-    entry.titles.push(item.title);
-    byFolder.set(folder, entry);
+  /*
+   * Group at whichever path depth actually forms a group.
+   *
+   * Two previous versions each worked on one corpus and failed on the other.
+   * `slice(0, 2)` made every `concepts/foo.md` its own group, so pages in the
+   * same folder never grouped. Its replacement used the containing folder,
+   * which is right for `stack/` and produces nothing at all on a wiki where
+   * every client has a folder of their own — `clients/conversations/acme/` had
+   * one changed page, so did the other fifteen, and no group ever reached
+   * three. The screen shipped with zero threads on real data and typechecked
+   * perfectly.
+   *
+   * The subject is not at a fixed depth, because it is not the same thing on
+   * every wiki. So: try every depth, take the DEEPEST that forms a group, and
+   * do not let one item belong to two — the most specific true grouping is the
+   * most informative one, and "acme" beats "clients" whenever both hold.
+   */
+  const maxDepth = items.reduce(
+    (max, item) => Math.max(max, item.relPath.split("/").length - 1),
+    0,
+  );
+
+  const claimed = new Set<string>();
+  const out: { subject: string; pages: string[]; titles: string[] }[] = [];
+
+  for (let depth = maxDepth; depth >= 1; depth--) {
+    const byPrefix = new Map<string, { pages: string[]; titles: string[] }>();
+    for (const item of items) {
+      if (claimed.has(item.pageId)) continue;
+      const parts = item.relPath.split("/");
+      if (parts.length - 1 < depth) continue;
+      const prefix = parts.slice(0, depth).join("/");
+      const entry = byPrefix.get(prefix) ?? { pages: [], titles: [] };
+      entry.pages.push(item.pageId);
+      entry.titles.push(item.title);
+      byPrefix.set(prefix, entry);
+    }
+
+    for (const [prefix, value] of [...byPrefix.entries()].sort(
+      (a, b) => b[1].pages.length - a[1].pages.length,
+    )) {
+      if (value.pages.length < minPages) continue;
+      for (const id of value.pages) claimed.add(id);
+      out.push({
+        subject: prefix.split("/").pop() ?? prefix,
+        pages: value.pages.slice(0, 12),
+        titles: value.titles.slice(0, 12),
+      });
+    }
   }
 
-  return [...byFolder.entries()]
-    .filter(([, v]) => v.pages.length >= minPages)
-    .map(([subject, v]) => ({
-      subject: subject.split("/").pop() ?? subject,
-      pages: v.pages.slice(0, 8),
-      titles: v.titles.slice(0, 8),
-    }))
-    .sort((a, b) => b.pages.length - a.pages.length)
-    .slice(0, 4);
+  return out.sort((a, b) => b.pages.length - a.pages.length).slice(0, 4);
 }
 
-/**
- * Collapse the journal to one entry per page, keeping the most significant.
- *
- * An agent that touches a page eleven times in an afternoon produced one piece
- * of news, not eleven. Creation always wins, because "this page is new" is the
- * fact even if a later append moved more lines.
- */
-/**
- * Drop deletions that are really renames.
- *
- * A rename lands in the journal as a delete plus a create, and reporting the
- * delete half produced brief rows saying three of the user's client transcripts
- * had been destroyed when they had simply been redated. They scored 1000, so
- * they took the top three slots, and they linked nowhere because the page no
- * longer exists under that name.
- *
- * Pairing is by folder and size within the window: a deletion is treated as a
- * rename when a page was created in the same folder in the same window. Crude,
- * and deliberately biased toward silence — a missed deletion is a quiet brief,
- * a false one is the app lying about data loss.
- */
 export function withoutRenames(events: WriteEvent[]): WriteEvent[] {
   const createdFolders = new Set<string>();
   for (const e of events) {
