@@ -56,43 +56,22 @@ function isLoopbackHost(host: string | null): boolean {
   );
 }
 
-/** Everything that reads or writes the user's disk. */
-const FILESYSTEM_ROUTES = [
-  "/api/vault",
-  "/api/pages",
-  "/api/page",
-  "/api/folder",
-  "/api/search",
-  "/api/health",
-  "/api/agent",
-  "/api/review",
-  "/api/usage",
-  "/api/budget",
-  "/api/semantic",
-  "/api/ai",
-  "/api/harness",
-  "/api/pick",
-  "/api/history",
-  "/api/policy",
-  "/api/pack",
-  "/api/autolink",
-  "/api/analysis",
-  "/api/templates",
-  "/api/ingest",
-  "/api/git",
-  "/api/collab",
-  "/api/access",
-  "/api/mcp",
-  "/api/maintain",
-  "/api/safety",
-  "/api/attachment",
-  "/api/changes",
-  "/api/mcp-event",
-  // Reads and writes ~/.lore/remote.json, and its status payload lists this
-  // machine's network addresses. On a public host that is a free map of the
-  // deployment's internal network, so it dies with the rest of them.
-  "/api/remote",
-];
+/**
+ * Everything under /api touches this machine.
+ *
+ * This was an allowlist of routes, and an allowlist of routes is a list
+ * somebody has to remember to extend. A review found exactly that failure:
+ * /api/undo (reverts pages), /api/install (edits agent configs in $HOME) and a
+ * dozen newer routes were not on it, so a DNS-rebinding page — evil.example
+ * resolved to 127.0.0.1, browser dutifully sending `Host: evil.example` — got
+ * 200s from precisely the endpoints with the most reach. The reviewer's probe
+ * was one line: `Host: evil.example → 200`.
+ *
+ * Now the rule is structural: every /api path is guarded, including the ones
+ * that do not exist yet. The only ways past the Host check remain the same
+ * two: a genuinely loopback Host, or a paired remote token.
+ */
+const touchesApi = (pathname: string) => pathname.startsWith("/api/");
 
 /**
  * Pages that render the wiki itself. They touch no disk in the middleware's
@@ -128,9 +107,7 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL("/download", request.url));
   }
   const siteMode = isSiteMode();
-  const touchesDisk = FILESYSTEM_ROUTES.some(
-    (route) => pathname === route || pathname.startsWith(`${route}/`),
-  );
+  const touchesDisk = touchesApi(pathname);
 
   /*
    * Read-only mode, enforced here rather than in each handler.

@@ -189,14 +189,14 @@ function Measured() {
           value="8"
           unit="lines"
           label="instead of 300 pages"
-          body="The brief reads what your agents changed and says what is true now — one sentence each, written locally, nothing to action."
+          body="The brief reads what your agents changed and says what is true now — one line each. A local model writes the lines when you have one; without it you get each page's own opening, clearly labelled."
         />
         <Stat
           slot={1}
           value="90%"
           unit="recall@5"
           label="on questions about the corpus"
-          body="Measured with a harness that ships in the repo: generate a question from a real page, check whether that page comes back. Up from 0%."
+          body="Measured with a harness that ships in the repo: generate a question from a real page, check whether that page comes back. Ripgrep on the same questions: 65%."
         />
         <Stat
           slot={2}

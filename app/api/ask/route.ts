@@ -8,6 +8,7 @@ import { record } from "@/lib/usage";
 import { recordAsked } from "@/lib/asked";
 import { embeddingStatus, semanticSearch } from "@/lib/embeddings";
 import { rerankPack } from "@/lib/rerank";
+import { askGate, busyResponse, embedGate, GateBusyError } from "@/lib/gate";
 import { extractClaims, findConflicts } from "@/lib/claims";
 import { listVersions, readVersion } from "@/lib/history";
 import { vaultKey } from "@/lib/journal";
@@ -40,6 +41,34 @@ const RERANK_BELOW = 0.6;
  * because a question that retrieved nothing is exactly the gap list the app
  * already knows how to show.
  */
+
+/**
+ * Make the verdict agree with the answer.
+ *
+ * Confidence is computed from retrieval, before the model reads anything. A
+ * reviewer caught the product contradicting itself: the answer said "not
+ * mentioned in the wiki", the verdict above it said "The wiki covers this" at
+ * 70%. Both were locally correct — retrieval found on-topic passages, the
+ * model correctly reported they lacked the specific fact — and together they
+ * are the exact kind of self-contradiction this product exists to catch in
+ * other people's wikis. If the model, having read the passages, says the
+ * answer is not there, the verdict yields.
+ */
+const SAYS_NOT_COVERED =
+  /\b(not (mentioned|covered|stated|specified|included|found|present|in the (wiki|excerpts))|no (information|mention|details?|excerpts?)|do(es)? not (mention|cover|contain|say|state|specify|include|appear)|doesn'?t (mention|cover|contain|say|appear)|cannot find|can'?t find|isn'?t (mentioned|covered|in the))\b/i;
+
+function reconcileVerdict(
+  answer: string,
+  confidence: number,
+  verdict: string,
+): { confidence: number; verdict: string } {
+  if (!answer || !SAYS_NOT_COVERED.test(answer)) return { confidence, verdict };
+  return {
+    confidence: Math.min(confidence, 0.3),
+    verdict:
+      "The model read the retrieved passages and reports the answer is not in them. Treat the passages as context, not as coverage.",
+  };
+}
 
 const hashOf = (text: string) =>
   crypto.createHash("sha1").update(text).digest("hex").slice(0, 16);
@@ -105,6 +134,17 @@ export async function POST(request: Request) {
     // check entirely and return the whole 2.3M-token corpus.
     const budget = clampBudget(body.budget);
 
+    /*
+     * Everything below runs inside the ask gate: one at a time, short queue,
+     * honest 503 beyond it. Eight concurrent asks measured before this gate:
+     * every one launched its own Ollama generation, Ollama serialised them,
+     * every request blew its timeout and returned an empty answer, and the
+     * process grew from 832MB to 1.6GB. The gate converts that into: one
+     * caller gets a real answer, three wait briefly, the rest are told to try
+     * again in seconds — and memory stays flat because there is never more
+     * than one retrieval's worth of scoring structures alive.
+     */
+    return await askGate.run(async () => {
     const [index, ledger] = await Promise.all([
       getIndex(vault.root),
       readLedger(vault.root),
@@ -124,7 +164,11 @@ export async function POST(request: Request) {
      */
     let semanticBoost = new Map<string, number>();
     if (embeddingStatus().ready) {
-      const hits = await semanticSearch(vault.root, retrievalQuery, 24).catch(() => []);
+      // Behind its own gate: query embedding is CPU work on the main thread,
+      // and two of them at once is how search went from 65ms to 46s.
+      const hits = await embedGate
+        .run(() => semanticSearch(vault.root, retrievalQuery, 24))
+        .catch(() => []);
       semanticBoost = new Map(hits.map((h) => [h.id, h.score]));
     }
 
@@ -289,10 +333,32 @@ export async function POST(request: Request) {
         omitted: pack.omitted,
       };
 
+      /*
+       * The stream must survive its own client.
+       *
+       * A disconnected reader makes `enqueue` throw, and a throw inside an
+       * async `start` is an unhandled rejection — on Node's defaults, that is
+       * the process gone. Reviewers curling with timeouts is exactly this
+       * shape. So: every send is caught, `cancel` aborts the generation (which
+       * frees the inference slot instead of finishing an answer for a closed
+       * socket), and the answer is still recorded to history — the person may
+       * have given up on waiting, not on the question.
+       */
+      const clientGone = new AbortController();
       const stream = new ReadableStream<Uint8Array>({
         async start(controller) {
-          const send = (event: string, data: unknown) =>
-            controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+          let open = true;
+          const send = (event: string, data: unknown) => {
+            if (!open) return;
+            try {
+              controller.enqueue(
+                encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`),
+              );
+            } catch {
+              open = false;
+              clientGone.abort();
+            }
+          };
 
           send("meta", meta);
           let text = "";
@@ -301,11 +367,17 @@ export async function POST(request: Request) {
               model,
               prompt,
               (chunk) => send("token", chunk),
-              { system: SYSTEM, timeoutMs: 120_000 },
+              { system: SYSTEM, timeoutMs: 120_000, signal: clientGone.signal },
             );
           } catch {
             send("error", "The local model stopped before finishing.");
           }
+
+          // The verdict was sent in the meta frame, before the model had read
+          // anything. If what it wrote says the answer is not in the passages,
+          // the verdict must not go on claiming it is.
+          const reconciled = reconcileVerdict(text, meta.confidence, meta.verdict);
+          if (reconciled.verdict !== meta.verdict) send("verdict", reconciled);
 
           const streamedTurn = {
             id: `${Date.now().toString(36)}-${Math.round(Math.random() * 1e6).toString(36)}`,
@@ -319,9 +391,16 @@ export async function POST(request: Request) {
               title: p.title,
             })),
           };
-          await recordAsked(vault.root, streamedTurn).catch(() => {});
+          if (text.trim()) await recordAsked(vault.root, streamedTurn).catch(() => {});
           send("done", { id: streamedTurn.id });
-          controller.close();
+          try {
+            controller.close();
+          } catch {
+            // Already closed by the client going away; nothing to do.
+          }
+        },
+        cancel() {
+          clientGone.abort();
         },
       });
 
@@ -334,11 +413,15 @@ export async function POST(request: Request) {
       });
     }
 
+    let modelFailed = false;
     const answer = model
       ? await generate(model, prompt, {
           system: SYSTEM,
           timeoutMs: 90_000,
-        }).catch(() => "")
+        }).catch(() => {
+          modelFailed = true;
+          return "";
+        })
       : "";
 
     const turn = {
@@ -365,12 +448,16 @@ export async function POST(request: Request) {
       answer: answer.trim() || null,
       model,
       needsModel: !model,
+      // True when a model exists and did not answer in time — a different
+      // failure from "install Ollama", and the UI must not conflate them.
+      modelFailed,
       tokensUsed: pack.used,
       budget: pack.budget,
       // Surfaced so the UI can say "the wiki may not cover this" instead of
-      // rendering a hedged answer with the same confidence as a certain one.
-      confidence: pack.confidence,
-      verdict: pack.verdict,
+      // rendering a hedged answer with the same confidence as a certain one —
+      // and reconciled with what the model actually said, so the verdict can
+      // never claim coverage above an answer that denies it.
+      ...reconcileVerdict(answer, pack.confidence, pack.verdict),
       disagreements,
       asOf,
       passages: pack.passages.map((p, i) => ({
@@ -388,7 +475,9 @@ export async function POST(request: Request) {
       omitted: pack.omitted,
       pagesConsidered: index.pages.length,
     });
+    });
   } catch (error) {
+    if (error instanceof GateBusyError) return busyResponse(error);
     return fail(error);
   }
 }

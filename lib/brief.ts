@@ -360,15 +360,58 @@ export function collapseEvents(events: WriteEvent[]): Map<string, WriteEvent> {
  * returned `"# Wiki Index\nPersonal knowledge base."` as one line.
  */
 export function lineFrom(evidence: string): string {
-  const prose = evidence
+  /*
+   * Extract a sentence, not a collage.
+   *
+   * The old version stripped heading markers but KEPT the heading text and
+   * joined every line into one string, so a client profile opened with
+   * "boat-rehab-tv - Chattanooga Fiberglass / Boat Rehab TV Who they are
+   * Owner/operator of…" — the page title, a section label and half a bullet
+   * fused into one unreadable run, then sliced mid-word at 177 characters.
+   * Nine of nine blind reviewers flagged it, because it is the first text on
+   * the app's first screen.
+   *
+   * Rules, in order of what they fix:
+   *  - a heading is a label, not prose: dropped entirely, never merged
+   *  - lines are candidates individually, never joined across breaks
+   *  - prose beats fields: prefer a line that reads like a sentence; fall
+   *    back to the first informative "Label: value" line only when the text
+   *    has no prose at all
+   *  - never cut mid-word: long lines end at a word boundary
+   */
+  const lines = evidence
     .split("\n")
-    .map((l) => l.replace(/^\s{0,3}#{1,6}\s+/, "").replace(/^[-*+]\s+/, "").trim())
-    .filter(Boolean)
-    .join(" ");
-  const sentence = prose.split(/(?<=[.!?])\s/)[0] ?? prose;
-  const trimmed = unmark(sentence).trim();
-  if (!trimmed) return "Changed, but the page has no readable body.";
-  return trimmed.length > 180 ? `${trimmed.slice(0, 177)}…` : trimmed;
+    .map((raw) => ({
+      heading: /^\s{0,3}#{1,6}\s+/.test(raw),
+      text: unmark(
+        raw
+          .replace(/^\s{0,3}#{1,6}\s+/, "")
+          .replace(/^[-*+]\s+/, "")
+          .replace(/^\d+\.\s+/, "")
+          .trim(),
+      ),
+    }))
+    .filter((l) => l.text.length > 0);
+
+  const isField = (text: string) => /^[\w][\w /()&'-]{0,32}:\s*\S/.test(text);
+  const isProse = (text: string) =>
+    !isField(text) &&
+    (/[.!?]["')\]]?\s*$/.test(text) || text.split(/\s+/).length >= 8) &&
+    // A slash-and-dash title echo ("name - Company / Channel") is not a
+    // sentence however long it is.
+    !/^[\w.-]+\s+[-–—]\s/.test(text);
+
+  const source =
+    lines.find((l) => !l.heading && isProse(l.text)) ??
+    lines.find((l) => !l.heading && isField(l.text) && l.text.length > 12) ??
+    lines.find((l) => !l.heading);
+
+  if (!source) return "Changed, but the page has no readable body.";
+
+  const sentence = (source.text.split(/(?<=[.!?])\s+/)[0] ?? source.text).trim();
+  if (sentence.length <= 180) return sentence;
+  const cut = sentence.slice(0, 177);
+  return `${cut.slice(0, cut.lastIndexOf(" "))}…`;
 }
 
 /**

@@ -226,10 +226,20 @@ export async function generateStream(
   model: string,
   prompt: string,
   onToken: (chunk: string) => void,
-  opts?: { system?: string; timeoutMs?: number },
+  opts?: { system?: string; timeoutMs?: number; signal?: AbortSignal },
 ): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), opts?.timeoutMs ?? 120_000);
+  /*
+   * The caller's signal aborts the fetch too. Without this, a client that
+   * disconnected mid-answer left the generation running to completion — the
+   * inference slot stayed occupied and the machine spent up to two minutes
+   * producing tokens for a socket that was already closed.
+   */
+  if (opts?.signal) {
+    if (opts.signal.aborted) controller.abort();
+    else opts.signal.addEventListener("abort", () => controller.abort(), { once: true });
+  }
   let full = "";
 
   try {

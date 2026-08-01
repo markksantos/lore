@@ -125,13 +125,51 @@ export async function POST(request: Request) {
             .join("\n");
         }
         case "wiki_search": {
-          const q = String(args.query ?? "").toLowerCase();
-          const hits = visible.filter(
-            (p) => p.title.toLowerCase().includes(q) || p.plain.toLowerCase().includes(q),
-          );
-          void record({ t: "search", at: Date.now(), agent: agent.name, vault: vault.root, query: String(args.query ?? ""), hits: hits.length });
-          if (!hits.length) return `No pages match "${args.query}". This gap has been logged.`;
-          return hits.slice(0, 25).map((p) => `- \`${p.relPath}\` — ${p.title}`).join("\n");
+          /*
+           * Tokenised, not substring-matched.
+           *
+           * The old line matched the whole lowercased query as one substring,
+           * so "video edit floor" only hit pages containing those three words
+           * ADJACENT — which false-negatived essentially every multi-word
+           * query an agent sends, and then logged each one as a "gap the
+           * human should fill". The gap report is this product's flagship
+           * signal, and this one comparison was quietly filling it with
+           * fiction. Now: every term must appear somewhere on the page,
+           * title hits outrank body hits, and each hit carries a snippet so
+           * the agent can pick without a second round-trip.
+           */
+          const raw = String(args.query ?? "");
+          const terms = raw
+            .toLowerCase()
+            .split(/[^\p{L}\p{N}-]+/u)
+            .filter((t) => t.length > 1);
+          const scored = terms.length
+            ? visible
+                .map((p) => {
+                  const title = p.title.toLowerCase();
+                  const body = p.plain.toLowerCase();
+                  let score = 0;
+                  for (const term of terms) {
+                    if (title.includes(term)) score += 3;
+                    else if (body.includes(term)) score += 1;
+                    else return null;
+                  }
+                  return { p, score };
+                })
+                .filter((x): x is { p: (typeof visible)[number]; score: number } => x !== null)
+                .sort((a, b) => b.score - a.score)
+            : [];
+          void record({ t: "search", at: Date.now(), agent: agent.name, vault: vault.root, query: raw, hits: scored.length });
+          if (!scored.length) return `No pages match "${raw}". This gap has been logged.`;
+          return scored
+            .slice(0, 25)
+            .map(({ p }) => {
+              const at = terms.length ? p.plain.toLowerCase().indexOf(terms[0]) : -1;
+              const snippet =
+                at >= 0 ? p.plain.slice(Math.max(0, at - 40), at + 120).replace(/\s+/g, " ").trim() : "";
+              return `- \`${p.relPath}\` — ${p.title}${snippet ? `\n  …${snippet}…` : ""}`;
+            })
+            .join("\n");
         }
         case "wiki_read": {
           const page = visible.find((p) => p.relPath === String(args.path ?? ""));

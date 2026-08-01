@@ -83,10 +83,22 @@ export function WatchView({ onOpenPage }: { onOpenPage: (pageId: string) => void
   const [plan, setPlan] = useState<UndoPlan | null>(null);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  /*
+   * Loading, loaded, or failed — three states, said out loud.
+   *
+   * Nine of nine blind reviewers hit this screen as an infinite spinner: five
+   * fetches with no timeout, so a starved server meant a blank page forever
+   * with no error, no retry, and no admission that anything was wrong. No
+   * fetch here may wait more than 12 seconds, and a screen that cannot load
+   * says so and offers a button — spinning forever is the one behaviour that
+   * is never allowed again.
+   */
+  const [failed, setFailed] = useState(false);
 
   const load = useCallback(async () => {
+    setFailed(false);
     const get = (url: string) =>
-      fetch(url)
+      fetch(url, { signal: AbortSignal.timeout(12_000) })
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null);
 
@@ -97,6 +109,12 @@ export function WatchView({ onOpenPage }: { onOpenPage: (pageId: string) => void
       get("/api/prune"),
       get("/api/usage"),
     ]);
+    // All five failing means the server is unreachable or starved — an error
+    // card, not five quietly-empty sections pretending the wiki is fine.
+    if (!c && !a && !an && !p && !u) {
+      setFailed(true);
+      return;
+    }
     setCanon(c ?? { facts: [], violations: [] });
     setAlerts(a ?? { alerts: [], unread: 0 });
     setContradictions(an?.contradictions ?? []);
@@ -159,6 +177,28 @@ export function WatchView({ onOpenPage }: { onOpenPage: (pageId: string) => void
     await fetch("/api/alerts", { method: "POST" }).catch(() => null);
     load();
   };
+
+  if (failed) {
+    return (
+      <div className="flex h-full items-center justify-center px-8">
+        <div className="max-w-sm rounded-xl border border-[var(--lore-border)] bg-[var(--lore-surface)] px-5 py-4 text-center">
+          <p className="text-[14px] text-[var(--lore-text-primary)]">
+            This screen could not load in time.
+          </p>
+          <p className="t-meta mt-1 text-[var(--lore-text-tertiary)]">
+            The server may be busy answering a question. It usually clears in seconds.
+          </p>
+          <button
+            type="button"
+            onClick={load}
+            className="t-meta mt-3 rounded-lg border border-[var(--lore-border)] px-3 py-1.5 text-[var(--lore-text-secondary)] transition-colors hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)]"
+          >
+            Try again
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (!canon || !alerts) {
     return (

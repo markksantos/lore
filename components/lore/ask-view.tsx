@@ -48,6 +48,9 @@ type Answer = {
   empty?: boolean;
   reason?: string;
   needsModel?: boolean;
+  modelFailed?: boolean;
+  confidence?: number;
+  verdict?: string;
   passages: Passage[];
   omitted: { relPath: string; title: string }[];
   disagreements?: { subject: string; values: number[]; pages: string[] }[];
@@ -71,6 +74,7 @@ type Message = {
   empty?: boolean;
   reason?: string;
   needsModel?: boolean;
+  modelFailed?: boolean;
   pending?: boolean;
   /** True while tokens are still arriving, so the caret can blink. */
   streaming?: boolean;
@@ -184,8 +188,17 @@ export function AskView({
         });
 
         if (!response.ok) {
-          const data = (await response.json().catch(() => ({}))) as { error?: string };
-          throw new Error(data.error ?? "That question could not be answered.");
+          const data = (await response.json().catch(() => ({}))) as {
+            error?: string;
+            busy?: boolean;
+          };
+          // Busy is not broken: the machine runs one local model at a time,
+          // and the honest move is to say so and invite a retry in seconds.
+          throw new Error(
+            data.busy
+              ? "Lore is answering another question right now — local models run one at a time. Try again in a few seconds."
+              : (data.error ?? "That question could not be answered."),
+          );
         }
 
         if (response.headers.get("content-type")?.includes("text/event-stream")) {
@@ -204,6 +217,7 @@ export function AskView({
                     empty: data.empty,
                     reason: data.reason,
                     needsModel: data.needsModel,
+                    modelFailed: data.modelFailed,
                     disagreements: data.disagreements,
                   }
                 : msg,
@@ -595,7 +609,7 @@ function Exchange({
               <p className="text-[14.5px] text-[var(--lore-text-secondary)]">
                 {message.needsModel
                   ? "No local model is installed, so Lore found the right passages but cannot write the answer up. They are below — install a model with Ollama and it will answer properly."
-                  : "Lore found the passages below but the local model did not answer in time. Asking again usually works."}
+                  : "The local model was too busy to answer in time. The passages Lore found are below — ask again in a moment and it will write them up."}
               </p>
             )}
 
@@ -767,6 +781,13 @@ async function consumeStream(
           answer += String(payload);
           patch({ answer });
           break;
+        case "verdict": {
+          // The server re-judged its own confidence after reading what the
+          // model wrote; the warning banner must follow the correction.
+          const v = payload as { confidence: number; verdict: string };
+          patch({ confidence: v.confidence, verdict: v.verdict });
+          break;
+        }
         case "error":
           patch({ streaming: false, reason: String(payload) });
           break;

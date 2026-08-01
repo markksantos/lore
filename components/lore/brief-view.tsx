@@ -100,6 +100,16 @@ export function BriefView({ onOpenPage }: { onOpenPage: (pageId: string) => void
    * finished.
    */
   const [settled, setSettled] = useState(false);
+  /*
+   * Dismissed-banner memory. The "install a local model" banner is useful
+   * exactly once per decision; after someone has read it and chosen not to,
+   * showing it at the top of every brief is nagging, and nagging at the top
+   * of the home screen is how the whole screen gets tuned out.
+   */
+  const [bannerDismissed, setBannerDismissed] = useState(true);
+  useEffect(() => {
+    setBannerDismissed(localStorage.getItem("lore-model-banner") === "dismissed");
+  }, []);
 
   const load = useCallback(async (window: number) => {
     const mine = ++run.current;
@@ -263,6 +273,38 @@ export function BriefView({ onOpenPage }: { onOpenPage: (pageId: string) => void
         </div>
       </header>
 
+      {/*
+        * The honesty banner, at the top, only when it is true.
+        *
+        * Reviewers found the promise-degradation admitted "only in footer fine
+        * print" — the one place nobody reads. It belongs above the lines it
+        * describes, it must be specific about HOW MANY lines are extracts, and
+        * it must only appear after the written pass has actually settled —
+        * shown during the fast pass it told people to install Ollama while
+        * Ollama was running.
+        */}
+      {settled && data?.items.length && !data.synthesised && !bannerDismissed ? (
+        <div className="t-meta mb-4 flex items-start gap-2 rounded-xl border border-[var(--lore-border)] bg-[var(--lore-surface)] px-4 py-3 text-[var(--lore-text-tertiary)]">
+          <Sparkles size={13} className="mt-0.5 shrink-0" />
+          <span className="min-w-0 flex-1">
+            {data.written
+              ? `${data.items.length - data.written} of these lines are the page's own opening rather than a written summary — the local model did not get to them this pass.`
+              : "These lines are each page's own opening sentence. Install a local model with Ollama and Lore writes them properly — on your machine, nothing sent anywhere."}
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              localStorage.setItem("lore-model-banner", "dismissed");
+              setBannerDismissed(true);
+            }}
+            aria-label="Dismiss"
+            className="shrink-0 text-[var(--lore-text-tertiary)] transition-colors hover:text-[var(--lore-text-primary)]"
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
+
       {failed ? (
         <p className="rounded-xl border border-dashed border-[var(--lore-border)] px-4 py-8 text-center text-[13px] text-[var(--lore-text-tertiary)]">
           Could not read the journal. If Lore just started, give it a moment and refresh.
@@ -358,20 +400,6 @@ export function BriefView({ onOpenPage }: { onOpenPage: (pageId: string) => void
         </p>
       ) : null}
 
-      {/*
-        * Specific about which lines, because "these lines" was a lie whenever
-        * the model handled some of them — and the flag behind it read true as
-        * soon as one came back, so the banner vanished from briefs that still
-        * had fallbacks in them.
-        */}
-      {settled && data?.items.length && !data.synthesised ? (
-        <p className="t-meta mt-4 flex items-start gap-2 rounded-xl border border-[var(--lore-border)] px-4 py-3 text-[var(--lore-text-tertiary)]">
-          <Sparkles size={13} className="mt-0.5 shrink-0" />
-          {data.written
-            ? `${data.items.length - data.written} of these lines are the page's own first sentence rather than a written summary — the local model did not get to them in time.`
-            : "These lines are each page's own first sentence. Install a local model with Ollama and Lore will write them properly instead — it runs on your machine and nothing is sent anywhere."}
-        </p>
-      ) : null}
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { getIndex, search } from "@/lib/wiki";
 import { embeddingStatus, semanticSearch } from "@/lib/embeddings";
 import type { SearchResult } from "@/lib/types";
 import { readPolicy } from "@/lib/policy";
+import { embedGate } from "@/lib/gate";
 import { readConfig } from "@/lib/config";
 
 export const runtime = "nodejs";
@@ -70,7 +71,18 @@ export async function GET(request: Request) {
       const index = await getIndex(vault.root);
       const byId = new Map(index.pages.map((p) => [p.id, p]));
 
-      for (const hit of await semanticSearch(vault.root, q, 12)) {
+      /*
+       * Semantic results only when the embedding model is free RIGHT NOW.
+       *
+       * Query embedding is CPU work on the main thread, and it is how search
+       * went from 65ms to 46 seconds while an answer was being generated.
+       * Under load this degrades to lexical-only — slightly less clever,
+       * instantly, instead of much slower, visibly. Nobody notices the first.
+       */
+      for (const hit of await embedGate.tryRun(
+        () => semanticSearch(vault.root, q, 12),
+        [] as Awaited<ReturnType<typeof semanticSearch>>,
+      )) {
         if (seen.has(hit.id)) continue;
         const page = byId.get(hit.id);
         if (!page) continue;

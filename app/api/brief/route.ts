@@ -9,6 +9,7 @@ import { detectOllama, generate, recommendModel } from "@/lib/ollama";
 import { markSeen, readSeen } from "@/lib/seen";
 import { embeddingStatus, ensureIndex } from "@/lib/embeddings";
 import { isMuted, readMuted, toggleMuted } from "@/lib/muted";
+import { askGate } from "@/lib/gate";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -133,6 +134,19 @@ async function withDiffs(root: string, key: string, brief: Brief): Promise<Brief
 }
 
 async function synthesise(brief: Brief): Promise<Brief> {
+  /*
+   * The brief's model calls yield to Ask.
+   *
+   * Both talk to the same single Ollama, and eight brief lines queued behind a
+   * question — or worse, in front of one — is how everything times out at
+   * once. If the inference slot is taken, the brief ships its fallback lines
+   * NOW and improves next refresh, which is precisely what the two-pass
+   * client was built to absorb.
+   */
+  return askGate.tryRun(() => synthesiseInner(brief), brief);
+}
+
+async function synthesiseInner(brief: Brief): Promise<Brief> {
   const detection = await detectOllama().catch(() => null);
   if (!detection?.running || !detection.models.length) return brief;
   const model = recommendModel(detection.models) ?? detection.models[0]?.name;

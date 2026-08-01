@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, Flame, HelpCircle, Gauge, Copy, Check, Users, Target } from "lucide-react";
 import { paletteVars } from "@/lib/palette";
 import { formatTokens } from "@/lib/tokens";
@@ -70,16 +70,28 @@ export function InsightsView({ onOpenPage }: { onOpenPage: (pageId: string) => v
   const [noUsage, setNoUsage] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  useEffect(() => {
-    fetch("/api/usage")
+  /*
+   * The spinner guard below waits on /api/budget, and /api/budget with no
+   * timeout on a starved server is how this screen spent a nine-reviewer
+   * panel as a blank page. Twelve seconds, then an error card with a retry.
+   */
+  const [failed, setFailed] = useState(false);
+
+  const load = useCallback(() => {
+    setFailed(false);
+    fetch("/api/usage", { signal: AbortSignal.timeout(12_000) })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error("unavailable"))))
       .then(setUsage)
       .catch(() => setNoUsage(true));
-    fetch("/api/budget")
-      .then((r) => (r.ok ? r.json() : null))
+    fetch("/api/budget", { signal: AbortSignal.timeout(12_000) })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("unavailable"))))
       .then(setBudget)
-      .catch(() => setBudget(null));
+      .catch(() => setFailed(true));
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   /**
    * The gap list as a prompt. We do not write the missing pages ourselves —
@@ -95,6 +107,28 @@ export function InsightsView({ onOpenPage }: { onOpenPage: (pageId: string) => v
       ...usage.gaps.slice(0, 20).map((g) => `- "${g.query}" (asked ${g.misses}x)`),
     ].join("\n");
   }, [usage]);
+
+  if (failed) {
+    return (
+      <div className="flex h-full items-center justify-center px-8">
+        <div className="max-w-sm rounded-xl border border-[var(--lore-border)] bg-[var(--lore-surface)] px-5 py-4 text-center">
+          <p className="text-[14px] text-[var(--lore-text-primary)]">
+            This screen could not load in time.
+          </p>
+          <p className="t-meta mt-1 text-[var(--lore-text-tertiary)]">
+            The server may be busy answering a question. It usually clears in seconds.
+          </p>
+          <button
+            type="button"
+            onClick={load}
+            className="t-meta mt-3 rounded-lg border border-[var(--lore-border)] px-3 py-1.5 text-[var(--lore-text-secondary)] transition-colors hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)]"
+          >
+            Try again
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (!budget || (!usage && !noUsage)) {
     return (
