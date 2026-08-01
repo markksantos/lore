@@ -47,6 +47,33 @@ export async function POST(request: Request) {
       case "health":
         await record({ ...base, t: "health" });
         break;
+      case "write":
+        if (body.page) {
+          await record({
+            ...base,
+            t: "write",
+            page: String(body.page),
+            notes: Number(body.notes ?? 0),
+          });
+        }
+        break;
+      case "brief":
+        await record({
+          ...base,
+          t: "brief",
+          days: Number(body.days ?? 1),
+          items: Number(body.items ?? 0),
+        });
+        break;
+      case "context":
+        await record({
+          ...base,
+          t: "context",
+          query: String(body.query ?? ""),
+          tokens: Number(body.tokens ?? 0),
+          hits: Number(body.hits ?? 0),
+        });
+        break;
     }
   } catch {
     // Never surface a telemetry failure to the agent.

@@ -5,6 +5,12 @@ import { readLedger, trustOf } from "@/lib/verify";
 import crypto from "node:crypto";
 import { recordAttribution } from "@/lib/harness";
 import { createPage, deletePage, getIndex, readRaw, writeRaw } from "@/lib/wiki";
+import {
+  creationsBy,
+  recordCreation,
+  reviewWrite,
+  type WriteFeedback,
+} from "@/lib/write-feedback";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -155,6 +161,36 @@ export async function POST(request: Request) {
 
       const fresh = await getIndex(vault.root, true);
       const page = fresh.pages.find((p) => p.relPath === relPath);
+
+      /*
+       * Say something back.
+       *
+       * This is the whole reason the write path exists as an endpoint rather
+       * than a file write: the author is still on the line. Every check Lore
+       * can compute — contradictions, duplicates, orphaning, schema drift —
+       * runs now and returns with the result, where a model can act on it in
+       * the same turn. Afterwards the same information is a chore for a human.
+       *
+       * Never fatal. The write has already happened, and a page that landed
+       * must not report failure because the advice about it could not be
+       * computed.
+       */
+      const who = agent?.trim() || "MCP agent";
+      if (before === null) recordCreation(who, relPath);
+
+      let feedback: WriteFeedback = { notes: [], text: "" };
+      try {
+        feedback = reviewWrite({
+          index: fresh,
+          relPath,
+          content: next,
+          schema: await readRaw(vault.root, "SCHEMA.md").catch(() => null),
+          sessionPages: creationsBy(who),
+        });
+      } catch {
+        // Advice is best-effort; the write is not.
+      }
+
       return Response.json({
         ok: true,
         path: relPath,
@@ -162,6 +198,8 @@ export async function POST(request: Request) {
         created: before === null,
         page: page ? { id: page.id, title: page.title } : null,
         trust: "unverified",
+        notes: feedback.notes,
+        notesText: feedback.text,
       });
     }
 

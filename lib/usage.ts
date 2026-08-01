@@ -33,7 +33,26 @@ export type UsageEvent =
   | { t: "read"; at: number; agent: string; vault: string; page: string }
   | { t: "search"; at: number; agent: string; vault: string; query: string; hits: number }
   | { t: "index"; at: number; agent: string; vault: string; pages: number; tokens: number }
-  | { t: "health"; at: number; agent: string; vault: string };
+  | { t: "health"; at: number; agent: string; vault: string }
+  /*
+   * A write is not a read.
+   *
+   * `wiki_write` reported itself as `t: "read"`, so every page an agent
+   * created counted as a page an agent consulted. That is the one distinction
+   * the usage log exists to make — it is how you tell a wiki being used from a
+   * wiki being filled — and it was inverted at the source.
+   */
+  | { t: "write"; at: number; agent: string; vault: string; page: string; notes: number }
+  | { t: "brief"; at: number; agent: string; vault: string; days: number; items: number }
+  | {
+      t: "context";
+      at: number;
+      agent: string;
+      vault: string;
+      query: string;
+      tokens: number;
+      hits: number;
+    };
 
 export async function record(event: UsageEvent): Promise<void> {
   try {

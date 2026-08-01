@@ -252,13 +252,19 @@ async function runTool(name, args = {}) {
       // Logged as a search so a pack that finds nothing counts as a gap, the
       // same as a bare search would. The question failed either way.
       const found = !raw.startsWith("No passages");
-      report({ t: "search", query: args.query ?? "", hits: found ? 1 : 0 });
+      report({
+        t: "context",
+        query: args.query ?? "",
+        tokens: Math.round(raw.length / 4),
+        hits: found ? 1 : 0,
+      });
       return raw;
     }
 
     case "wiki_brief": {
       const days = Math.min(30, Math.max(1, Number(args.days) || 1));
       const data = JSON.parse(await callLore(`/api/brief?days=${days}`));
+      report({ t: "brief", days, items: data.items?.length ?? 0 });
       if (!data.items.length) {
         return `Nothing was written to the wiki in the last ${days === 1 ? "day" : `${days} days`}.`;
       }
@@ -307,11 +313,23 @@ async function runTool(name, args = {}) {
         }),
       });
       const data = JSON.parse(raw);
-      report({ t: "read", page: data.page?.id ?? args.path });
+      report({ t: "write", page: data.page?.id ?? args.path, notes: data.notes?.length ?? 0 });
+      /*
+       * The notes are the point.
+       *
+       * A write tool that only confirms the write wastes the one moment when
+       * the author can still act — it knows what it meant, it has the context
+       * loaded, and fixing a contradiction or adding a link costs it a
+       * sentence. Everything Lore noticed comes back here rather than waiting
+       * on a screen for a human.
+       */
       return [
         `Wrote \`${args.path}\` (${mode}).`,
         "It is recorded as unverified and attributed to you. A human decides whether to trust it.",
-      ].join("\n");
+        data.notesText || "",
+      ]
+        .filter(Boolean)
+        .join("\n");
     }
 
     case "wiki_health": {

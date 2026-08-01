@@ -14,7 +14,8 @@
     "site:build": "LORE_MODE=site next build",
     "site:start": "LORE_MODE=site next start",
     "dist:linux": "npm run build && electron-builder --linux --x64 --arm64",
-    "lore": "node bin/lore.mjs"
+    "lore": "node bin/lore.mjs",
+    "test": "for f in scripts/test-*.mjs; do echo \"\u2014 $f\"; node --experimental-strip-types --no-warnings --import ./scripts/alias-loader.mjs \"$f\" || exit 1; done"
   },
   "dependencies": {
     "@codemirror/lang-markdown": "6.5.1",
