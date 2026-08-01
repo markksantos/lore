@@ -121,7 +121,7 @@ const TOOLS = [
         query: { type: "string", description: "The subject you need context on." },
         budget: {
           type: "number",
-          description: "Approximate token ceiling for the result. Defaults to 8000.",
+          description: "Approximate token ceiling for the result. Defaults to 3000, which measured identically to 8000 on a fixed question set while halving the time. Raise it only when you genuinely need more.",
         },
         scope: {
           type: "string",
@@ -350,7 +350,7 @@ async function runTool(name, args = {}) {
     }
 
     case "wiki_context": {
-      const budget = Number(args.budget) || 8000;
+      const budget = Number(args.budget) || 3000;
       const scope = args.scope ? `&scope=${encodeURIComponent(args.scope)}` : "";
       const rawPack = await callLore(
         `/api/pack?format=md&budget=${budget}${scope}&q=${encodeURIComponent(args.query ?? "")}`,

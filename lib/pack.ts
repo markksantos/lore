@@ -166,7 +166,23 @@ export function splitSections(plain: string, maxTokens = 400): { heading: string
  * 120k is the ceiling because an agent with a large window may legitimately ask
  * for one; the human-facing default stays 8k.
  */
-export function clampBudget(value: unknown, fallback = 8_000): number {
+/**
+ * The default context budget, and why it is not 8,000.
+ *
+ * It was, and that number cost eight seconds per question for nothing.
+ * Generation is 94% of Ask's wall time and scales with what it is handed:
+ * measured on this machine, 8,000 tokens took 16.4s, 3,000 took 8.3s, 1,500
+ * took 7.9s. Meanwhile the fixed golden set scores IDENTICALLY at 8,000,
+ * 4,000 and 2,500 — recall@1 40%, recall@5 90%, same single miss — and only
+ * degrades at 1,500.
+ *
+ * So the old default bought no accuracy and sold half the responsiveness. The
+ * ceiling stays high for agents that explicitly ask for more: an agent filling
+ * a 200k window has a real reason, and `?budget=` still honours it.
+ */
+export const DEFAULT_BUDGET = 3_000;
+
+export function clampBudget(value: unknown, fallback = DEFAULT_BUDGET): number {
   const n = Number(value);
   return Number.isFinite(n) ? Math.min(120_000, Math.max(500, n)) : fallback;
 }
@@ -250,9 +266,22 @@ function relevance(
   heading: string | null,
   idf: Map<string, number>,
 ): number {
+  return relevanceWithCoverage(text, terms, title, heading, idf).score;
+}
+
+/* EXPERIMENT: also report the idf mass of DISTINCT terms this text matched. */
+function relevanceWithCoverage(
+  text: string,
+  terms: string[],
+  title: string,
+  heading: string | null,
+  idf: Map<string, number>,
+): { score: number; hitMass: number } {
   const hay = text.toLowerCase();
   const head = `${title} ${heading ?? ""}`.toLowerCase();
   let score = 0;
+  let hitMass = 0;
+  const counted = new Set<string>();
   for (const term of terms) {
     if (!term) continue;
     const weight = idf.get(term) ?? 1;
@@ -263,8 +292,12 @@ function relevance(
     // A term in the title or heading is the author saying what the page is
     // about, which beats any number of mentions in a body.
     if (head.includes(term)) score += 10 * weight;
+    if ((inBody || head.includes(term)) && !counted.has(term)) {
+      counted.add(term);
+      hitMass += weight;
+    }
   }
-  return score;
+  return { score, hitMass };
 }
 
 /**
@@ -303,7 +336,16 @@ function countWord(hay: string, term: string): number {
 }
 
 function idfFor(pages: PackSource[], terms: string[]): Map<string, number> {
+  return idfWithPresence(pages, terms).idf;
+}
+
+/* EXPERIMENT: also report which terms exist anywhere in the corpus. */
+function idfWithPresence(
+  pages: PackSource[],
+  terms: string[],
+): { idf: Map<string, number>; present: Set<string> } {
   const idf = new Map<string, number>();
+  const present = new Set<string>();
   const n = Math.max(pages.length, 1);
   for (const term of terms) {
     let seen = 0;
@@ -315,12 +357,13 @@ function idfFor(pages: PackSource[], terms: string[]): Map<string, number> {
         seen++;
       }
     }
+    if (seen > 0) present.add(term);
     // Standard smoothed IDF, floored at 0.05 so a universal term contributes
     // almost nothing without being able to zero out a passage that also
     // contains a rare one.
     idf.set(term, Math.max(0.05, Math.log((n - seen + 0.5) / (seen + 0.5) + 1)));
   }
-  return idf;
+  return { idf, present };
 }
 
 /**
@@ -450,7 +493,9 @@ export function buildPack(
   const wantsCurrent = ASKS_CURRENT.test(query);
   const now = Date.now();
 
-  const idf = idfFor(pages, terms);
+  const { idf, present } = idfWithPresence(pages, terms);
+  // EXPERIMENT: total idf mass of query terms that exist anywhere in the corpus.
+  const askMass = terms.filter((t) => present.has(t)).reduce((s, t) => s + (idf.get(t) ?? 1), 0);
 
   const scored: Passage[] = [];
   for (const page of pages) {
@@ -473,10 +518,17 @@ export function buildPack(
 
     const semantic = semanticBoost.get(page.id) ?? 0;
     for (const section of cached(page).sections) {
-      const own = relevance(section.text, terms, page.title, section.heading, idf);
+      const { score: own, hitMass } = relevanceWithCoverage(
+        section.text, terms, page.title, section.heading, idf,
+      );
       // A page the embedding model matched may contain none of the query's
       // literal words — which is the entire point of having it.
       if (own <= 0 && semantic <= 0) continue;
+      // EXPERIMENT: fraction of the question's (idf-weighted) vocabulary this
+      // passage covers. A passage repeating three common terms is about
+      // something else; one containing every asked-for word is the answer.
+      const coverage = askMass > 0 ? hitMass / askMass : 1;
+      const coverageMult = 0.5 + 0.5 * coverage;
       const tokens = tokensFor(section.text);
       scored.push({
         pageId: page.id,
@@ -498,6 +550,7 @@ export function buildPack(
          * after normalisation and cannot be amplified by brevity.
          */
         score: (own / Math.max(tokens, 1) + pageScore * 0.04) *
+          coverageMult *
           (TRUST_WEIGHT[trust] ?? 1) *
           capture *
           recency,

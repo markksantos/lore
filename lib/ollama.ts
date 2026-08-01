@@ -154,6 +154,45 @@ function stripThinking(text: string): string {
  * local model that starts swapping can stall for minutes, and an app that
  * hangs waiting on an optional feature is worse than one that admits defeat.
  */
+
+/**
+ * Size the model's context window to the prompt, instead of taking its default.
+ *
+ * Measured on this machine, gemma4:12b loads with `num_ctx` 131,072 — so
+ * answering a 3,000-token question made Ollama stand up a KV cache for a
+ * hundred and thirty-one thousand. The cost is real and it is mostly hidden in
+ * prompt evaluation: 12.8s and 10.8s at the default, against 6.2s and 6.6s at
+ * num_ctx 8192 for byte-identical work. The variance collapses too, which
+ * matters more than the mean — a feature that takes 11s or 26s unpredictably
+ * feels broken in a way a steady 7s does not.
+ *
+ * Sized generously on purpose. If the window is smaller than the prompt Ollama
+ * silently truncates, and a silently truncated prompt is a wrong answer with no
+ * error — far worse than a slow one. So: estimate tokens at three characters
+ * each (markdown tokenizes worse than prose, so this over-estimates, which is
+ * the safe direction), add room for the answer, then round up to the next
+ * bucket and clamp.
+ */
+export function contextFor(prompt: string, system = "", reserveForAnswer = 1_024): number {
+  /*
+   * Two and a half characters per token, not four.
+   *
+   * Four is right for English prose and wrong for what actually goes in here:
+   * a context pack is markdown full of paths, code spans, tables and IDs, all
+   * of which tokenize far worse. The regression test in
+   * scripts/test-write-feedback.mjs pins the invariant — the window must still
+   * fit the prompt even at a pessimistic two chars per token — and it failed at
+   * a divisor of three, which is exactly the near-miss that would have shipped
+   * as a silently truncated answer.
+   */
+  const estimated = Math.ceil((prompt.length + system.length) / 2.5) + reserveForAnswer;
+  for (const bucket of [2_048, 4_096, 8_192, 16_384, 32_768, 65_536]) {
+    if (estimated <= bucket) return bucket;
+  }
+  // Beyond this, hand it back to the model's own default rather than guess.
+  return 131_072;
+}
+
 export async function generate(
   model: string,
   prompt: string,
@@ -183,7 +222,7 @@ export async function generate(
         // Near-greedy. Every job here extracts something already present in
         // the page; sampling temperature is what makes a small model invent a
         // tag the document never mentions.
-        options: { temperature: 0.1 },
+        options: { temperature: 0.1, num_ctx: contextFor(prompt, opts?.system ?? "") },
       }),
     });
 
@@ -254,7 +293,7 @@ export async function generateStream(
         system: opts?.system,
         stream: true,
         think: false,
-        options: { temperature: 0.1 },
+        options: { temperature: 0.1, num_ctx: contextFor(prompt, opts?.system ?? "") },
       }),
     });
     if (!response.ok || !response.body) {

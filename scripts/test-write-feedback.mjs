@@ -124,5 +124,27 @@ for (const c of CASES) {
   if (!ok && notes.length) for (const n of notes) console.log(`        ${n.kind}: ${n.text}`);
 }
 
+/*
+ * Context sizing (see lib/ollama contextFor).
+ *
+ * Sizing num_ctx to the prompt took Ask from ~19s to ~9.5s, but the failure
+ * mode if it is ever sized too SMALL is silent: Ollama truncates the prompt and
+ * answers from a fragment, with no error. So the invariant under test is that
+ * the window always exceeds a generous estimate of the prompt.
+ */
+const { contextFor } = await import("../lib/ollama.ts");
+for (const chars of [200, 3_000, 12_000, 40_000, 90_000]) {
+  const prompt = "x".repeat(chars);
+  const window = contextFor(prompt, "system prompt here");
+  // Even at a pessimistic 2 chars/token the window must still fit the prompt.
+  const pessimistic = Math.ceil(chars / 2);
+  const ok = window >= pessimistic || window === 131_072;
+  if (ok) pass++;
+  else fail++;
+  console.log(
+    `${ok ? "pass" : "FAIL"}  contextFor(${chars} chars) = ${window} (fits pessimistic ${pessimistic})`,
+  );
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
