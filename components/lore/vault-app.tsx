@@ -12,6 +12,7 @@ import { ReviewView } from "@/components/lore/review-view";
 import { InsightsView } from "@/components/lore/insights-view";
 import { WatchView } from "@/components/lore/watch-view";
 import { Palette } from "@/components/lore/palette";
+import { TimelineDesktopView } from "@/components/lore/timeline-desktop-view";
 import { ExploreShell } from "@/components/lore/explore-shell";
 import { ConnectionsView } from "@/components/lore/connections-view";
 
@@ -21,6 +22,7 @@ export type View =
   | "wiki"
   | "review"
   | "watch"
+  | "timeline"
   | "insights"
   | "explore"
   | "connections"
@@ -171,6 +173,7 @@ export function VaultApp({
       {view === "ask" ? <AskView onOpenPage={openPage} handoff={handoff} /> : null}
       {view === "review" ? <ReviewView onOpenPage={openPage} /> : null}
       {view === "watch" ? <WatchView onOpenPage={openPage} /> : null}
+      {view === "timeline" ? <TimelineDesktopView /> : null}
 
       <Palette
         open={paletteOpen}

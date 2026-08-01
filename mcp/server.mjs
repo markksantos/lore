@@ -193,6 +193,35 @@ const TOOLS = [
     },
   },
   {
+    /*
+     * Recall — the desktop timeline, for agents.
+     *
+     * "What was the user doing at 3pm Tuesday" is a question an agent gets
+     * asked and, until now, had to answer from nothing. The recorder's store
+     * has the frames, OCR and per-block notes; this serves the prose. Frames
+     * themselves are never returned over MCP — an agent gets what the screen
+     * was about, not pictures of it.
+     */
+    name: "wiki_recall",
+    description:
+      "What the user was doing on their machine at a given time, from the local screen recorder: activity summaries, apps, window titles and sites. Pass an ISO datetime. Returns prose, never screenshots. If nothing is recorded it says so.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        at: {
+          type: "string",
+          description: "ISO 8601 datetime, e.g. 2026-08-01T15:00 (local time).",
+        },
+        window: {
+          type: "number",
+          description: "Minutes either side to include. Defaults to 45.",
+        },
+      },
+      required: ["at"],
+      additionalProperties: false,
+    },
+  },
+  {
     name: "wiki_health",
     description:
       "Report what is wrong with the wiki: orphaned pages, links pointing at pages that don't exist, and pages past their review window. Use when asked to tidy, audit, or find gaps.",
@@ -418,6 +447,42 @@ async function runTool(name, args = {}) {
       ]
         .filter(Boolean)
         .join("\n");
+    }
+
+    case "wiki_recall": {
+      const at = Date.parse(String(args.at ?? ""));
+      if (!Number.isFinite(at)) {
+        throw new Error("Pass `at` as an ISO datetime, e.g. 2026-08-01T15:00.");
+      }
+      const window = Math.min(240, Math.max(5, Number(args.window) || 45));
+      const raw = await callLore(`/api/timeline?at=${at}&window=${window}`);
+      const data = JSON.parse(raw);
+      report({ t: "search", query: `recall ${args.at}`, hits: data.blocks?.length ?? 0 });
+
+      if (!data.blocks?.length && !data.captures?.length) {
+        return `Nothing is recorded around ${new Date(at).toLocaleString()}. Either the recorder was off, or that moment predates it.`;
+      }
+
+      const lines = [];
+      for (const block of data.blocks ?? []) {
+        const span = `${new Date(block.start).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}–${new Date(block.end).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+        const apps = (block.apps ?? []).map((a) => a.split(".").pop()).join(", ");
+        lines.push(`- ${span} (${apps || "screen"}): ${block.note?.summary ?? (block.titles ?? []).filter(Boolean)[0] ?? "activity"}`);
+        for (const fact of block.note?.facts ?? []) lines.push(`  · ${fact}`);
+        const urls = (block.urls ?? []).filter(Boolean).slice(0, 3);
+        if (urls.length) lines.push(`  · sites: ${urls.join(", ")}`);
+      }
+      if (!lines.length) {
+        // Frames but no synthesized blocks yet: fall back to raw titles.
+        const titles = new Set();
+        for (const c of data.captures ?? []) if (c.title) titles.add(`${c.app}: ${c.title}`);
+        lines.push(...[...titles].slice(0, 10).map((t) => `- ${t}`));
+      }
+      return [
+        `Around ${new Date(at).toLocaleString()} (±${window} min):`,
+        "",
+        ...lines,
+      ].join("\n");
     }
 
     case "wiki_health": {

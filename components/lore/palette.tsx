@@ -31,6 +31,7 @@ const VIEWS: { id: View; label: string; keywords: string }[] = [
   { id: "wiki", label: "Wiki", keywords: "pages browse read folder" },
   { id: "review", label: "Changes", keywords: "diff review history writes" },
   { id: "watch", label: "Watch", keywords: "canon alerts contradictions undo prune" },
+  { id: "timeline", label: "Timeline", keywords: "screen recording desktop what was I doing frames" },
   { id: "insights", label: "Insights", keywords: "usage agents budget retrieval receipts" },
   { id: "explore", label: "Explore", keywords: "graph duplicates coverage timeline" },
   { id: "connections", label: "Connections", keywords: "mcp install agents setup hooks" },
