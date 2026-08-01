@@ -176,3 +176,127 @@ recall@1 is 40%. That means the top passage is wrong more often than right.
 Tiers 1 and 2 are the product. Tier 3 is the quality of the product. Tiers 4–7
 are real, but several of them (37, 41, 43) are the kind of item you add because
 the number is fifty. If only five ship, ship 1, 2, 9, 12 and 15.
+
+---
+
+# Status — all fifty, 2026-08-01
+
+Every item below is in `main`. "Verified by" names the thing that would fail if
+the item regressed, not the thing that would fail if the code stopped compiling.
+
+## Tier 1 — write time (`lib/write-feedback.ts`, `lib/claims.ts`)
+
+| # | Where | Verified by |
+| --- | --- | --- |
+| 1 | contradiction in the `wiki_write` result | `scripts/test-claims.mjs` 11/11, incl. 3 write-time cases |
+| 2 | link suggestion, suppressed when a duplicate note fires | `scripts/test-write-feedback.mjs` |
+| 3 | near-duplicate interception, floor lowered to 12 words | same — a re-created stub is the commonest duplicate |
+| 4 | `SCHEMA.md` conformance at write time | same |
+| 5 | consolidation nudge, 2-hour rolling window per agent | same |
+| 6 | `expires:` suggested on money/version/port | same; expiries surface in health + `wiki_read` |
+| 7 | `supersedes:` — chains followed, cycles bounded | `lib/page-facts.ts`; announced above page content |
+| 8 | session + conversation URL on every attribution | `lib/harness.ts` |
+
+## Tier 2 — make agents route through Lore
+
+| # | Where | Verified by |
+| --- | --- | --- |
+| 9 | `lore install` — 5 harnesses, 3 formats | dry run against the real machine: all 5 detected |
+| 10 | SessionStart runs `lore brief` | installed by the same command |
+| 11 | SessionEnd runs `lore capture`, reads the transcript | mechanical: tool calls, no model |
+| 12 | receipts on Insights | the 193/3 split is now on screen |
+| 13 | "no agent has read this in N days" banner | `agentSilentDays` |
+| 14 | `LORE_SCOPE` per agent | driven over real MCP stdio: read + write refused, search filtered |
+
+## Tier 3 — retrieval (measured, not asserted)
+
+| # | Where | Verified by |
+| --- | --- | --- |
+| 15 | golden set + `lore eval`, exits 1 on regression | 20 cases, history kept, rank over pages not passages |
+| 16 | cross-encoder rerank | **recall@1 40% → 55%, recall@5 90% → 95%, median rank 2 → 1** |
+| 17 | query expansion via titles and aliases | golden set unchanged or better |
+| 18 | negative results say what to DO | `renderPack` |
+| 19 | confidence on every pack | stated above the passages |
+| 20 | recency prior, stronger on "current" | `recencyFactor` |
+| 21 | `?scope=` on retrieval and `wiki_context` | walk: 5 passages from `clients/` |
+| 22 | section anchors — `page.md#heading` | walk |
+| 23 | embeddings warm on open | 1633/1633 indexed; brief stays at 1.7s during the build |
+
+## Tier 4 — supervision (`Watch`)
+
+| # | Where | Verified by |
+| --- | --- | --- |
+| 24 | claim-based detector | 0/9 → 11/11 planted; 40 garbage groups → 11 real ones |
+| 25 | canon — pinned facts, above every pack, outside the budget | `/api/canon` |
+| 26 | undo an agent | plan recomputed server-side; human edits skipped; nothing deleted |
+| 27 | quarantine folders | withheld from agents and retrieval, never from you |
+| 28 | fact-level history | `lib/fact-history.ts` |
+| 29 | archive candidates | 100 found; threshold is the corpus median, not a constant |
+| 30 | coverage that names the gap | `coverageNotes` |
+| 31 | protected paths raise alerts | `lib/alerts.ts` |
+
+## Tier 5 — Ask
+
+| # | Where | Verified by |
+| --- | --- | --- |
+| 32 | streaming | 134 token frames on a real question |
+| 33 | multi-turn, in the prompt AND the retrieval query | `/api/ask` |
+| 34 | save an answer back as a page, citations intact | `answers/<date>.md` |
+| 35 | sources that disagree, stated above the answer | conflict detector over the retrieved pages only |
+| 36 | ask across time — `asOf` rewinds the corpus | version snapshots |
+| 37 | export a thread as markdown | |
+| 38 | ⌘K palette | Playwright: opens, focuses, `?` routes to Ask, esc closes |
+
+## Tier 6 — brief
+
+| # | Where | Verified by |
+| --- | --- | --- |
+| 39 | grouped by thread | **shipped broken first — see below** |
+| 40 | impact links — pages read differently now | backlinks, capped |
+| 41 | mute a page or folder, filtered before ranking | |
+| 42 | `lore digest --notify --install` | plist printed, never written |
+| 43 | evidence on the row | |
+
+## Tier 7 — beyond one machine
+
+| # | Where | Verified by |
+| --- | --- | --- |
+| 44 | git-native: one commit per agent write | off by default; scoped to the single file |
+| 45 | `lore sync` — pull --rebase, push | correctly reports this vault has no remote |
+| 46 | cross-vault search | walk: 12 hits across vaults |
+| 47 | per-person seen state, with migration | |
+| 48 | Obsidian plugin, generated into the vault | manifest valid, `main.js` syntax-checked |
+| 49 | starter kits — client, codebase, research | `lib/kits.ts` |
+| 50 | publish a folder as one HTML file | 83kb, zero external references |
+
+## The four known bugs
+
+All fixed: raw markdown in fallback lines, the `synthesised` flag, starter
+question diversity, and the attribution hook — which `lore install` now installs,
+and whose absence had made the authorship term in the brief's ranking inert.
+
+## What went wrong on the way
+
+Worth keeping, because each one shipped green:
+
+- **Thread grouping found nothing on real data and typechecked perfectly.** It
+  grouped by containing folder, which is right for `stack/` and useless on a
+  wiki where every client has a folder of their own. Now every path depth is
+  tried and the deepest that forms a group wins.
+- **Warming the semantic index took the brief from 1.4s to 56s.** Yielding with
+  `setImmediate` is enough for a request to be accepted and nowhere near enough
+  for it to be served.
+- **⌘K was bound twice** — the palette opened and focus went to the field behind
+  it.
+- **`values.size` on an array** meant the "these must actually differ" guard
+  never ran, and `[\d,]+` matched a bare comma, so every claim parsed to 0.
+- **A flat 90-day prune threshold returned zero candidates** on a wiki where
+  agents write seventeen pages a day. Zero findings read as a clean bill of
+  health and was a threshold calibrated for a different corpus.
+
+## Still true
+
+Retrieval is 55% recall@1 after reranking. That is a large improvement on 40%
+and on ripgrep's 5%, and it still means the top passage is wrong nearly half the
+time. The golden set exists so the next attempt can be measured rather than
+argued about.
