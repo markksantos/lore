@@ -33,6 +33,15 @@ import { createInterface } from "node:readline";
 
 const LORE_URL = process.env.LORE_URL ?? "http://127.0.0.1:4646";
 const AGENT = process.env.LORE_AGENT_NAME ?? "MCP agent";
+/*
+ * Provenance, when the harness offers it.
+ *
+ * Claude Code exports a session id, and its hook payload carries a link back
+ * to the conversation. Passing both through means a surprising line on a page
+ * can be traced to the conversation that produced it instead of to a name.
+ */
+const SESSION = process.env.LORE_SESSION_ID ?? process.env.CLAUDE_SESSION_ID ?? "";
+const SESSION_URL = process.env.LORE_SESSION_URL ?? "";
 const PROTOCOL_VERSION = "2025-06-18";
 
 const TOOLS = [
@@ -228,8 +237,22 @@ async function runTool(name, args = {}) {
         unverified: "UNVERIFIED — no human has ever checked this page. It may have been written by an agent. Say so if you rely on it.",
       };
 
+      /*
+       * A superseded page is announced before its own content.
+       *
+       * An agent that reads a replaced page and quotes it is not making a
+       * mistake it could have avoided — nothing in the text says it was
+       * replaced. Putting the redirect above the fold is the only placement
+       * that changes what the model does with it.
+       */
       return [
         `# ${data.page.title}`,
+        data.supersededBy
+          ? `SUPERSEDED — this page was replaced by \`${data.supersededBy.relPath}\` (${data.supersededBy.title}). Read that instead; quote this one only for history.`
+          : null,
+        data.expired
+          ? `EXPIRED — the author marked this good until ${new Date(data.expires).toISOString().slice(0, 10)}, which has passed. Treat every number on it as unconfirmed.`
+          : null,
         `trust: ${TRUST_NOTE[data.trust] ?? "unknown"}`,
         `path: ${data.page.relPath}`,
         data.page.tags.length ? `tags: ${data.page.tags.join(", ")}` : null,
@@ -310,6 +333,8 @@ async function runTool(name, args = {}) {
           content: args.content ?? "",
           mode,
           agent: AGENT,
+          session: SESSION || undefined,
+          url: SESSION_URL || undefined,
         }),
       });
       const data = JSON.parse(raw);
@@ -342,6 +367,7 @@ async function runTool(name, args = {}) {
         `Orphans (${h.orphans.length}): ${h.orphans.slice(0, 20).map((p) => p.relPath).join(", ") || "none"}`,
         `Dead links (${h.unresolved.length}): ${h.unresolved.slice(0, 20).map((l) => `${l.target} (from ${l.from})`).join(", ") || "none"}`,
         `Stale (${h.stale.length}): ${h.stale.slice(0, 20).map((p) => `${p.relPath} — ${p.days}d`).join(", ") || "none"}`,
+        `Expired (${h.expired.length}): ${h.expired.slice(0, 20).map((p) => `${p.relPath} — ${p.daysOver}d past its own expires:`).join(", ") || "none"}`,
         `Untagged pages: ${h.untagged}`,
       ].join("\n");
     }

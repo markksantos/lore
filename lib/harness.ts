@@ -329,7 +329,27 @@ export async function installMcpConfig(
 const ATTRIBUTION_DIR = path.join(os.homedir(), ".lore");
 const ATTRIBUTION_FILE = path.join(ATTRIBUTION_DIR, "attribution.jsonl");
 
-export type Attribution = { at: number; file: string; agent: string; tool: string };
+export type Attribution = {
+  at: number;
+  file: string;
+  agent: string;
+  tool: string;
+  /*
+   * Where the write came from.
+   *
+   * "Which agent" answers who to blame and stops there. A page that says
+   * something surprising raises a different question — what was being worked on
+   * when this was written — and that answer lives in a transcript nobody can
+   * find six weeks later. Recording the session identifier and, when the
+   * harness exposes it, a link straight back to the conversation turns "where
+   * did this claim come from" from an archaeology project into a click.
+   *
+   * Optional on purpose: not every harness has a session concept, and a
+   * missing field must never invalidate the attribution around it.
+   */
+  session?: string;
+  url?: string;
+};
 
 export async function recordAttribution(event: Attribution): Promise<void> {
   try {
@@ -356,17 +376,31 @@ export async function readAttribution(sinceMs = 0): Promise<Attribution[]> {
 }
 
 /** Who last wrote each file, keyed by path relative to `root`. */
+export type PathAttribution = {
+  agent: string;
+  tool: string;
+  at: number;
+  session?: string;
+  url?: string;
+};
+
 export function attributionByPath(
   events: Attribution[],
   root: string,
-): Record<string, { agent: string; tool: string; at: number }> {
-  const byPath: Record<string, { agent: string; tool: string; at: number }> = {};
+): Record<string, PathAttribution> {
+  const byPath: Record<string, PathAttribution> = {};
   for (const event of events) {
     const rel = path.relative(root, event.file).split(path.sep).join("/");
     if (rel.startsWith("..") || path.isAbsolute(rel)) continue;
     const current = byPath[rel];
     if (!current || event.at > current.at) {
-      byPath[rel] = { agent: event.agent, tool: event.tool, at: event.at };
+      byPath[rel] = {
+        agent: event.agent,
+        tool: event.tool,
+        at: event.at,
+        session: event.session,
+        url: event.url,
+      };
     }
   }
   return byPath;

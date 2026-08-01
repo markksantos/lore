@@ -1,4 +1,5 @@
 import { baseName, type WikiIndex } from "@/lib/index-core";
+import { expiredFacts, type ExpiredFact } from "@/lib/page-facts";
 
 /**
  * Wiki health, computed from an index.
@@ -18,6 +19,15 @@ export type HealthReport = {
   unresolved: { from: string; target: string }[];
   /** Untouched for longer than the staleness window for their kind. */
   stale: { id: string; title: string; relPath: string; days: number }[];
+  /**
+   * Past the expiry their own author set.
+   *
+   * Distinct from `stale`, which is Lore guessing from a filename that a page
+   * about pricing rots faster than a page about a decision. This is the author
+   * saying how long they were willing to vouch for it, which is a far stronger
+   * claim and deserves its own list.
+   */
+  expired: ExpiredFact[];
   untagged: number;
 };
 
@@ -74,6 +84,7 @@ export function renderHealth(index: WikiIndex, resolveWindow?: WindowResolver): 
     .map(({ id, title, relPath, days }) => ({ id, title, relPath, days }));
 
   const untagged = index.pages.filter((p) => p.tags.length === 0).length;
+  const expired = expiredFacts(index);
   const total = index.pages.length || 1;
 
   // A single number the user can watch move. Weighted so orphans and dead
@@ -86,7 +97,11 @@ export function renderHealth(index: WikiIndex, resolveWindow?: WindowResolver): 
         (orphans.length / total) * 35 -
         Math.min(unresolved.length / total, 1) * 30 -
         (stale.length / total) * 20 -
-        (untagged / total) * 15,
+        (untagged / total) * 15 -
+        // Weighted per page rather than per corpus: an expired fact is a
+        // promise the author made and the wiki broke, and ten of them on a
+        // small vault should hurt as much as ten on a large one.
+        Math.min(expired.length * 2, 15),
     ),
   );
 
@@ -97,6 +112,7 @@ export function renderHealth(index: WikiIndex, resolveWindow?: WindowResolver): 
     orphans,
     unresolved,
     stale,
+    expired,
     untagged,
   };
 }

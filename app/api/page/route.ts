@@ -1,5 +1,6 @@
 import { fail, requireVault, toMeta } from "@/lib/server";
 import { readPolicy } from "@/lib/policy";
+import { currentVersion, expiryOf, supersessions } from "@/lib/page-facts";
 import { markSeen } from "@/lib/seen";
 import { readLedger, trustOf } from "@/lib/verify";
 import crypto from "node:crypto";
@@ -65,10 +66,31 @@ export async function GET(request: Request) {
      */
     void markSeen(vault.root, [page.id]).catch(() => {});
 
+    /*
+     * Two things the page cannot say about itself.
+     *
+     * A page that has been replaced looks exactly like the page that replaced
+     * it, and a fact that expired last month reads exactly as it did the day it
+     * was written. Both are the failure mode a wiki is worst at — being
+     * confidently out of date — and both are knowable here, from frontmatter
+     * the author wrote precisely so somebody would act on it.
+     */
+    const supersededBy = currentVersion(page.id, supersessions(index));
+    const expires = expiryOf(page);
+
     const backlinkIds = index.backlinks[page.id] ?? [];
     return Response.json({
       trust,
       verifiedAt: ledger[page.id]?.at ?? null,
+      supersededBy: supersededBy
+        ? {
+            pageId: supersededBy.newId,
+            relPath: supersededBy.newRelPath,
+            title: supersededBy.newTitle,
+          }
+        : null,
+      expires,
+      expired: expires !== null && expires <= Date.now(),
       page: toMeta(page),
       frontmatter: page.frontmatter,
       raw,
@@ -120,11 +142,15 @@ export async function POST(request: Request) {
       content,
       mode,
       agent,
+      session,
+      url,
     } = (await request.json()) as {
       path?: string;
       content?: string;
       mode?: "append" | "replace";
       agent?: string;
+      session?: string;
+      url?: string;
     };
     if (!relPath) return fail(new Error("Missing path"));
 
@@ -157,6 +183,8 @@ export async function POST(request: Request) {
         file: `${vault.root}/${relPath}`,
         agent: agent?.trim() || "MCP agent",
         tool: `wiki_write:${mode}`,
+        session: session?.trim() || undefined,
+        url: url?.trim() || undefined,
       });
 
       const fresh = await getIndex(vault.root, true);
