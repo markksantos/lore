@@ -114,7 +114,7 @@ const TOOLS = [
   {
     name: "wiki_context",
     description:
-      "Get the best passages about a subject, assembled to a token budget, each citing its source page. Prefer this over reading several pages in full — it returns the relevant sections instead of whole documents.",
+      "Get the best passages about a subject, assembled to a token budget, each citing its source page and heading. Prefer this over reading several pages in full — it returns the relevant sections instead of whole documents. The result states a confidence: below 35% those passages are leads, not an answer, and you should say the wiki may not cover it rather than filling the gap from memory.",
     inputSchema: {
       type: "object",
       properties: {
@@ -122,6 +122,11 @@ const TOOLS = [
         budget: {
           type: "number",
           description: "Approximate token ceiling for the result. Defaults to 8000.",
+        },
+        scope: {
+          type: "string",
+          description:
+            "Optional folder prefix to search within, e.g. \"clients/\". Use when you already know which part of the wiki the answer is in — it is both faster and more precise than searching everything.",
         },
       },
       required: ["query"],
@@ -315,8 +320,9 @@ async function runTool(name, args = {}) {
 
     case "wiki_context": {
       const budget = Number(args.budget) || 8000;
+      const scope = args.scope ? `&scope=${encodeURIComponent(args.scope)}` : "";
       const rawPack = await callLore(
-        `/api/pack?format=md&budget=${budget}&q=${encodeURIComponent(args.query ?? "")}`,
+        `/api/pack?format=md&budget=${budget}${scope}&q=${encodeURIComponent(args.query ?? "")}`,
       );
       // Logged as a search so a pack that finds nothing counts as a gap, the
       // same as a bare search would. The question failed either way.

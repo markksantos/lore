@@ -3,7 +3,9 @@ import { fail, requireVault } from "@/lib/server";
 import { getIndex } from "@/lib/wiki";
 import { readLedger } from "@/lib/verify";
 import { readPolicy } from "@/lib/policy";
-import { buildPack, clampBudget, renderPack } from "@/lib/pack";
+import { buildPack, clampBudget, renderPack, aliasesOf } from "@/lib/pack";
+import { detectOllama, recommendModel } from "@/lib/ollama";
+import { rerankPack } from "@/lib/rerank";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,6 +31,15 @@ export async function GET(request: Request) {
     if (!query) return fail(new Error("Pass ?q="));
 
     const budget = clampBudget(params.get("budget"));
+    /*
+     * `?scope=clients/` — retrieve from one part of the wiki.
+     *
+     * Distinct from LORE_SCOPE, which is a boundary the agent's own config
+     * imposes on it. This is the agent narrowing its own search because it
+     * already knows where the answer lives, which is both faster and far more
+     * precise than hoping the ranker guesses right.
+     */
+    const scope = (params.get("scope") ?? "").trim().replace(/^\/+/, "");
 
     const [index, ledger, policy] = await Promise.all([
       getIndex(vault.root),
@@ -39,21 +50,40 @@ export async function GET(request: Request) {
     const withheld = new Set(policy.quarantined);
     const hashes = new Map(index.pages.map((p) => [p.id, hashOf(p.plain)]));
 
-    const pack = buildPack(
+    let pack = buildPack(
       query,
       index.pages
         .filter((p) => !withheld.has(p.id))
+        .filter((p) => !scope || p.relPath.startsWith(scope))
         .map((p) => ({
           id: p.id,
           relPath: p.relPath,
           title: p.title,
           plain: p.plain,
           words: p.words,
+          mtime: p.mtime,
+          aliases: aliasesOf(p),
         })),
       ledger,
       hashes,
       budget,
     );
+
+    /*
+     * `?rerank=1` — spend seconds to fix the order.
+     *
+     * Off by default because the lexical pass answers in milliseconds and an
+     * agent calling this in a loop should not be paying for a model it did not
+     * ask for. On, it is the precision stage over the recall stage.
+     */
+    if (params.get("rerank") === "1") {
+      const detection = await detectOllama().catch(() => null);
+      const model = detection?.running
+        ? (recommendModel(detection.models) ?? detection.models[0]?.name ?? null)
+        : null;
+      const outcome = await rerankPack(pack, model).catch(() => null);
+      if (outcome) pack = outcome.pack;
+    }
 
     if (params.get("format") === "md") {
       return new Response(renderPack(pack), {

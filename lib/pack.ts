@@ -25,6 +25,10 @@ export type PackSource = {
   title: string;
   plain: string;
   words: number;
+  /** For the recency prior. Optional so existing callers keep working. */
+  mtime?: number;
+  /** Frontmatter aliases, used to expand the query's vocabulary. */
+  aliases?: string[];
 };
 
 export type Passage = {
@@ -33,6 +37,14 @@ export type Passage = {
   title: string;
   /** Heading this passage sits under, when the page has one. */
   section: string | null;
+  /**
+   * `path.md#heading` — what the agent should cite.
+   *
+   * Citing a whole 1,200-token page for one paragraph makes the citation
+   * unusable: whoever follows it has to re-find the sentence. The anchor is
+   * the same slug GitHub and Obsidian generate, so the link resolves in both.
+   */
+  anchor: string;
   text: string;
   tokens: number;
   score: number;
@@ -41,11 +53,26 @@ export type Passage = {
 
 export type Pack = {
   query: string;
+  /** The query after expansion, when it differs from what was asked. */
+  expanded?: string;
   budget: number;
   used: number;
   passages: Passage[];
   /** Pages that matched but did not fit. Named so the agent can ask for more. */
   omitted: { relPath: string; title: string }[];
+  /**
+   * How much the answer should be trusted, 0..1.
+   *
+   * A pack has always been returned with the same confident framing whether it
+   * found the page that answers the question or the least-bad paragraph in the
+   * wiki. That is the failure mode that makes a model confabulate: it has no
+   * way to tell "here is the answer" from "here is the closest thing I have".
+   * Stating it lets an agent go and read the source, ask the human, or write
+   * the missing page instead of guessing.
+   */
+  confidence: number;
+  /** Why the confidence is what it is, in one sentence for the agent. */
+  verdict: string;
 };
 
 /**
@@ -312,6 +339,85 @@ const CAPTURE_HINT = /(^|\/)(raw|transcripts?|captures?|exports?|dumps?)(\/|$)|\
  * raw score fills the budget with long passages that happened to repeat the
  * query word.
  */
+/** GitHub/Obsidian-compatible heading slug, so a cited anchor actually opens. */
+function slugify(heading: string): string {
+  return heading
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s-]/gu, "")
+    .trim()
+    .replace(/\s+/g, "-");
+}
+
+/**
+ * Words that mean "the current one".
+ *
+ * A wiki accumulates every version of a fact it has ever held, so "what is my
+ * rate" and "what WAS my rate" retrieve the same passages. When the question
+ * asks for the present, recency stops being a tiebreak and becomes part of the
+ * question.
+ */
+const ASKS_CURRENT = /\b(current|currently|latest|newest|now|today|these days|at the moment|right now|up to date|still)\b/i;
+
+/**
+ * Expand the query using the wiki's own vocabulary.
+ *
+ * Nobody asks a question in the words their notes were written in. A page
+ * titled "FableWatch deploy pipeline" with `aliases: [FW deploy]` should answer
+ * "how does FW deploy work", and a literal-term scorer cannot see that those
+ * are the same thing.
+ *
+ * Deliberately narrow: only aliases and titles the query already half-matches
+ * contribute, so expansion adds the wiki's synonym for a thing the asker
+ * clearly named, and never drifts onto a neighbouring subject.
+ */
+function expandQuery(terms: string[], pages: PackSource[]): string[] {
+  if (!terms.length) return terms;
+  const have = new Set(terms);
+  const added: string[] = [];
+
+  for (const page of pages) {
+    const names = [page.title, ...(page.aliases ?? [])];
+    for (const name of names) {
+      const nameTerms = name
+        .toLowerCase()
+        .split(/[^\p{L}\p{N}-]+/u)
+        .filter((t) => t.length > 2 && !STOPWORDS.has(t));
+      if (nameTerms.length < 2) continue;
+      // Every word of this name is already in the query — so the OTHER names
+      // for the same page are what the asker meant but did not say.
+      const matched = nameTerms.every((t) => have.has(t));
+      if (!matched) continue;
+      for (const other of names) {
+        for (const t of other
+          .toLowerCase()
+          .split(/[^\p{L}\p{N}-]+/u)
+          .filter((t) => t.length > 2 && !STOPWORDS.has(t))) {
+          if (!have.has(t) && added.length < 6) {
+            have.add(t);
+            added.push(t);
+          }
+        }
+      }
+    }
+  }
+  return [...terms, ...added];
+}
+
+/**
+ * A gentle preference for pages touched recently, stronger when asked for.
+ *
+ * Flat by default — an old page is not a wrong page, and a hard recency sort
+ * would bury the considered write-up under yesterday's scratch note. But a
+ * question containing "current" is explicitly about time, and there the newest
+ * page should win a close call outright.
+ */
+function recencyFactor(mtime: number | undefined, wantsCurrent: boolean, now: number): number {
+  if (!mtime) return 1;
+  const ageDays = Math.max(0, (now - mtime) / 86_400_000);
+  const freshness = Math.exp(-ageDays / 120);
+  return 1 + freshness * (wantsCurrent ? 0.6 : 0.12);
+}
+
 export function buildPack(
   query: string,
   pages: PackSource[],
@@ -335,10 +441,14 @@ export function buildPack(
    * every two-digit number, on a wiki whose central facts are rates like $20
    * and $30.
    */
-  const terms = query
+  const asked = query
     .toLowerCase()
     .split(/[^\p{L}\p{N}-]+/u)
     .filter((t) => (t.length > 2 || /\d/.test(t)) && !STOPWORDS.has(t));
+
+  const terms = expandQuery(asked, pages);
+  const wantsCurrent = ASKS_CURRENT.test(query);
+  const now = Date.now();
 
   const idf = idfFor(pages, terms);
 
@@ -346,6 +456,7 @@ export function buildPack(
   for (const page of pages) {
     const trust = trustOf(ledger, page.id, hashes.get(page.id) ?? "");
     const capture = CAPTURE_HINT.test(page.relPath) ? 0.35 : 1;
+    const recency = recencyFactor(page.mtime, wantsCurrent, now);
 
     /*
      * How well the WHOLE page answers the question, mixed into each of its
@@ -372,6 +483,9 @@ export function buildPack(
         relPath: page.relPath,
         title: page.title,
         section: section.heading,
+        anchor: section.heading
+          ? `${page.relPath}#${slugify(section.heading)}`
+          : page.relPath,
         text: section.text,
         tokens,
         /*
@@ -385,7 +499,8 @@ export function buildPack(
          */
         score: (own / Math.max(tokens, 1) + pageScore * 0.04) *
           (TRUST_WEIGHT[trust] ?? 1) *
-          capture,
+          capture *
+          recency,
         trust,
       });
     }
@@ -441,26 +556,90 @@ export function buildPack(
     used += passage.tokens;
   }
 
-  return { query, budget, used, passages, omitted: omitted.slice(0, 20) };
+  /*
+   * Confidence.
+   *
+   * Three things separate "the wiki answers this" from "the wiki contains
+   * something vaguely adjacent": how far the best passage stands above the
+   * rest of the corpus, how many of the asked-for words were found at all, and
+   * whether more than one page agrees. None is sufficient alone — a single
+   * strong page is a real answer, and five weak ones are not — so they are
+   * combined and then stated in a sentence rather than a number, because the
+   * consumer is a model deciding whether to trust this or go read the source.
+   */
+  const best = passages[0]?.score ?? 0;
+  const median =
+    scored.length > 1 ? scored[Math.floor(scored.length / 2)]?.score ?? 0 : 0;
+  const separation = best <= 0 ? 0 : Math.min(1, (best - median) / Math.max(best, 1e-6));
+  const covered = terms.length
+    ? terms.filter((t) => passages.some((p) => countWord(p.text.toLowerCase(), t) > 0)).length /
+      terms.length
+    : 0;
+  const corroboration = Math.min(1, new Set(passages.map((p) => p.pageId)).size / 3);
+
+  const confidence = passages.length
+    ? Math.max(0, Math.min(1, separation * 0.4 + covered * 0.45 + corroboration * 0.15))
+    : 0;
+
+  const verdict = !passages.length
+    ? "Nothing in the wiki matched. Do not guess — say the wiki does not cover this, and consider writing the page."
+    : confidence < 0.35
+      ? "LOW CONFIDENCE — these are the closest passages, not an answer. Treat them as leads, verify against the source, and say the wiki may not cover this."
+      : confidence < 0.6
+        ? "PARTIAL — the wiki covers some of this. Quote what is here and be explicit about what it does not say."
+        : "The wiki covers this. Quote the passages and cite their anchors.";
+
+  return {
+    query,
+    expanded: terms.length > asked.length ? terms.join(" ") : undefined,
+    budget,
+    used,
+    passages,
+    omitted: omitted.slice(0, 20),
+    confidence,
+    verdict,
+  };
 }
 
 /** Render a pack as markdown an agent can paste straight into its context. */
 export function renderPack(pack: Pack): string {
   if (!pack.passages.length) {
-    return `No passages in the wiki matched "${pack.query}". This gap has been logged.`;
+    /*
+     * A negative result is a real answer and is worth saying plainly.
+     *
+     * The old wording ("this gap has been logged") told the agent what Lore
+     * had done and nothing about what IT should do, so the common next move
+     * was to answer from memory anyway. Naming both correct moves — say so,
+     * or write the page — is the difference between a wiki that grows where it
+     * is thin and one that stays thin.
+     */
+    return [
+      `No passages in the wiki matched "${pack.query}".`,
+      "",
+      "This is a real answer: the wiki does not cover this. Say so rather than",
+      "answering from memory. If you learn it during this session, write it with",
+      "wiki_write so the next agent does not have to ask.",
+      "",
+      "The gap has been logged.",
+    ].join("\n");
   }
 
   const lines = [
     `# Context: ${pack.query}`,
     "",
     `${pack.passages.length} passages · ~${pack.used} tokens of a ${pack.budget} budget.`,
+    // The verdict goes above the passages, because a model that has already
+    // read four confident-looking paragraphs will not revise its confidence
+    // on the strength of a footer.
+    `Confidence: ${Math.round(pack.confidence * 100)}%. ${pack.verdict}`,
+    pack.expanded ? `Also searched for: ${pack.expanded}` : "",
     "Each passage cites its source. Prefer verified passages when they conflict.",
     "",
-  ];
+  ].filter(Boolean);
 
   for (const p of pack.passages) {
     lines.push(`## ${p.title}${p.section ? ` — ${p.section}` : ""}`);
-    lines.push(`\`${p.relPath}\` · ${p.trust}`);
+    lines.push(`\`${p.anchor}\` · ${p.trust}`);
     lines.push("");
     lines.push(p.text.trim());
     lines.push("");
@@ -473,4 +652,18 @@ export function renderPack(pack: Pack): string {
     );
   }
   return lines.join("\n");
+}
+
+/**
+ * Frontmatter aliases as a plain list.
+ *
+ * Obsidian accepts `aliases: FW` and `aliases: [FW, fablewatch]` and a YAML
+ * block list, and a vault of any age contains all three. Anything else is
+ * ignored rather than coerced — a malformed alias should cost nothing.
+ */
+export function aliasesOf(page: { frontmatter?: Record<string, unknown> }): string[] {
+  const raw = page.frontmatter?.aliases ?? page.frontmatter?.alias;
+  if (typeof raw === "string") return [raw];
+  if (Array.isArray(raw)) return raw.filter((v): v is string => typeof v === "string");
+  return [];
 }

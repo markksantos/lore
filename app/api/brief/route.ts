@@ -7,6 +7,7 @@ import { listVersions, readVersion } from "@/lib/history";
 import { readRaw } from "@/lib/wiki";
 import { detectOllama, generate, recommendModel } from "@/lib/ollama";
 import { markSeen, readSeen } from "@/lib/seen";
+import { embeddingStatus, ensureIndex } from "@/lib/embeddings";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,6 +28,30 @@ export const dynamic = "force-dynamic";
 
 /** Bounded so one enormous window cannot make the brief slow to the point of unused. */
 const MAX_SYNTHESISED = 8;
+
+/**
+ * Warm the semantic index in the background, once per process.
+ *
+ * Semantic search was behind a button on the Settings screen. A feature that
+ * requires you to know it exists, find it, and wait for a build before it does
+ * anything is a feature nobody uses — and it is the half of retrieval that
+ * catches the questions the keyword ranker cannot, which are exactly the
+ * questions people give up on.
+ *
+ * Started from the brief because the brief is the first screen, so this begins
+ * the moment the app opens. Fire-and-forget: `ensureIndex` returns as soon as
+ * the work is scheduled, only re-embeds pages whose text changed, and every
+ * caller of it already treats "not ready" as "skip semantic".
+ */
+let warming = false;
+
+function warmEmbeddings(root: string, pages: { id: string; title: string; text: string }[]): void {
+  if (warming || embeddingStatus().error) return;
+  warming = true;
+  void ensureIndex(root, pages).catch(() => {
+    // An index that will not build must cost nothing: search stays lexical.
+  });
+}
 
 /*
  * Written lines, kept.
@@ -163,6 +188,11 @@ export async function GET(request: Request) {
       readAttribution(since),
       readSeen(vault.root),
     ]);
+
+    warmEmbeddings(
+      vault.root,
+      index.pages.map((page) => ({ id: page.id, title: page.title, text: page.plain })),
+    );
 
     const brief = buildBrief(
       index,

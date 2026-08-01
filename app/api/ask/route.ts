@@ -2,14 +2,18 @@ import crypto from "node:crypto";
 import { fail, requireVault } from "@/lib/server";
 import { getIndex } from "@/lib/wiki";
 import { readLedger } from "@/lib/verify";
-import { buildPack, clampBudget } from "@/lib/pack";
+import { buildPack, clampBudget , aliasesOf } from "@/lib/pack";
 import { detectOllama, generate, recommendModel } from "@/lib/ollama";
 import { record } from "@/lib/usage";
 import { recordAsked } from "@/lib/asked";
 import { embeddingStatus, semanticSearch } from "@/lib/embeddings";
+import { rerankPack } from "@/lib/rerank";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+/** Below this the lexical ordering is doubtful enough to be worth a second pass. */
+const RERANK_BELOW = 0.6;
 
 /**
  * Ask the wiki a question.
@@ -83,7 +87,7 @@ export async function POST(request: Request) {
     }
 
     const hashes = new Map(index.pages.map((p) => [p.id, hashOf(p.plain)]));
-    const pack = buildPack(
+    let pack = buildPack(
       question,
       index.pages.map((p) => ({
         id: p.id,
@@ -91,6 +95,8 @@ export async function POST(request: Request) {
         title: p.title,
         plain: p.plain,
         words: p.words,
+        mtime: p.mtime,
+        aliases: aliasesOf(p),
       })),
       ledger,
       hashes,
@@ -123,6 +129,21 @@ export async function POST(request: Request) {
 
     const detection = await detectOllama().catch(() => null);
     const model = detection?.running ? (recommendModel(detection.models) ?? detection.models[0]?.name) : null;
+
+    /*
+     * Rerank, but only when the lexical pass is unsure.
+     *
+     * The model reading twelve passages costs seconds, and Ask was brought down
+     * from thirty of them to under seven — spending that back on every question
+     * would undo the work for the many questions the ranker already gets right.
+     * Low confidence is exactly the case where the ordering is doubtful and the
+     * answer was going to be poor anyway, so that is where the time is worth
+     * spending.
+     */
+    if (pack.confidence < RERANK_BELOW && model) {
+      const outcome = await rerankPack(pack, model).catch(() => null);
+      if (outcome) pack = outcome.pack;
+    }
 
     const numbered = pack.passages
       .map((p, i) => `[${i + 1}] ${p.title}${p.section ? ` — ${p.section}` : ""}\n${p.text}`)
@@ -161,6 +182,10 @@ export async function POST(request: Request) {
       needsModel: !model,
       tokensUsed: pack.used,
       budget: pack.budget,
+      // Surfaced so the UI can say "the wiki may not cover this" instead of
+      // rendering a hedged answer with the same confidence as a certain one.
+      confidence: pack.confidence,
+      verdict: pack.verdict,
       passages: pack.passages.map((p, i) => ({
         n: i + 1,
         pageId: p.pageId,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, Flame, HelpCircle, Gauge, Copy, Check, Users } from "lucide-react";
+import { Loader2, Flame, HelpCircle, Gauge, Copy, Check, Users, Target } from "lucide-react";
 import { paletteVars } from "@/lib/palette";
 import { formatTokens } from "@/lib/tokens";
 import { cn, count, formatCount, relativeTime } from "@/lib/utils";
@@ -121,6 +121,9 @@ export function InsightsView({ onOpenPage }: { onOpenPage: (pageId: string) => v
 
       {/* ---------------------------------------------------------- receipts */}
       {usage ? <Receipts usage={usage} /> : null}
+
+      {/* --------------------------------------------------------- retrieval */}
+      <Retrieval />
 
       {/* ------------------------------------------------------------ budget */}
       <section className="mt-10">
@@ -407,6 +410,109 @@ function Receipts({ usage }: { usage: UsageReport }) {
           </table>
         </div>
       ) : null}
+    </section>
+  );
+}
+
+type GoldenState = {
+  cases: { id: string; question: string; pageId: string; why?: string }[];
+  history: { at: number; recallAt1: number; recallAt5: number; missed: number; cases: number }[];
+};
+
+/**
+ * Retrieval, measured against questions whose answers were written down first.
+ *
+ * Every other number in this app describes the wiki. This one describes Lore:
+ * given a question a human already knows the answer to, does the ranker return
+ * the right page. It is the only number that can say a change made retrieval
+ * worse, and it exists because twice during this project a ranking change was
+ * judged by a score that had moved for the wrong reason — the synthetic harness
+ * writes fresh questions every run, so an easier set reads as a better ranker.
+ */
+function Retrieval() {
+  const [state, setState] = useState<GoldenState | null>(null);
+  const [running, setRunning] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/golden")
+      .then((r) => (r.ok ? r.json() : null))
+      .then(setState)
+      .catch(() => setState(null));
+  }, []);
+
+  const run = async () => {
+    setRunning(true);
+    await fetch("/api/golden", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "run" }),
+    }).catch(() => null);
+    const fresh = await fetch("/api/golden")
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null);
+    if (fresh) setState(fresh);
+    setRunning(false);
+  };
+
+  if (!state) return null;
+
+  const history = state.history ?? [];
+  const latest = history[history.length - 1];
+  const previous = history[history.length - 2];
+  const delta = latest && previous ? latest.recallAt1 - previous.recallAt1 : 0;
+
+  return (
+    <section className="mt-10">
+      <h2 className="flex items-center gap-2 text-[18px] font-semibold tracking-[-0.02em] text-[var(--lore-text-primary)]">
+        <Target size={16} className="text-[var(--lore-text-tertiary)]" />
+        Retrieval
+      </h2>
+      <p className="t-meta mt-1 text-[var(--lore-text-tertiary)]">
+        {state.cases.length
+          ? `${count(state.cases.length, "question")} whose correct page you have already named. Re-run after any change to see whether it helped.`
+          : "No questions yet. Ask something, confirm the top source was right, and save it here — that is what makes a future regression visible."}
+      </p>
+
+      {latest ? (
+        <div className="mt-3.5 grid gap-3 sm:grid-cols-3">
+          <div style={paletteVars(1)} className="plate px-4 py-3.5">
+            <div className="text-[26px] font-bold leading-none tracking-[-0.04em] tabular-nums">
+              {Math.round(latest.recallAt1 * 100)}%
+            </div>
+            <div className="plate-muted mt-2 text-[12px] font-semibold">
+              right page first
+              {delta !== 0 ? (
+                <span className={delta > 0 ? "" : " text-[var(--lore-danger)]"}>
+                  {" "}
+                  ({delta > 0 ? "+" : ""}
+                  {Math.round(delta * 100)})
+                </span>
+              ) : null}
+            </div>
+          </div>
+          <div style={paletteVars(4)} className="plate px-4 py-3.5">
+            <div className="text-[26px] font-bold leading-none tracking-[-0.04em] tabular-nums">
+              {Math.round(latest.recallAt5 * 100)}%
+            </div>
+            <div className="plate-muted mt-2 text-[12px] font-semibold">in the top five</div>
+          </div>
+          <div style={paletteVars(5)} className="plate px-4 py-3.5">
+            <div className="text-[26px] font-bold leading-none tracking-[-0.04em] tabular-nums">
+              {latest.missed}
+            </div>
+            <div className="plate-muted mt-2 text-[12px] font-semibold">never found at all</div>
+          </div>
+        </div>
+      ) : null}
+
+      <button
+        type="button"
+        onClick={run}
+        disabled={running || !state.cases.length}
+        className="t-meta mt-3 rounded-lg border border-[var(--lore-border)] px-3 py-1.5 text-[var(--lore-text-secondary)] transition-colors hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)] disabled:opacity-40"
+      >
+        {running ? "Running…" : "Run the set"}
+      </button>
     </section>
   );
 }

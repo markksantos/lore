@@ -170,6 +170,18 @@ async function main() {
   let skipped = 0;
   let answered = 0;
 
+  /*
+   * `--save-golden` turns this run into a fixed set.
+   *
+   * The synthetic harness cannot detect a regression, because the questions
+   * change every run — a worse ranker on an easier question set scores better
+   * and nothing says so. Saving one run's questions, paired with the pages that
+   * are supposed to answer them, converts it into a set that can be re-run
+   * after every ranking change and compared honestly.
+   */
+  const saveGolden = args.includes("--save-golden");
+  const golden = [];
+
   for (const page of sample) {
     const full = await json(
       `${BASE}/api/page?path=${encodeURIComponent(page.relPath)}`,
@@ -185,6 +197,8 @@ async function main() {
       continue;
     }
     asked++;
+
+    if (saveGolden) golden.push({ question, pageId: page.id });
 
     const result = await json(`${BASE}/api/ask`, {
       method: "POST",
@@ -225,6 +239,17 @@ async function main() {
   const pct = (n) => `${Math.round((100 * n) / Math.max(asked, 1))}%`;
 
   console.log("\n\n─── retrieval ───────────────────────────────");
+  if (saveGolden) {
+    for (const g of golden) {
+      await fetch(`${BASE}/api/golden`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "add", source: "manual", ...g }),
+      }).catch(() => {});
+    }
+    console.log(`saved ${golden.length} cases to the golden set\n`);
+  }
+
   console.log(`questions asked        ${asked}   (${skipped} skipped as unaskable)`);
   console.log(`recall@1               ${pct(at(1))}  ${at(1)}/${asked}`);
   console.log(`recall@5               ${pct(at(5))}  ${at(5)}/${asked}`);

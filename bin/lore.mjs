@@ -455,6 +455,81 @@ async function run() {
         return 0;
       }
 
+      /*
+       * `lore eval` — did that change make retrieval better or worse?
+       *
+       * The synthetic harness cannot answer this: its questions are different
+       * every run, so a worse ranker on an easier set scores higher and says
+       * nothing. This runs the fixed golden set, compares against the previous
+       * run, and exits non-zero on a regression, which makes it usable as a
+       * gate rather than a thing you read and forget.
+       */
+      case "eval": {
+        const res = await fetch(`${BASE}/api/golden`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action: "run", rerank: Boolean(flag("rerank")) }),
+        });
+        const body = await res.json();
+        if (!res.ok || body.error) fail(body.error ?? `Lore returned ${res.status}`);
+        if (!body.run) {
+          process.stdout.write(
+            "The golden set is empty. Add cases from Ask, or seed one with:\n" +
+              "  node scripts/eval-retrieval.mjs --n 20 --save-golden\n",
+          );
+          return 0;
+        }
+
+        const run = body.run;
+        if (json) {
+          process.stdout.write(JSON.stringify(run, null, 2) + "\n");
+          return 0;
+        }
+
+        const pct = (v) => `${Math.round(v * 100)}%`;
+        process.stdout.write(
+          [
+            `${run.cases} cases`,
+            `  recall@1     ${pct(run.recallAt1)}`,
+            `  recall@5     ${pct(run.recallAt5)}`,
+            `  median rank  ${run.medianRank || "—"}`,
+            `  never found  ${run.missed}`,
+            "",
+          ].join("\n"),
+        );
+
+        const failures = run.results.filter((r) => r.rank !== 1);
+        if (failures.length) {
+          process.stdout.write("Not at rank 1:\n");
+          for (const f of failures.slice(0, 15)) {
+            process.stdout.write(
+              `  ${f.rank === 0 ? "miss" : `#${f.rank}`}  ${f.case.question}\n` +
+                `        want ${f.case.pageId}\n` +
+                `        got  ${f.got.slice(0, 3).join(", ") || "nothing"}\n`,
+            );
+          }
+          process.stdout.write("\n");
+        }
+
+        // Compare against the run before this one, which the API has already
+        // appended — so index -2 is the previous state of the world.
+        const history = JSON.parse(await get("/api/golden")).history ?? [];
+        const previous = history[history.length - 2];
+        if (previous) {
+          const delta = run.recallAt1 - previous.recallAt1;
+          const arrow = delta > 0.001 ? "up" : delta < -0.001 ? "DOWN" : "unchanged";
+          process.stdout.write(
+            `recall@1 ${arrow} from ${pct(previous.recallAt1)} (${delta >= 0 ? "+" : ""}${Math.round(delta * 100)} points)\n`,
+          );
+          const threshold = Number(flag("max-drop", 5)) / 100;
+          if (delta < -threshold) {
+            process.stderr.write(`\nRegression: recall@1 fell more than ${Math.round(threshold * 100)} points.\n`);
+            return 1;
+          }
+        }
+        return 0;
+      }
+
       case "verify": {
         const pageId = argv[1];
         if (!pageId || pageId.startsWith("--")) fail("usage: lore verify <page-id>");
@@ -483,6 +558,7 @@ async function run() {
             "  verify   <page-id>",
             "  install  [--only a,b] [--scope prefix] [--no-hooks] [--dry-run]",
             "  capture  (reads a SessionEnd hook payload on stdin)",
+            "  eval     [--json] [--rerank] [--max-drop N]   run the golden set",
             "",
             "Exit 1 when a health threshold is breached, so it can gate CI.",
             "",
