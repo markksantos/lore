@@ -299,6 +299,20 @@ export function extractClaims(page: ClaimSource, cap = 120): Claim[] {
       taken.push([at, end]);
       if (isEnumeration(text)) continue;
 
+      /*
+       * A range is one fact, not two.
+       *
+       * "3-11 sec" and "$100–$400" state a span, and reading the endpoints as
+       * separate claims produced "four words — 11 vs 15" on the real wiki from
+       * two pages that agree completely. Detected from the characters either
+       * side of the number rather than from a wider pattern, because the
+       * separator varies (-, –, —, "to") and the surrounding grammar does not.
+       */
+      const beforeChar = page.plain.slice(Math.max(0, at - 4), at);
+      const afterChar = page.plain.slice(end, end + 4);
+      if (/\d\s?[-–—]\s?$/.test(beforeChar) || /^\s?[-–—]\s?\d/.test(afterChar)) continue;
+      if (/\d\s+to\s+$/i.test(beforeChar) || /^\s+to\s+\d/i.test(afterChar)) continue;
+
       let heading = page.title;
       for (const h of headings) {
         if (h.at <= at) heading = h.text;

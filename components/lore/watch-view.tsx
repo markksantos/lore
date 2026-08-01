@@ -318,18 +318,44 @@ export function WatchView({ onOpenPage }: { onOpenPage: (pageId: string) => void
                   <span className="font-medium">{c.subject}</span> —{" "}
                   {[...new Set(c.claims.map((x) => x.value))].join(" vs ")}
                 </p>
+                {/*
+                  * One row per sentence, with its value.
+                  *
+                  * Two claims extracted from the same sentence — "$150 must be
+                  * withdrawn before the $100 one" is genuinely two — rendered
+                  * as two identical lines, which reads as a duplicate-row bug
+                  * rather than as the disagreement it is. The value leads, so
+                  * the same sentence appearing twice is legible, and exact
+                  * repeats of the same page, sentence AND value are dropped.
+                  */}
                 <ul className="mt-1.5 space-y-1">
-                  {c.claims.slice(0, 4).map((claim, j) => (
-                    <li key={j}>
-                      <button
-                        type="button"
-                        onClick={() => onOpenPage(claim.pageId)}
-                        className="t-meta text-left text-[var(--lore-text-tertiary)] transition-colors hover:text-[var(--lore-text-primary)]"
-                      >
-                        {claim.relPath} — {claim.text.slice(0, 90)}
-                      </button>
-                    </li>
-                  ))}
+                  {c.claims
+                    .filter(
+                      (claim, j, all) =>
+                        all.findIndex(
+                          (other) =>
+                            other.relPath === claim.relPath &&
+                            other.text === claim.text &&
+                            other.value === claim.value,
+                        ) === j,
+                    )
+                    .slice(0, 5)
+                    .map((claim, j) => (
+                      <li key={j}>
+                        <button
+                          type="button"
+                          onClick={() => onOpenPage(claim.pageId)}
+                          className="t-meta flex w-full items-baseline gap-2 text-left text-[var(--lore-text-tertiary)] transition-colors hover:text-[var(--lore-text-primary)]"
+                        >
+                          <span className="shrink-0 font-semibold tabular-nums text-[var(--lore-text-secondary)]">
+                            {claim.value}
+                          </span>
+                          <span className="min-w-0 flex-1 truncate">
+                            {claim.relPath} — {claim.text.slice(0, 90)}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
                 </ul>
               </div>
             ))}

@@ -90,6 +90,16 @@ export function BriefView({ onOpenPage }: { onOpenPage: (pageId: string) => void
   const [more, setMore] = useState<Item[]>([]);
   const [loadingMore, setLoadingMore] = useState(false);
   const [exhausted, setExhausted] = useState(false);
+  /*
+   * Has the written pass come back yet?
+   *
+   * The fast pass returns fallback lines by construction, so judging "no model
+   * is installed" from it told people to install Ollama while Ollama was
+   * running and simply had not answered yet. The banner is a claim about the
+   * machine, and it cannot be made until the request that would know has
+   * finished.
+   */
+  const [settled, setSettled] = useState(false);
 
   const load = useCallback(async (window: number) => {
     const mine = ++run.current;
@@ -106,11 +116,16 @@ export function BriefView({ onOpenPage }: { onOpenPage: (pageId: string) => void
     }
     setMore([]);
     setExhausted(false);
+    setSettled(false);
     setData(await plain.json());
     setLoading(false);
 
     const written = await fetch(`/api/brief?days=${window}`).catch(() => null);
-    if (mine !== run.current || !written?.ok) return;
+    if (mine !== run.current) return;
+    // Settled either way: a failed request is also an answer about the machine,
+    // and leaving the flag false would hide the banner forever.
+    setSettled(true);
+    if (!written?.ok) return;
     setData(await written.json());
   }, []);
 
@@ -349,7 +364,7 @@ export function BriefView({ onOpenPage }: { onOpenPage: (pageId: string) => void
         * soon as one came back, so the banner vanished from briefs that still
         * had fallbacks in them.
         */}
-      {data?.items.length && !data.synthesised ? (
+      {settled && data?.items.length && !data.synthesised ? (
         <p className="t-meta mt-4 flex items-start gap-2 rounded-xl border border-[var(--lore-border)] px-4 py-3 text-[var(--lore-text-tertiary)]">
           <Sparkles size={13} className="mt-0.5 shrink-0" />
           {data.written

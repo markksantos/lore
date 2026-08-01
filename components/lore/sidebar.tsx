@@ -260,7 +260,7 @@ export function Sidebar({
             className="w-full rounded-lg border border-[var(--lore-border)] bg-[var(--lore-background)] py-2.5 pl-8 pr-3 text-[16px] text-[var(--lore-text-primary)] outline-none transition-colors placeholder:text-[var(--lore-text-tertiary)] focus:border-[var(--lore-accent)] md:py-2 md:pr-10 md:text-[13px]"
           />
           <kbd className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 rounded border border-[var(--lore-border)] bg-[var(--lore-surface-raised)] px-1.5 py-0.5 text-[10px] text-[var(--lore-text-tertiary)] md:block">
-            ⌘K
+            /
           </kbd>
         </div>
       </div>

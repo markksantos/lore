@@ -142,7 +142,25 @@ export function AppShell({
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+      /*
+       * `/` focuses search; ⌘K belongs to the palette now.
+       *
+       * Both were bound to ⌘K, so pressing it opened the palette AND moved
+       * focus into the sidebar field behind it — the palette appeared and did
+       * not accept a keystroke. The palette does everything this shortcut did
+       * and more, so it wins the good binding, and search takes the other
+       * convention people already know from every list UI.
+       *
+       * Guarded on the focused element, because "/" is a character: firing it
+       * while somebody is writing a page would eat the slash and steal focus
+       * mid-sentence.
+       */
+      const target = event.target as HTMLElement | null;
+      const typing =
+        target?.isContentEditable ||
+        target?.tagName === "INPUT" ||
+        target?.tagName === "TEXTAREA";
+      if (event.key === "/" && !typing && !event.metaKey && !event.ctrlKey && !event.altKey) {
         event.preventDefault();
         focusSearch();
         return;
