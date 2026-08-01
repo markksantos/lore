@@ -28,7 +28,25 @@ import { vaultKey } from "@/lib/journal";
  */
 
 const DIR = path.join(os.homedir(), ".lore");
-const filePath = (key: string) => path.join(DIR, `seen-${key}.json`);
+
+/**
+ * Who "you" are, when the wiki is shared.
+ *
+ * Seen state is per person, not per vault. On a shared wiki — a team repo, or
+ * one folder synced across two machines — a single seen file means whoever
+ * opens the brief first consumes the news for everybody else, and the second
+ * reader is told they are up to date on things they have never seen.
+ *
+ * Defaults to the OS username, so a single-person setup behaves exactly as it
+ * always has and nobody has to configure anything. LORE_USER overrides it for
+ * people who share a login or want their two machines to count as one reader.
+ */
+function person(): string {
+  const raw = (process.env.LORE_USER ?? os.userInfo().username ?? "me").trim();
+  return raw.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40) || "me";
+}
+
+const filePath = (key: string) => path.join(DIR, `seen-${key}-${person()}.json`);
 
 /** pageId → when it was last shown or opened. */
 export type Seen = Record<string, number>;
@@ -37,7 +55,17 @@ export type Seen = Record<string, number>;
 const FORGET_DAYS = 45;
 
 export async function readSeen(root: string): Promise<Seen> {
-  const raw = await fs.readFile(filePath(vaultKey(root)), "utf8").catch(() => "");
+  const key = vaultKey(root);
+  let raw = await fs.readFile(filePath(key), "utf8").catch(() => "");
+  /*
+   * Fall back to the pre-per-person file.
+   *
+   * Seen state used to be one file per vault. Adding the reader to the name
+   * would otherwise orphan it, and the first brief after upgrading would
+   * present every page in the window as news — the exact failure this whole
+   * module exists to prevent, introduced by the fix to a different one.
+   */
+  if (!raw) raw = await fs.readFile(path.join(DIR, `seen-${key}.json`), "utf8").catch(() => "");
   if (!raw) return {};
   try {
     const parsed = JSON.parse(raw) as Seen;

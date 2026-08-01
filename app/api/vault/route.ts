@@ -32,6 +32,8 @@ export async function POST(request: Request) {
       path?: string;
       root?: string;
       name?: string;
+      /** Which starter kit to build — see lib/kits. */
+      kit?: string;
     };
 
     switch (body.action) {
@@ -51,7 +53,7 @@ export async function POST(request: Request) {
         const target = expandPath(body.path ?? "");
         if (!target) return fail(new Error("Choose where the wiki should live."));
         const name = body.name?.trim() || path.basename(target) || "My wiki";
-        const created = await createStarterVault(target, name);
+        const created = await createStarterVault(target, name, body.kit);
         const vault = await linkVault(created.root);
         await setActiveVault(vault.root);
         return Response.json({ vault, created: created.files });

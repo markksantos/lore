@@ -66,6 +66,15 @@ export type Policy = {
    * which is the one thing it genuinely controls.
    */
   quarantineFolders: string[];
+  /**
+   * Commit every agent write, authored by that agent.
+   *
+   * Only meaningful when the vault is a git repo. Off by default: committing on
+   * somebody's behalf in their repo is not a thing to start doing unasked, and
+   * on a vault a human also edits by hand a commit per agent write is noise
+   * they did not choose.
+   */
+  autoCommit: boolean;
 };
 
 export const DEFAULT_POLICY: Policy = {
@@ -82,6 +91,7 @@ export const DEFAULT_POLICY: Policy = {
   stampFrontmatter: false,
   protectedPaths: [],
   quarantineFolders: [],
+  autoCommit: false,
 };
 
 

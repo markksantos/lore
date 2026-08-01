@@ -121,6 +121,8 @@ function readPolicy(name: string): Policy {
       quarantined: Array.isArray(parsed.quarantined) ? parsed.quarantined : [],
       protectedPaths: Array.isArray(parsed.protectedPaths) ? parsed.protectedPaths : [],
       quarantineFolders: Array.isArray(parsed.quarantineFolders) ? parsed.quarantineFolders : [],
+      // No git in a browser tab, whatever is stored.
+      autoCommit: false,
       // Never true here whatever is stored: stamping edits the markdown, and
       // this folder was opened read-only. See the PUT below.
       stampFrontmatter: false,
@@ -230,6 +232,7 @@ async function handle(url: URL, init?: RequestInit): Promise<Response | null> {
           ((body.protectedPaths as string[]) ?? current.protectedPaths ?? []).filter(Boolean),
         quarantineFolders:
           ((body.quarantineFolders as string[]) ?? current.quarantineFolders ?? []).filter(Boolean),
+        autoCommit: false,
         /*
          * Refused, not stored.
          *

@@ -1,6 +1,7 @@
 import { fail, requireVault, toMeta } from "@/lib/server";
 import { inQuarantineFolder, isProtected, readPolicy } from "@/lib/policy";
 import { raise } from "@/lib/alerts";
+import { commitWrite } from "@/lib/git-native";
 import { canonViolations, readCanon } from "@/lib/canon";
 import { currentVersion, expiryOf, supersessions } from "@/lib/page-facts";
 import { markSeen } from "@/lib/seen";
@@ -287,10 +288,26 @@ export async function POST(request: Request) {
         }
       }
 
+      /*
+       * One commit per agent write, when the vault is a repo and the user
+       * turned it on. Best-effort in the strongest sense: the page is on disk
+       * either way, and a git failure must never surface as a failed write.
+       */
+      let commit: Awaited<ReturnType<typeof commitWrite>> | null = null;
+      if (policy.autoCommit) {
+        commit = await commitWrite(
+          vault.root,
+          relPath,
+          who,
+          before === null ? `Add ${page?.title ?? relPath}` : `Update ${page?.title ?? relPath}`,
+        ).catch(() => null);
+      }
+
       return Response.json({
         ok: true,
         path: relPath,
         mode,
+        commit,
         created: before === null,
         page: page ? { id: page.id, title: page.title } : null,
         trust: "unverified",

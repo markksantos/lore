@@ -599,6 +599,15 @@ end run`;
         return 0;
       }
 
+      case "sync": {
+        const res = await fetch(`${BASE}/api/sync`, { method: "POST" });
+        const body = await res.json();
+        if (!res.ok || body.error) fail(body.error ?? `Lore returned ${res.status}`);
+        process.stdout.write(`${body.message}\n`);
+        for (const file of body.conflicts ?? []) process.stdout.write(`  conflict: ${file}\n`);
+        return body.conflicts?.length ? 1 : 0;
+      }
+
       case "verify": {
         const pageId = argv[1];
         if (!pageId || pageId.startsWith("--")) fail("usage: lore verify <page-id>");
@@ -629,6 +638,7 @@ end run`;
             "  capture  (reads a SessionEnd hook payload on stdin)",
             "  eval     [--json] [--rerank] [--max-drop N]   run the golden set",
             "  digest   [--days N] [--notify] [--install]   the brief, on a schedule",
+            "  sync     pull then push, if the vault is a git repo",
             "",
             "Exit 1 when a health threshold is breached, so it can gate CI.",
             "",

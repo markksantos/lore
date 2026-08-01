@@ -3,6 +3,7 @@ import { getIndex, search } from "@/lib/wiki";
 import { embeddingStatus, semanticSearch } from "@/lib/embeddings";
 import type { SearchResult } from "@/lib/types";
 import { readPolicy } from "@/lib/policy";
+import { readConfig } from "@/lib/config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,7 +25,38 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   try {
     const vault = await requireVault();
-    const q = new URL(request.url).searchParams.get("q") ?? "";
+    const params = new URL(request.url).searchParams;
+    const q = params.get("q") ?? "";
+
+    /*
+     * `?all=1` — search every linked vault, not just the active one.
+     *
+     * The personal wiki and a client wiki are deliberately separate corpora,
+     * and the questions are not: "did I already write this up somewhere" spans
+     * both, and answering it meant relinking, searching, and relinking back.
+     * Results carry the vault they came from, because a hit whose home you
+     * cannot see is a hit you cannot act on.
+     */
+    if (params.get("all") === "1") {
+      const config = await readConfig();
+      const everywhere: (SearchResult & { vault?: string; vaultRoot?: string })[] = [];
+      for (const other of config.vaults) {
+        const hits = await search(other.root, q).catch(() => []);
+        for (const hit of hits.slice(0, 12)) {
+          everywhere.push({
+            ...hit,
+            page: toMeta(hit.page),
+            vault: other.name,
+            vaultRoot: other.root,
+          });
+        }
+      }
+      // Interleaved by score rather than grouped by vault: grouping puts every
+      // result from whichever vault was linked first above every result from
+      // the one that actually answers the question.
+      everywhere.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+      return Response.json({ results: everywhere.slice(0, 40), acrossVaults: true });
+    }
 
     const literal = await search(vault.root, q);
     const results: (SearchResult & { semantic?: boolean })[] = literal.map((hit) => ({

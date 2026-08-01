@@ -62,6 +62,7 @@ export async function PUT(request: Request) {
       quarantineFolders: (body.quarantineFolders ?? current.quarantineFolders ?? [])
         .map((f) => f.trim())
         .filter(Boolean),
+      autoCommit: body.autoCommit ?? current.autoCommit ?? false,
     };
 
     await writePolicy(vault.root, next);

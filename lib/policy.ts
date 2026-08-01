@@ -38,6 +38,7 @@ export async function readPolicy(root: string): Promise<Policy> {
       stampFrontmatter: parsed.stampFrontmatter === true,
       protectedPaths: Array.isArray(parsed.protectedPaths) ? parsed.protectedPaths : [],
       quarantineFolders: Array.isArray(parsed.quarantineFolders) ? parsed.quarantineFolders : [],
+      autoCommit: parsed.autoCommit === true,
     };
   } catch {
     return DEFAULT_POLICY;
