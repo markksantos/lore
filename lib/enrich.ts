@@ -386,12 +386,21 @@ export function extractArticle(html: string): { title: string; text: string } | 
     /\b(accept all cookies|cookie preferences|privacy policy|terms of service|enable javascript|please enable|your consent|we and our partners|manage (your )?(cookies|preferences)|gdpr)\b/gi;
   const boilerplateHits = (text.match(boilerplate) ?? []).length;
 
+  // The gate has to reject two shapes without rejecting a genuine short
+  // article: a consent banner (boilerplate-DENSE) and a JS shell (structure-
+  // POOR). An early version keyed on a sentence count of four and a raw
+  // boilerplate count of two, and dropped a real 721-char, 3-sentence, 2-mention
+  // privacy-law story — the exact false negative NEW-2 named. So:
+  //  - length is the floor for "is this even a page"
+  //  - a text with neither multiple paragraphs NOR several sentences is a shell
+  //  - boilerplate is judged by DENSITY, not presence, because a real article
+  //    about privacy law says "privacy policy" a couple of times and a banner
+  //    says almost nothing else
+  const boilerplateDensity = boilerplateHits / Math.max(text.length / 1000, 1);
   if (
-    text.length < 600 ||
-    paragraphs.length < 2 ||
-    sentences < 4 ||
-    // A short text that is mostly consent/legal language is a banner, not a page.
-    (boilerplateHits >= 2 && text.length < 2_500)
+    text.length < 500 ||
+    (paragraphs.length < 2 && sentences < 3) ||
+    (boilerplateHits >= 3 && boilerplateDensity >= 5)
   ) {
     return null;
   }

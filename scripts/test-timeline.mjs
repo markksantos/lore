@@ -157,5 +157,20 @@ check("article: prose extracted, nav and footer dropped",
 const shell = extractArticle("<html><body><div id='root'></div><script>app()</script></body></html>");
 check("article: a JS shell is a refusal, not a page", shell === null);
 
+// NEW-2 (introduced then fixed): a genuine short article that merely MENTIONS
+// legal phrases must not be dropped as boilerplate. 2 mentions across ~720
+// chars of real prose — the exact false negative the fix-verification found.
+const shortLegal = extractArticle("<article><p>" +
+  "A federal judge ruled today that the data broker violated consumer protection statutes when it sold location histories without disclosure, a decision legal scholars say reshapes how the industry treats its Privacy Policy obligations and what counts as informed consent under the law. The company argued its Terms of Service permitted the transfers, but the court found the language buried and unenforceable, ordering a full audit within ninety days." +
+  "</p><p>" +
+  "Industry groups warned the precedent could ripple across adjacent sectors, while privacy advocates called it overdue and urged regulators to press similar cases against larger platforms holding comparable troves of behavioral data over time." +
+  "</p></article>");
+check("article: a real short legal-news article is KEPT, not over-blocked", shortLegal !== null && /federal judge/.test(shortLegal.text));
+// And a boilerplate-DENSE banner of similar length is still refused.
+const denseBanner = extractArticle("<article><p>" +
+  "We and our partners use cookies. Accept all cookies or manage your preferences. See our Privacy Policy and Terms of Service. Your consent is required under GDPR. Manage cookies. Cookie preferences. Please enable JavaScript. ".repeat(3) +
+  "</p></article>");
+check("article: a dense consent banner is still refused", denseBanner === null);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

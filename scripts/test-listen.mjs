@@ -94,6 +94,13 @@ const pem = "-----BEGIN RSA PRIVATE KEY-----\n" + "MIIEowIBAAKCAQEA" + "a".repea
 check("scrub redacts a private-key BODY even without its END marker",
   !scrub(pem).includes("MIIEowIBAAKCAQEA"), scrub(pem).slice(0, 60));
 
+// NEW-1 (introduced then fixed): a hex run LONGER than 64 chars — a SHA-512, a
+// doubled token, a 512-bit key — must be redacted, not exempted by an upper
+// bound. This was a live leak the fix-verification caught.
+check("scrub redacts long hex runs (>64), not just 40-64",
+  !scrub("key " + "d".repeat(128)).includes("dddd") &&
+  !scrub("h " + "a".repeat(65)).includes("aaaa"));
+
 // D1 (order): a secret past the 700-char per-turn clip must still be redacted,
 // because distil scrubs BEFORE renderTurns clips. Proven via the real path in
 // the distil test below; here we assert renderTurns of a pre-scrubbed turn is

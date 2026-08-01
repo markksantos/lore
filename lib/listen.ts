@@ -137,9 +137,13 @@ const SECRET_PATTERNS: RegExp[] = [
   // OPERATOR and the value: any KEY = "value" / KEY: value where the key name
   // signals a secret. Quoted values may contain spaces; unquoted may not.
   /(?<![\w-])([\w-]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PWD|CREDENTIAL|PRIVATE|APIKEY|ACCESS[_-]?KEY)[\w-]*)\s*[:=]\s*(?:"[^"]{4,}"|'[^']{4,}'|[^\s"']{6,})/gi,
-  // Bare high-entropy hex/base64-ish tokens of key length. Anchored on being a
-  // standalone run so it does not eat commit hashes mid-word or ordinary prose.
-  /(?<![\w-])[A-Fa-f0-9]{40,64}(?![\w-])/g,
+  // Bare high-entropy hex tokens of key length and UP. The earlier {40,64}
+  // upper bound exempted the very things most worth redacting — a hex-encoded
+  // 512-bit key, a doubled token, a SHA-512 — so a 128-char run sailed through
+  // a scrubber whose entire job is to stop that. No upper bound now; a 40-char
+  // git SHA becoming [redacted] is a harmless false positive, a leaked key is
+  // not.
+  /(?<![\w-])[A-Fa-f0-9]{40,}(?![\w-])/g,
   // Connection strings with an inline password.
   /\b\w+:\/\/[^\s:@/]+:[^\s@/]+@[^\s/]+/g,
   // ssh private key one-liners occasionally pasted.
