@@ -530,6 +530,75 @@ async function run() {
         return 0;
       }
 
+      /*
+       * `lore digest` — the brief, where you will actually see it.
+       *
+       * The brief is good and lives behind opening an app, which means it is
+       * read on the days you were already going to open the app. A notification
+       * costs nothing on a quiet day (it does not fire) and on a busy one it is
+       * the difference between knowing what your agents did and finding out on
+       * Friday.
+       *
+       * Deliberately not a daemon. This is one command, and scheduling belongs
+       * to whatever the machine already uses for scheduling — see --install
+       * for the launchd plist, which is printed rather than written, because
+       * silently installing a background job is not something a CLI should do
+       * on your behalf.
+       */
+      case "digest": {
+        if (flag("install")) {
+          const label = "com.lore.digest";
+          process.stdout.write(
+            [
+              `Save this as ~/Library/LaunchAgents/${label}.plist, then run:`,
+              `  launchctl load ~/Library/LaunchAgents/${label}.plist`,
+              "",
+              '<?xml version="1.0" encoding="UTF-8"?>',
+              '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
+              '<plist version="1.0"><dict>',
+              `  <key>Label</key><string>${label}</string>`,
+              "  <key>ProgramArguments</key>",
+              `  <array><string>${process.execPath}</string><string>${path.join(root, "bin", "lore.mjs")}</string><string>digest</string><string>--notify</string></array>`,
+              "  <key>StartCalendarInterval</key>",
+              "  <dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>0</integer></dict>",
+              "</dict></plist>",
+              "",
+            ].join("\n"),
+          );
+          return 0;
+        }
+
+        const days = Number(flag("days", 1)) || 1;
+        const d = JSON.parse(await get(`/api/brief?days=${days}&mark=0`));
+        if (!d.items.length) {
+          process.stdout.write("Nothing was written in this window.\n");
+          return 0;
+        }
+
+        const headline = d.items[0].line;
+        const summary = `${d.fresh || d.items.length} new · ${d.events} writes across ${d.pagesTouched} pages`;
+        process.stdout.write(`${summary}\n\n`);
+        for (const item of d.items) process.stdout.write(`  • ${item.line}\n`);
+        process.stdout.write("\n");
+
+        if (flag("notify") && process.platform === "darwin") {
+          const { spawn } = await import("node:child_process");
+          // Passed as argv, never interpolated into the script source: a page
+          // title containing a quote would otherwise be executable AppleScript.
+          const script = `on run argv
+  display notification (item 1 of argv) with title "Lore" subtitle (item 2 of argv)
+end run`;
+          await new Promise((resolve) => {
+            const child = spawn("osascript", ["-e", script, headline.slice(0, 200), summary], {
+              stdio: "ignore",
+            });
+            child.on("close", resolve);
+            child.on("error", resolve);
+          });
+        }
+        return 0;
+      }
+
       case "verify": {
         const pageId = argv[1];
         if (!pageId || pageId.startsWith("--")) fail("usage: lore verify <page-id>");
@@ -559,6 +628,7 @@ async function run() {
             "  install  [--only a,b] [--scope prefix] [--no-hooks] [--dry-run]",
             "  capture  (reads a SessionEnd hook payload on stdin)",
             "  eval     [--json] [--rerank] [--max-drop N]   run the golden set",
+            "  digest   [--days N] [--notify] [--install]   the brief, on a schedule",
             "",
             "Exit 1 when a health threshold is breached, so it can gate CI.",
             "",

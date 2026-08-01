@@ -8,9 +8,21 @@ import { readRaw } from "@/lib/wiki";
 import { detectOllama, generate, recommendModel } from "@/lib/ollama";
 import { markSeen, readSeen } from "@/lib/seen";
 import { embeddingStatus, ensureIndex } from "@/lib/embeddings";
+import { isMuted, readMuted, toggleMuted } from "@/lib/muted";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+/** POST — mute or unmute a page or folder prefix. */
+export async function POST(request: Request) {
+  try {
+    const vault = await requireVault();
+    const { prefix } = (await request.json().catch(() => ({}))) as { prefix?: string };
+    return Response.json({ muted: await toggleMuted(vault.root, String(prefix ?? "")) });
+  } catch (error) {
+    return fail(error);
+  }
+}
 
 /**
  * The brief.
@@ -182,12 +194,25 @@ export async function GET(request: Request) {
     const withModel = params.get("plain") !== "1";
     const since = Date.now() - days * 86_400_000;
 
-    const [index, events, attributions, seen] = await Promise.all([
+    const [index, rawEvents, attributions, seen, muted] = await Promise.all([
       getIndex(vault.root),
       readJournal(vaultKey(vault.root), since),
       readAttribution(since),
       readSeen(vault.root),
+      readMuted(vault.root),
     ]);
+
+    /*
+     * Muted paths never reach the ranker.
+     *
+     * Filtered here rather than after ranking so a muted folder cannot consume
+     * the per-folder spread quota and push real news off the page — the whole
+     * point of muting `sessions/` is that its forty daily writes stop competing
+     * for attention, not that they compete and then get hidden.
+     */
+    const events = muted.length
+      ? rawEvents.filter((event) => !isMuted(muted, event.relPath))
+      : rawEvents;
 
     warmEmbeddings(
       vault.root,
@@ -217,7 +242,7 @@ export async function GET(request: Request) {
     if (params.get("mark") !== "0") {
       await markSeen(vault.root, final.items.map((i) => i.pageId)).catch(() => {});
     }
-    return Response.json(final);
+    return Response.json({ ...final, muted });
   } catch (error) {
     return fail(error, 409);
   }

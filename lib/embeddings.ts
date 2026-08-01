@@ -340,6 +340,14 @@ function dot(a: Float32Array, b: Float32Array): number {
 
 type SourcePage = { id: string; title: string; text: string };
 
+/**
+ * How long to stand aside between pages during a background build.
+ *
+ * The whole build is a background nicety; every request that lands during it is
+ * something a person is waiting on. When the two compete, the person wins.
+ */
+const BUILD_PAUSE_MS = 12;
+
 async function runBuild(s: State, stale: SourcePage[]): Promise<void> {
   status.building = true;
   try {
@@ -368,8 +376,21 @@ async function runBuild(s: State, stale: SourcePage[]): Promise<void> {
         await save(s);
         sinceSave = 0;
       }
-      // Yield so a search request lands between pages instead of behind them.
-      await new Promise<void>((resolve) => setImmediate(resolve));
+      /*
+       * Yield, and then wait.
+       *
+       * `setImmediate` alone hands control back for one tick, which is enough
+       * for a request to be *accepted* and not nearly enough for it to be
+       * served: embedding is CPU-bound in this same process, so the next page
+       * starts before the handler finishes. Measured when this build was made
+       * automatic, the brief went from 1.4 seconds to 56.
+       *
+       * A real pause between pages costs the build wall-clock time and costs
+       * the user nothing, which is the correct trade for work nobody asked for
+       * and nothing is waiting on. `idle` is small enough that a 1,600-page
+       * vault still finishes inside a session.
+       */
+      await new Promise<void>((resolve) => setTimeout(resolve, BUILD_PAUSE_MS));
     }
     await save(s);
   } finally {

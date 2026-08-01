@@ -47,6 +47,16 @@ export type BriefItem = {
    * labelled, and the header says how many were new.
    */
   repeat: boolean;
+  /**
+   * Pages that cite this one, and would be read differently now.
+   *
+   * A change to a page is only half the news. "The deploy pipeline moved to
+   * on-push" matters because four other pages describe workflows built on the
+   * old behaviour, and nothing in a changelog says so — the reader has to
+   * already know the shape of their own wiki. Backlinks are the honest,
+   * computable version of "what does this affect".
+   */
+  affects: { pageId: string; title: string }[];
 };
 
 export type Brief = {
@@ -61,8 +71,21 @@ export type Brief = {
   hasMore: boolean;
   /** Everything that qualified in this window, not just what is shown. */
   total: number;
-  /** Subjects that moved across several pages at once. */
-  threads: { subject: string; pages: string[]; titles: string[] }[];
+  /**
+   * Subjects that moved across several pages at once.
+   *
+   * Promoted from a footnote to a grouping. The threads were computed, rendered
+   * as one line of trailing prose, and then the items were listed flat in
+   * reverse-chronological order — so "eight things happened to this client
+   * today" arrived as eight unrelated rows and the reader had to notice the
+   * pattern themselves. `items` on a thread are the rows that belong to it.
+   */
+  threads: {
+    subject: string;
+    pages: string[];
+    titles: string[];
+    items?: BriefItem[];
+  }[];
   /** True when a local model wrote the lines rather than the fallback. */
   synthesised: boolean;
 };
@@ -353,6 +376,17 @@ export function fallbackLine(page: WikiPage): string {
  * brief with fallback lines is still a brief, and is strictly better than a
  * spinner.
  */
+/** The pages that cite this one, capped — a hub with 200 backlinks is noise. */
+function affectedBy(index: WikiIndex, pageId: string): { pageId: string; title: string }[] {
+  const inbound = index.backlinks[pageId] ?? [];
+  if (!inbound.length || inbound.length > 12) return [];
+  return inbound
+    .map((id) => index.pages.find((p) => p.id === id))
+    .filter((p): p is WikiPage => Boolean(p))
+    .slice(0, 4)
+    .map((p) => ({ pageId: p.id, title: p.title }));
+}
+
 export function buildBrief(
   index: WikiIndex,
   events: WriteEvent[],
@@ -394,6 +428,9 @@ export function buildBrief(
            item and a handful of them took the whole brief. */
         score: 120 + Math.min(event.linesRemoved, 200) * 0.3,
         repeat: false,
+        // A deleted page's backlinks are now dead links, which is exactly
+        // the thing worth naming.
+        affects: affectedBy(index, relPath.replace(/\.mdx?$/i, "")),
         agent: agentByPath[relPath]?.agent ?? null,
         evidence: "",
       });
@@ -422,6 +459,7 @@ export function buildBrief(
       agent: agentByPath[relPath]?.agent ?? null,
       evidence: evidenceFor(page),
       repeat: Boolean(seen[page.id]) && event.at <= (seen[page.id] ?? 0) + 60_000,
+      affects: affectedBy(index, page.id),
     });
   }
 
@@ -466,9 +504,42 @@ export function buildBrief(
     /** More ranked items exist beyond this page. */
     hasMore: scored.length > window,
     total: scored.length,
-    threads: findThreads(scored.slice(0, 40)),
+    threads: groupItems(findThreads(scored.slice(0, 40)), items.slice(offset)),
     synthesised: false,
   };
+}
+
+/**
+ * Attach the shown rows to the thread they belong to.
+ *
+ * A thread with one visible row is not a thread — it is a row with a label — so
+ * those are dropped and their items fall through to the ungrouped list. Nothing
+ * is duplicated: a row appears under a thread or on its own, never both.
+ */
+function groupItems(
+  threads: { subject: string; pages: string[]; titles: string[] }[],
+  items: BriefItem[],
+): Brief["threads"] {
+  const claimed = new Set<string>();
+  const out: Brief["threads"] = [];
+
+  for (const thread of threads) {
+    const belonging = items.filter(
+      (item) => thread.pages.includes(item.pageId) && !claimed.has(item.pageId),
+    );
+    if (belonging.length < 2) continue;
+    for (const item of belonging) claimed.add(item.pageId);
+    out.push({ ...thread, items: belonging });
+  }
+  return out;
+}
+
+/** Items not claimed by any thread, in their original ranked order. */
+export function ungrouped(brief: Brief): BriefItem[] {
+  const claimed = new Set(
+    brief.threads.flatMap((t) => (t.items ?? []).map((i) => i.pageId)),
+  );
+  return brief.items.filter((item) => !claimed.has(item.pageId));
 }
 
 /** Rough cost of briefing, so the caller can keep the model call bounded. */

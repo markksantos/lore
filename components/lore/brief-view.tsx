@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowRight, Loader2, RefreshCw, Sparkles } from "lucide-react";
+import { ArrowRight, BellOff, Eye, Loader2, RefreshCw, Sparkles } from "lucide-react";
 import { cn, count, relativeTime } from "@/lib/utils";
 
 /**
@@ -28,6 +28,9 @@ type Item = {
   at: number;
   agent: string | null;
   repeat: boolean;
+  /** The passage the line was drawn from, shown on hover so a claim is checkable. */
+  evidence?: string;
+  affects?: { pageId: string; title: string }[];
 };
 
 type Brief = {
@@ -38,8 +41,9 @@ type Brief = {
   fresh: number;
   hasMore: boolean;
   total: number;
-  threads: { subject: string; pages: string[]; titles: string[] }[];
+  threads: { subject: string; pages: string[]; titles: string[]; items?: Item[] }[];
   synthesised: boolean;
+  muted: string[];
 };
 
 const WINDOWS = [
@@ -112,6 +116,27 @@ export function BriefView({ onOpenPage }: { onOpenPage: (pageId: string) => void
     load(days);
   }, [load, days]);
 
+  /**
+   * Mute a folder, or a page.
+   *
+   * A brief that keeps surfacing something you have deliberately ignored six
+   * times is a brief you stop reading — and then everything else in it is lost
+   * too. The prefix is the page's folder when it has one, because the thing
+   * people actually want silenced is a whole noisy directory, not one file out
+   * of the forty it produces a day.
+   */
+  const mute = useCallback(
+    async (prefix: string) => {
+      await fetch("/api/brief", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ prefix }),
+      }).catch(() => null);
+      load(days);
+    },
+    [load, days],
+  );
+
   /*
    * Keep reading.
    *
@@ -148,6 +173,18 @@ export function BriefView({ onOpenPage }: { onOpenPage: (pageId: string) => void
     observer.observe(node);
     return () => observer.disconnect();
   }, [loadMore]);
+
+  /*
+   * Rows not claimed by a thread, plus everything paged in afterwards.
+   *
+   * "Keep reading" fetches ranked items without re-running the grouping, so
+   * they always land here rather than being silently dropped for belonging to
+   * no thread.
+   */
+  const grouped = new Set(
+    (data?.threads ?? []).flatMap((t) => (t.items ?? []).map((i) => i.pageId)),
+  );
+  const loose = [...(data?.items ?? []), ...more].filter((i) => !grouped.has(i.pageId));
 
   return (
     <div className="mx-auto max-w-3xl px-8 py-9">
@@ -225,49 +262,43 @@ export function BriefView({ onOpenPage }: { onOpenPage: (pageId: string) => void
           agents work.
         </p>
       ) : (
-        <div className="divide-y divide-[var(--lore-border)] overflow-hidden rounded-xl border border-[var(--lore-border)] bg-[var(--lore-surface)]">
-          {[...data.items, ...more].map((item) => (
-            <button
-              key={item.pageId}
-              type="button"
-              onClick={() => onOpenPage(item.pageId)}
-              className="group flex w-full items-start gap-3 px-5 py-3.5 text-left transition-colors hover:bg-[var(--lore-surface-raised)]"
-            >
-              <span className="min-w-0 flex-1">
-                {/* The line is the content. Everything else on the row is
-                    metadata and is styled to lose to it. */}
-                <span className="block text-[14.5px] leading-[1.55] text-[var(--lore-text-primary)]">
-                  {item.line}
-                </span>
-                <span className="t-meta mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[var(--lore-text-tertiary)]">
-                  {/* Labelled rather than hidden. A repeat presented as news is
-                      the mirror; a repeat presented as a repeat is a reminder. */}
-                  {item.repeat ? (
-                    <span className="rounded bg-[var(--lore-surface-raised)] px-1.5 py-px">
-                      seen
-                    </span>
-                  ) : null}
-                  <span className="font-medium text-[var(--lore-text-secondary)]">
-                    {KIND_LABEL[item.kind]}
-                  </span>
-                  <span>·</span>
-                  <span className="truncate">{item.title}</span>
-                  <span>·</span>
-                  <span>{relativeTime(item.at)}</span>
-                  {item.agent ? (
-                    <>
-                      <span>·</span>
-                      <span>{item.agent}</span>
-                    </>
-                  ) : null}
-                </span>
-              </span>
-              <ArrowRight
-                size={14}
-                className="mt-1 shrink-0 text-[var(--lore-text-tertiary)] opacity-0 transition-opacity group-hover:opacity-100"
-              />
-            </button>
-          ))}
+        <div className="space-y-4">
+          {/*
+            * Threads first, as groups.
+            *
+            * These were already computed and rendered as one line of trailing
+            * prose, while the rows themselves were listed flat in reverse
+            * chronological order — so "eight things happened to this client
+            * today" arrived as eight unrelated rows and the reader had to spot
+            * the pattern. A subject that moved across several pages IS the news.
+            */}
+          {data.threads
+            .filter((t) => (t.items?.length ?? 0) > 1)
+            .map((thread) => (
+              <section key={thread.subject}>
+                <h2 className="t-meta mb-1.5 px-1 font-semibold uppercase tracking-[0.08em] text-[var(--lore-text-tertiary)]">
+                  {thread.subject} · {count(thread.items?.length ?? 0, "change")}
+                </h2>
+                <div className="divide-y divide-[var(--lore-border)] overflow-hidden rounded-xl border border-[var(--lore-border)] bg-[var(--lore-surface)]">
+                  {(thread.items ?? []).map((item) => (
+                    <Row
+                      key={item.pageId}
+                      item={item}
+                      onOpenPage={onOpenPage}
+                      onMute={mute}
+                    />
+                  ))}
+                </div>
+              </section>
+            ))}
+
+          {loose.length ? (
+            <div className="divide-y divide-[var(--lore-border)] overflow-hidden rounded-xl border border-[var(--lore-border)] bg-[var(--lore-surface)]">
+              {loose.map((item) => (
+                <Row key={item.pageId} item={item} onOpenPage={onOpenPage} onMute={mute} />
+              ))}
+            </div>
+          ) : null}
         </div>
       )}
 
@@ -291,17 +322,22 @@ export function BriefView({ onOpenPage }: { onOpenPage: (pageId: string) => void
         </p>
       ) : null}
 
-      {data?.threads.length ? (
+      {data?.muted.length ? (
         <p className="t-meta mt-4 text-[var(--lore-text-tertiary)]">
-          Most movement in{" "}
-          {data.threads.map((t, i) => (
-            <span key={t.subject}>
+          Muted:{" "}
+          {data.muted.map((prefix, i) => (
+            <span key={prefix}>
               {i > 0 ? ", " : ""}
-              <span className="text-[var(--lore-text-secondary)]">{t.subject}</span> (
-              {t.pages.length})
+              <button
+                type="button"
+                onClick={() => mute(prefix)}
+                className="underline decoration-dotted underline-offset-2 transition-colors hover:text-[var(--lore-text-primary)]"
+              >
+                {prefix}
+              </button>
             </span>
           ))}
-          .
+          . Click to unmute.
         </p>
       ) : null}
 
@@ -312,6 +348,118 @@ export function BriefView({ onOpenPage }: { onOpenPage: (pageId: string) => void
           Ollama and Lore will write them properly instead — it runs on your machine and
           nothing is sent anywhere.
         </p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * One line of news.
+ *
+ * The sentence is the content; everything else on the row is metadata and is
+ * styled to lose to it. Two affordances appear on hover and never take space
+ * when they are not wanted: the evidence the line was drawn from, and a way to
+ * stop hearing about this folder.
+ */
+function Row({
+  item,
+  onOpenPage,
+  onMute,
+}: {
+  item: Item;
+  onOpenPage: (pageId: string) => void;
+  onMute: (prefix: string) => void;
+}) {
+  const [showEvidence, setShowEvidence] = useState(false);
+  const folder = item.relPath.includes("/")
+    ? `${item.relPath.slice(0, item.relPath.lastIndexOf("/"))}/`
+    : item.relPath;
+
+  return (
+    <div className="group relative">
+      <button
+        type="button"
+        onClick={() => onOpenPage(item.pageId)}
+        className="flex w-full items-start gap-3 px-5 py-3.5 text-left transition-colors hover:bg-[var(--lore-surface-raised)]"
+      >
+        <span className="min-w-0 flex-1">
+          <span className="block text-[14.5px] leading-[1.55] text-[var(--lore-text-primary)]">
+            {item.line}
+          </span>
+          <span className="t-meta mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[var(--lore-text-tertiary)]">
+            {/* Labelled rather than hidden. A repeat presented as news is the
+                mirror; a repeat presented as a repeat is a reminder. */}
+            {item.repeat ? (
+              <span className="rounded bg-[var(--lore-surface-raised)] px-1.5 py-px">seen</span>
+            ) : null}
+            <span className="font-medium text-[var(--lore-text-secondary)]">
+              {KIND_LABEL[item.kind]}
+            </span>
+            <span>·</span>
+            <span className="truncate">{item.title}</span>
+            <span>·</span>
+            <span>{relativeTime(item.at)}</span>
+            {item.agent ? (
+              <>
+                <span>·</span>
+                <span>{item.agent}</span>
+              </>
+            ) : null}
+          </span>
+          {/*
+            * What else this changes.
+            *
+            * A change to a page is only half the news: it matters because
+            * other pages describe things built on what it used to say. The
+            * reader should not have to hold the shape of their own wiki in
+            * their head to notice that.
+            */}
+          {item.affects?.length ? (
+            <span className="t-meta mt-0.5 block text-[var(--lore-text-tertiary)]">
+              Read differently now: {item.affects.map((a) => a.title).join(", ")}
+            </span>
+          ) : null}
+        </span>
+        <ArrowRight
+          size={14}
+          className="mt-1 shrink-0 text-[var(--lore-text-tertiary)] opacity-0 transition-opacity group-hover:opacity-100"
+        />
+      </button>
+
+      <div className="absolute right-11 top-3 flex items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+        {/*
+          * The passage the line came from.
+          *
+          * Every line in the brief is a claim about what a page now says, and
+          * until now checking one meant opening the page and finding the
+          * changed paragraph. This is the paragraph.
+          */}
+        {item.evidence ? (
+          <button
+            type="button"
+            onClick={() => setShowEvidence((v) => !v)}
+            aria-label="Show what changed"
+            aria-expanded={showEvidence}
+            className="rounded p-1 text-[var(--lore-text-tertiary)] transition-colors hover:bg-[var(--lore-border)] hover:text-[var(--lore-text-primary)]"
+          >
+            <Eye size={12} />
+          </button>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => onMute(folder)}
+          aria-label={`Stop showing changes in ${folder}`}
+          title={`Mute ${folder}`}
+          className="rounded p-1 text-[var(--lore-text-tertiary)] transition-colors hover:bg-[var(--lore-border)] hover:text-[var(--lore-text-primary)]"
+        >
+          <BellOff size={12} />
+        </button>
+      </div>
+
+      {showEvidence && item.evidence ? (
+        <pre className="t-meta mx-5 mb-3 max-h-56 overflow-auto whitespace-pre-wrap rounded-lg border border-[var(--lore-border)] bg-[var(--lore-bg)] px-3 py-2 text-[var(--lore-text-secondary)]">
+          {item.evidence.trim()}
+        </pre>
       ) : null}
     </div>
   );
