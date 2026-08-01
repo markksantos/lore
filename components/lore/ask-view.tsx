@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowUp,
+  BookmarkPlus,
   Check,
+  Download,
   ChevronRight,
   Copy,
   FileText,
@@ -48,6 +50,7 @@ type Answer = {
   needsModel?: boolean;
   passages: Passage[];
   omitted: { relPath: string; title: string }[];
+  disagreements?: { subject: string; values: number[]; pages: string[] }[];
 };
 
 type Turn = {
@@ -69,9 +72,21 @@ type Message = {
   reason?: string;
   needsModel?: boolean;
   pending?: boolean;
+  /** True while tokens are still arriving, so the caret can blink. */
+  streaming?: boolean;
+  confidence?: number;
+  verdict?: string;
+  disagreements?: { subject: string; values: number[]; pages: string[] }[];
 };
 
-export function AskView({ onOpenPage }: { onOpenPage: (pageId: string) => void }) {
+export function AskView({
+  onOpenPage,
+  handoff,
+}: {
+  onOpenPage: (pageId: string) => void;
+  /** A question sent here from the palette. `key` changes even if the text does not. */
+  handoff?: { question: string; key: number } | null;
+}) {
   const [question, setQuestion] = useState("");
   const [asking, setAsking] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -82,6 +97,17 @@ export function AskView({ onOpenPage }: { onOpenPage: (pageId: string) => void }
 
   const input = useRef<HTMLTextAreaElement>(null);
   const bottom = useRef<HTMLDivElement | null>(null);
+  /*
+   * The thread, readable without being a dependency.
+   *
+   * `ask` needs the earlier turns to send as conversation context, and putting
+   * `messages` in its dependency list would rebuild the callback on every
+   * streamed token — thousands of times per answer.
+   */
+  const messagesRef = useRef<Message[]>([]);
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   const loadSidebar = useCallback(async () => {
     const d = await fetch("/api/asked")
@@ -95,6 +121,23 @@ export function AskView({ onOpenPage }: { onOpenPage: (pageId: string) => void }
   useEffect(() => {
     loadSidebar();
   }, [loadSidebar]);
+
+  /*
+   * A question handed over from the palette.
+   *
+   * Keyed on `handoff.key` rather than the text, so asking the same thing twice
+   * from the palette asks twice — comparing the string would silently swallow
+   * the second one.
+   */
+  const lastHandoff = useRef(0);
+  useEffect(() => {
+    if (!handoff || handoff.key === lastHandoff.current) return;
+    lastHandoff.current = handoff.key;
+    ask(handoff.question);
+    // `ask` is stable across renders except when a request is in flight, and
+    // re-running this on that change would re-ask the same question.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handoff]);
 
   useEffect(() => {
     bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -118,29 +161,55 @@ export function AskView({ onOpenPage }: { onOpenPage: (pageId: string) => void }
       setAsking(true);
 
       try {
+        /*
+         * Ask the stream first.
+         *
+         * The server falls back to a whole-answer JSON response when no local
+         * model is resident, and the two are told apart by the content type
+         * rather than by asking twice — a second round trip to discover which
+         * shape is coming would cost more than the streaming saves.
+         */
         const response = await fetch("/api/ask", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ question: trimmed }),
+          body: JSON.stringify({
+            question: trimmed,
+            stream: true,
+            // Only the turns already answered; the pending one is this question.
+            thread: messagesRef.current
+              .filter((msg) => !msg.pending)
+              .slice(-4)
+              .map((msg) => ({ question: msg.question, answer: msg.answer })),
+          }),
         });
-        const data = (await response.json()) as Answer & { error?: string };
-        if (!response.ok) throw new Error(data.error ?? "That question could not be answered.");
-        setMessages((m) =>
-          m.map((msg) =>
-            msg.id === id
-              ? {
-                  ...msg,
-                  pending: false,
-                  answer: data.answer,
-                  passages: data.passages ?? [],
-                  omitted: data.omitted ?? [],
-                  empty: data.empty,
-                  reason: data.reason,
-                  needsModel: data.needsModel,
-                }
-              : msg,
-          ),
-        );
+
+        if (!response.ok) {
+          const data = (await response.json().catch(() => ({}))) as { error?: string };
+          throw new Error(data.error ?? "That question could not be answered.");
+        }
+
+        if (response.headers.get("content-type")?.includes("text/event-stream")) {
+          await consumeStream(response, id, setMessages);
+        } else {
+          const data = (await response.json()) as Answer & { error?: string };
+          setMessages((m) =>
+            m.map((msg) =>
+              msg.id === id
+                ? {
+                    ...msg,
+                    pending: false,
+                    answer: data.answer,
+                    passages: data.passages ?? [],
+                    omitted: data.omitted ?? [],
+                    empty: data.empty,
+                    reason: data.reason,
+                    needsModel: data.needsModel,
+                    disagreements: data.disagreements,
+                  }
+                : msg,
+            ),
+          );
+        }
         loadSidebar();
       } catch (e) {
         setMessages((m) => m.filter((msg) => msg.id !== id));
@@ -173,6 +242,36 @@ export function AskView({ onOpenPage }: { onOpenPage: (pageId: string) => void }
     ]);
   }
 
+  /**
+   * The thread as a markdown file.
+   *
+   * A conversation that answered something properly is a document, and until
+   * now the only way out of this screen was copying one answer at a time. The
+   * export keeps the questions, the answers and the sources together, which is
+   * what makes it worth pasting into a page, an email or an issue.
+   */
+  function exportThread() {
+    const lines: string[] = [`# Asked ${new Date().toISOString().slice(0, 10)}`, ""];
+    for (const msg of messages) {
+      lines.push(`## ${msg.question}`, "", msg.answer ?? "_No answer._", "");
+      if (msg.passages.length) {
+        lines.push(
+          `Sources: ${msg.passages.map((p) => `\`${p.relPath}\``).join(", ")}`,
+          "",
+        );
+      }
+    }
+    const blob = new Blob([lines.join("\n")], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `lore-thread-${Date.now().toString(36)}.md`;
+    link.click();
+    // Revoked on the next frame: revoking synchronously races the download in
+    // Safari and produces an empty file.
+    requestAnimationFrame(() => URL.revokeObjectURL(url));
+  }
+
   function reset() {
     setMessages([]);
     setActiveThread(null);
@@ -194,6 +293,17 @@ export function AskView({ onOpenPage }: { onOpenPage: (pageId: string) => void }
           <Plus size={13} />
           New question
         </button>
+
+        {messages.length ? (
+          <button
+            type="button"
+            onClick={exportThread}
+            className="mx-3 mb-2 inline-flex h-8 items-center gap-2 rounded-lg px-3 text-[12.5px] text-[var(--lore-text-tertiary)] transition-colors hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)]"
+          >
+            <Download size={12} />
+            Export this thread
+          </button>
+        ) : null}
 
         <div className="lore-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-3">
           {history.length ? (
@@ -339,6 +449,44 @@ function Exchange({
 }) {
   const [showSources, setShowSources] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  /**
+   * Write this answer into the wiki as a page.
+   *
+   * Filed under `answers/` with the date, so a day of questions collects on one
+   * page rather than scattering. Every source is listed as a real wikilink,
+   * which matters twice over: it is how the claim stays checkable, and it is
+   * what stops the page being born an orphan — the failure that 56% of this
+   * wiki already has.
+   */
+  const onSave = async (msg: Message) => {
+    const day = new Date().toISOString().slice(0, 10);
+    const body = [
+      `## ${msg.question}`,
+      "",
+      msg.answer ?? "",
+      "",
+      msg.passages.length
+        ? `Sources: ${msg.passages.slice(0, 8).map((p) => `[[${p.pageId}]]`).join(", ")}`
+        : "",
+      "",
+    ]
+      .filter((line) => line !== "")
+      .join("\n");
+
+    const response = await fetch("/api/page", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        path: `answers/${day}.md`,
+        content: body,
+        mode: "append",
+        agent: "You (Ask)",
+      }),
+    }).catch(() => null);
+    if (response?.ok) setSaved(true);
+  };
   const body = useRef<HTMLDivElement | null>(null);
 
   /*
@@ -392,11 +540,57 @@ function Exchange({
         ) : (
           <>
             {message.answer ? (
-              <div
-                ref={body}
-                className="lore-answer text-[15px] leading-[1.7] text-[var(--lore-text-primary)]"
-                dangerouslySetInnerHTML={{ __html: renderAnswer(message.answer) }}
-              />
+              <>
+                <div
+                  ref={body}
+                  className={cn(
+                    "lore-answer text-[15px] leading-[1.7] text-[var(--lore-text-primary)]",
+                    // A caret while tokens arrive. Six seconds of a spinner
+                    // reads as broken; six seconds of text reads as thinking.
+                    message.streaming && "after:ml-0.5 after:animate-pulse after:content-['▍']",
+                  )}
+                  dangerouslySetInnerHTML={{ __html: renderAnswer(message.answer) }}
+                />
+                {/*
+                  * Said plainly, not hedged into the prose.
+                  *
+                  * When retrieval is unsure the model still writes a fluent
+                  * paragraph, and a fluent paragraph is indistinguishable from
+                  * a certain one. The warning has to sit outside the answer.
+                  */}
+                {/*
+                  * Sources that disagree, said out loud.
+                  *
+                  * Averaging two conflicting pages into one fluent paragraph is
+                  * the most damaging thing this screen can do, because the
+                  * result is indistinguishable from a correct answer. If the
+                  * pages Lore just read hold different numbers for one thing,
+                  * that belongs above the fold, not buried in the sources.
+                  */}
+                {!message.streaming && message.disagreements?.length ? (
+                  <div className="mt-2.5 rounded-lg border border-[var(--lore-danger)] px-3 py-2">
+                    {message.disagreements.map((d) => (
+                      <p
+                        key={d.subject}
+                        className="t-meta text-[var(--lore-text-secondary)]"
+                      >
+                        Your sources disagree about{" "}
+                        <span className="text-[var(--lore-text-primary)]">{d.subject}</span>:{" "}
+                        {d.values.join(" vs ")} — {d.pages.slice(0, 3).join(", ")}
+                      </p>
+                    ))}
+                  </div>
+                ) : null}
+
+                {!message.streaming &&
+                message.confidence !== undefined &&
+                message.confidence < 0.35 ? (
+                  <p className="t-meta mt-2 rounded-lg border border-dashed border-[var(--lore-border)] px-3 py-2 text-[var(--lore-text-tertiary)]">
+                    Retrieval was not confident about this one — the passages below are the
+                    closest matches, not necessarily the answer. Worth opening the sources.
+                  </p>
+                ) : null}
+              </>
             ) : (
               <p className="text-[14.5px] text-[var(--lore-text-secondary)]">
                 {message.needsModel
@@ -438,6 +632,27 @@ function Exchange({
                   ) : (
                     <Copy size={13} />
                   )}
+                </button>
+              ) : null}
+
+              {/*
+                * Save the answer back into the wiki.
+                *
+                * A synthesis across nine pages is usually the most valuable
+                * thing produced in a session, and until now it evaporated when
+                * the tab closed — the wiki got no better for having been asked
+                * a good question. Written with its citations intact, so the
+                * next reader can check it the same way you just did.
+                */}
+              {message.answer && !message.streaming ? (
+                <button
+                  type="button"
+                  onClick={() => onSave(message)}
+                  disabled={saved}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--lore-border)] px-2.5 py-1 text-[12.5px] text-[var(--lore-text-secondary)] transition-colors hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)] disabled:opacity-50"
+                >
+                  <BookmarkPlus size={11} />
+                  {saved ? "Saved to the wiki" : "Save as a page"}
                 </button>
               ) : null}
             </div>
@@ -490,4 +705,76 @@ function Exchange({
       </div>
     </div>
   );
+}
+
+/**
+ * Read a server-sent answer into the message it belongs to.
+ *
+ * Frames arrive as `event:`/`data:` pairs separated by a blank line, and a
+ * network chunk can split one in half — so the tail is always held back until
+ * the next read completes it. Getting this wrong shows up as JSON parse errors
+ * on perfectly good answers, roughly one time in twenty.
+ */
+async function consumeStream(
+  response: Response,
+  id: string,
+  setMessages: React.Dispatch<React.SetStateAction<Message[]>>,
+): Promise<void> {
+  const reader = response.body?.getReader();
+  if (!reader) return;
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let answer = "";
+
+  const patch = (fields: Partial<Message>) =>
+    setMessages((m) => m.map((msg) => (msg.id === id ? { ...msg, ...fields } : msg)));
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const frames = buffer.split("\n\n");
+    buffer = frames.pop() ?? "";
+
+    for (const frame of frames) {
+      const eventLine = frame.split("\n").find((l) => l.startsWith("event: "));
+      const dataLine = frame.split("\n").find((l) => l.startsWith("data: "));
+      if (!eventLine || !dataLine) continue;
+
+      let payload: unknown;
+      try {
+        payload = JSON.parse(dataLine.slice(6));
+      } catch {
+        continue; // One dropped frame, not a dropped answer.
+      }
+
+      switch (eventLine.slice(7)) {
+        case "meta": {
+          const meta = payload as Answer & { confidence?: number; verdict?: string };
+          patch({
+            pending: false,
+            streaming: true,
+            passages: meta.passages ?? [],
+            omitted: meta.omitted ?? [],
+            confidence: meta.confidence,
+            verdict: meta.verdict,
+            disagreements: meta.disagreements,
+          });
+          break;
+        }
+        case "token":
+          answer += String(payload);
+          patch({ answer });
+          break;
+        case "error":
+          patch({ streaming: false, reason: String(payload) });
+          break;
+        case "done":
+          patch({ streaming: false, answer: answer.trim() || null });
+          break;
+      }
+    }
+  }
+  patch({ streaming: false });
 }

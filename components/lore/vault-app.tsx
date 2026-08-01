@@ -11,6 +11,7 @@ import { AskView } from "@/components/lore/ask-view";
 import { ReviewView } from "@/components/lore/review-view";
 import { InsightsView } from "@/components/lore/insights-view";
 import { WatchView } from "@/components/lore/watch-view";
+import { Palette } from "@/components/lore/palette";
 import { ExploreShell } from "@/components/lore/explore-shell";
 import { ConnectionsView } from "@/components/lore/connections-view";
 
@@ -37,6 +38,33 @@ export function VaultApp({
      not choose, on a wiki too big to browse — the first screen has to tell you
      something rather than wait for you to go looking. */
   const [view, setView] = useState<View>("brief");
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  /**
+   * A question handed to Ask from somewhere else.
+   *
+   * The palette can send you to Ask with the line you already typed, and Ask
+   * cannot receive that as a prop it re-reads — the same question asked twice
+   * should ask twice. A monotonically increasing key makes each hand-off a
+   * distinct event rather than a value to compare.
+   */
+  const [handoff, setHandoff] = useState<{ question: string; key: number } | null>(null);
+
+  /*
+   * ⌘K anywhere, except while typing into something.
+   *
+   * Bound at the document because the palette's whole value is that it works
+   * without first clicking the right pane. Meta+K is not a browser shortcut on
+   * either platform, so nothing is stolen from the user.
+   */
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() !== "k" || !(event.metaKey || event.ctrlKey)) return;
+      event.preventDefault();
+      setPaletteOpen((open) => !open);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
   const [folder, setFolder] = useState<string>(initialIndex.folders[0]?.folder ?? "");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[] | null>(null);
@@ -140,9 +168,20 @@ export function VaultApp({
         />
       ) : null}
       {view === "brief" ? <BriefView onOpenPage={openPage} /> : null}
-      {view === "ask" ? <AskView onOpenPage={openPage} /> : null}
+      {view === "ask" ? <AskView onOpenPage={openPage} handoff={handoff} /> : null}
       {view === "review" ? <ReviewView onOpenPage={openPage} /> : null}
       {view === "watch" ? <WatchView onOpenPage={openPage} /> : null}
+
+      <Palette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        onOpenPage={openPage}
+        onGoTo={setView}
+        onAsk={(question) => {
+          setHandoff({ question, key: Date.now() });
+          setView("ask");
+        }}
+      />
       {view === "insights" ? <InsightsView onOpenPage={openPage} /> : null}
       {view === "explore" ? (
         <ExploreShell index={index} pageTitles={pageTitles} onOpenPage={openPage} />

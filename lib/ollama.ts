@@ -210,3 +210,79 @@ export async function generate(
     clearTimeout(timer);
   }
 }
+
+/**
+ * Generate with the tokens delivered as they arrive.
+ *
+ * Ask waits on a local model for several seconds even when everything is warm,
+ * and a spinner for six seconds reads as broken while six seconds of text reads
+ * as thinking. Nothing else changes: same model, same prompt, same total time —
+ * only the moment the user stops wondering whether it is working.
+ *
+ * `onToken` is called with each fragment. It must not throw; a display callback
+ * that fails should not abort a generation the user is watching.
+ */
+export async function generateStream(
+  model: string,
+  prompt: string,
+  onToken: (chunk: string) => void,
+  opts?: { system?: string; timeoutMs?: number },
+): Promise<string> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), opts?.timeoutMs ?? 120_000);
+  let full = "";
+
+  try {
+    const response = await fetch(`${OLLAMA_HOST}/api/generate`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      cache: "no-store",
+      signal: controller.signal,
+      body: JSON.stringify({
+        model,
+        prompt,
+        system: opts?.system,
+        stream: true,
+        think: false,
+        options: { temperature: 0.1 },
+      }),
+    });
+    if (!response.ok || !response.body) {
+      throw new Error(`Ollama refused the request: HTTP ${response.status}`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      // Ollama emits one JSON object per line, and a chunk boundary can land
+      // mid-object — so the last fragment is always held back for the next read.
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const parsed = JSON.parse(line) as { response?: string; done?: boolean };
+          if (typeof parsed.response === "string" && parsed.response) {
+            full += parsed.response;
+            try {
+              onToken(parsed.response);
+            } catch {
+              // A failing display must not abort the generation behind it.
+            }
+          }
+        } catch {
+          // A line we cannot parse costs one fragment, not the answer.
+        }
+      }
+    }
+    return full;
+  } finally {
+    clearTimeout(timer);
+  }
+}
