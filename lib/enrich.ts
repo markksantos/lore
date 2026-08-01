@@ -135,24 +135,108 @@ export function normaliseUrl(raw: string): string | null {
     return null;
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") return null;
-  // Local and private addresses are never fetched: the recorder sees your own
-  // admin panels, and "enrich" must not become a crawler of them.
-  const host = url.hostname;
-  if (
-    host === "localhost" ||
-    host === "127.0.0.1" ||
-    host === "::1" ||
-    host.endsWith(".local") ||
-    host.endsWith(".localhost") ||
-    /^10\.|^192\.168\.|^172\.(1[6-9]|2\d|3[01])\./.test(host)
-  ) {
-    return null;
-  }
+  // A first, textual pass over the literal host — cheap, and it rejects the
+  // obvious loopback/LAN forms before we spend a DNS lookup. It is NOT the
+  // real defence: a public name that resolves to a private address slips every
+  // string check, so the fetch path resolves and re-checks (see isPublicHost).
+  // `new URL("http://[::1]/").hostname` keeps the brackets, so strip them.
+  const host = url.hostname.replace(/^\[|\]$/g, "").toLowerCase().replace(/\.$/, "");
+  if (isPrivateHostLiteral(host)) return null;
   url.hash = "";
   for (const param of [...url.searchParams.keys()]) {
     if (/^(utm_|fbclid|gclid|ref_|si$)/.test(param)) url.searchParams.delete(param);
   }
   return url.toString();
+}
+
+/**
+ * Is this literal host obviously non-public?
+ *
+ * Covers the forms a URL can spell without DNS: loopback in v4 and v6 and
+ * their oddities (0.0.0.0, 127.anything, 127.1, decimal and hex encodings),
+ * RFC1918, link-local and cloud metadata (169.254/16), CGNAT/Tailscale
+ * (100.64/10), IPv6 ULA/link-local, and the reserved suffixes (.local,
+ * .internal, .home.arpa, .lan). Everything the reviewer's D3/m2 probes named.
+ */
+export function isPrivateHostLiteral(host: string): boolean {
+  if (
+    host === "" ||
+    host === "localhost" ||
+    host === "0.0.0.0" ||
+    host === "::" ||
+    host === "::1" ||
+    host.endsWith(".local") ||
+    host.endsWith(".localhost") ||
+    host.endsWith(".internal") ||
+    host.endsWith(".home.arpa") ||
+    host.endsWith(".lan")
+  ) {
+    return true;
+  }
+  // IPv6 loopback/link-local/ULA.
+  if (host.includes(":")) {
+    return /^::1$/.test(host) || /^fe80:/i.test(host) || /^f[cd][0-9a-f]{2}:/i.test(host);
+  }
+  // Decimal (2130706433) or hex (0x7f000001) encodings of an IPv4 address.
+  const asInt =
+    /^\d{1,10}$/.test(host)
+      ? Number(host)
+      : /^0x[0-9a-f]+$/i.test(host)
+        ? parseInt(host, 16)
+        : null;
+  if (asInt !== null && asInt >= 0 && asInt <= 0xffffffff) {
+    return isPrivateV4([(asInt >>> 24) & 255, (asInt >>> 16) & 255, (asInt >>> 8) & 255, asInt & 255]);
+  }
+  // Dotted IPv4, including short forms like 127.1.
+  const parts = host.split(".").map((p) => Number(p));
+  if (parts.length >= 1 && parts.length <= 4 && parts.every((n) => Number.isInteger(n) && n >= 0 && n <= 255)) {
+    const octets = parts.length === 4 ? parts : [parts[0], 0, 0, parts[parts.length - 1]];
+    if (parts.every((n, i) => i === parts.length - 1 || n <= 255)) return isPrivateV4(octets);
+  }
+  return false;
+}
+
+function isPrivateV4(o: number[]): boolean {
+  const [a, b] = o;
+  return (
+    a === 127 || // loopback
+    a === 10 || // RFC1918
+    a === 0 || // "this network"
+    (a === 192 && b === 168) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 169 && b === 254) || // link-local + cloud metadata
+    (a === 100 && b >= 64 && b <= 127) // CGNAT / Tailscale
+  );
+}
+
+/**
+ * The real SSRF defence: resolve the name and reject if it points anywhere
+ * private. D4 — a public hostname whose DNS answers 127.0.0.1 — cannot be
+ * caught by inspecting the string, only by resolving it.
+ *
+ * There is a residual TOCTOU window (the name could re-resolve between this
+ * check and the fetch); for a personal tool fetching an article this is an
+ * accepted, documented risk, and closing it fully would mean pinning the
+ * socket to the checked IP and losing TLS SNI. This turns "trivially
+ * exploitable" into "requires an active rebind against a localhost-only app".
+ */
+export async function isPublicHost(host: string): Promise<boolean> {
+  const cleaned = host.replace(/^\[|\]$/g, "").toLowerCase().replace(/\.$/, "");
+  if (isPrivateHostLiteral(cleaned)) return false;
+  // A literal IP that passed the private check is public; no lookup needed.
+  if (/^[\d.]+$/.test(cleaned) || cleaned.includes(":")) return true;
+  try {
+    const { lookup } = await import("node:dns/promises");
+    const results = await lookup(cleaned, { all: true });
+    if (!results.length) return false;
+    return results.every((r) => {
+      if (r.family === 6) return !isPrivateHostLiteral(r.address);
+      return !isPrivateV4(r.address.split(".").map(Number));
+    });
+  } catch {
+    // Unresolvable is not fetchable; treat as non-public rather than risk it.
+    return false;
+  }
 }
 
 export function youtubeId(url: string): string | null {
@@ -286,7 +370,31 @@ export function extractArticle(html: string): { title: string; text: string } | 
     .filter((line) => line.length > 60 || /^#{1,3}\s/.test(line))
     .join("\n\n");
 
-  if (text.length < 400) return null;
+  /*
+   * Length is not quality.
+   *
+   * A cookie-consent banner and a JS-required SPA shell with a legal footer
+   * both clear a 400-char floor, and both were being filed as articles. A real
+   * article has SEVERAL substantial paragraphs and reads like prose; boilerplate
+   * is one long legal sentence or a wall of nav. So: require multiple genuine
+   * paragraphs and several sentence terminators, and reject when the text is
+   * dominated by consent/legal vocabulary.
+   */
+  const paragraphs = text.split("\n\n").filter((p) => p.length > 80);
+  const sentences = (text.match(/[.!?]["')\]]?(\s|$)/g) ?? []).length;
+  const boilerplate =
+    /\b(accept all cookies|cookie preferences|privacy policy|terms of service|enable javascript|please enable|your consent|we and our partners|manage (your )?(cookies|preferences)|gdpr)\b/gi;
+  const boilerplateHits = (text.match(boilerplate) ?? []).length;
+
+  if (
+    text.length < 600 ||
+    paragraphs.length < 2 ||
+    sentences < 4 ||
+    // A short text that is mostly consent/legal language is a banner, not a page.
+    (boilerplateHits >= 2 && text.length < 2_500)
+  ) {
+    return null;
+  }
   return { title: decodeEntities(title).trim(), text: text.slice(0, 20_000) };
 }
 
@@ -345,6 +453,28 @@ export async function enrichSweep(root: string, port: number): Promise<EnrichRes
 
   for (const candidate of fresh) {
     if (result.fetched >= MAX_FETCHES_PER_SWEEP) break;
+
+    /*
+     * The DNS-resolved gate, applied to every candidate before any fetch.
+     * normaliseUrl already dropped the private literals; this catches the
+     * public name that resolves to a private address (D4). A URL that fails
+     * here is marked done so it is not retried into the same wall every sweep.
+     */
+    let hostname: string;
+    try {
+      hostname = new URL(candidate.url).hostname;
+    } catch {
+      done[candidate.url] = Date.now();
+      await writeDone(key, done);
+      continue;
+    }
+    if (!(await isPublicHost(hostname))) {
+      result.skipped += 1;
+      done[candidate.url] = Date.now();
+      await writeDone(key, done);
+      continue;
+    }
+
     const id = youtubeId(candidate.url);
 
     if (id && config.youtube) {

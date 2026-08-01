@@ -135,16 +135,19 @@ export async function POST(request: Request) {
     const budget = clampBudget(body.budget);
 
     /*
-     * Everything below runs inside the ask gate: one at a time, short queue,
-     * honest 503 beyond it. Eight concurrent asks measured before this gate:
-     * every one launched its own Ollama generation, Ollama serialised them,
-     * every request blew its timeout and returned an empty answer, and the
-     * process grew from 832MB to 1.6GB. The gate converts that into: one
-     * caller gets a real answer, three wait briefly, the rest are told to try
-     * again in seconds — and memory stays flat because there is never more
-     * than one retrieval's worth of scoring structures alive.
+     * The slot is held manually, not via run(), because the streaming path
+     * outlives this function: it returns a Response the instant the stream is
+     * built, but the generation runs later inside the stream's callback. So we
+     * acquire here, release in the `finally` for the non-stream and error
+     * paths, and TRANSFER the release into the stream for the streaming path —
+     * nulling `release` so the finally does not free a slot the stream still
+     * holds. Before this, a streamed ask released its slot before producing a
+     * token, so N streamed asks ran N concurrent generations and the gate
+     * guarded only the non-streaming path the UI never uses.
      */
-    return await askGate.run(async () => {
+    let release: (() => void) | null = null;
+    try {
+    release = await askGate.acquireSlot();
     const [index, ledger] = await Promise.all([
       getIndex(vault.root),
       readLedger(vault.root),
@@ -345,6 +348,11 @@ export async function POST(request: Request) {
        * have given up on waiting, not on the question.
        */
       const clientGone = new AbortController();
+      // Ownership of the inference slot moves to the stream: it is released
+      // when the stream ends (done, error, or cancel), never before. Nulling
+      // the outer handle stops the `finally` from freeing it early.
+      const slotRelease = release;
+      release = null;
       const stream = new ReadableStream<Uint8Array>({
         async start(controller) {
           let open = true;
@@ -398,9 +406,15 @@ export async function POST(request: Request) {
           } catch {
             // Already closed by the client going away; nothing to do.
           }
+          // The generation is over: free the slot for the next caller. This is
+          // the release that panel fix #1 actually depends on.
+          slotRelease();
         },
         cancel() {
           clientGone.abort();
+          // A client that disconnects mid-answer must not hold the slot until
+          // the (now-aborted) generation notices; free it immediately.
+          slotRelease();
         },
       });
 
@@ -475,7 +489,12 @@ export async function POST(request: Request) {
       omitted: pack.omitted,
       pagesConsidered: index.pages.length,
     });
-    });
+    } finally {
+      // Frees the slot for the non-stream and error paths. `release` is null on
+      // the streaming path — the stream owns it there — so this never
+      // double-frees, and the acquireSlot idempotence covers it if it did.
+      release?.();
+    }
   } catch (error) {
     if (error instanceof GateBusyError) return busyResponse(error);
     return fail(error);

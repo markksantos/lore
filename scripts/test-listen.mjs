@@ -73,14 +73,34 @@ const dirty = [
   "postgres://admin:hunter2secret@db.internal/prod",
   "password: supersecret123",
   "ghp_abcdefghijklmnopqrstuvwxyz123456",
+  // The shapes the review proved slipped through (D2/M4):
+  "CLOUDFLARE_API_TOKEN=abcdef0123456789abcdef0123456789abcdef01",
+  "AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMIK7MDENGbPxRfiCYEXAMPLEKEY",
+  'DB_PASSWORD="correct horse battery staple"',
+  "AIzaSyD-abcdefghijklmnopqrstuvwxyz012345",
+  "github_pat_11ABCDEFG0abcdefghijklmnopqrstuvwxyz1234567890",
+  "token 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
 ].join("\n");
 const clean = scrub(dirty);
 check(
   "scrub removes every planted secret shape",
-  !/(sk-ant-abc|hunter2|supersecret123|ghp_abcdef|abcdefghijklmnopqrstuvwx)/.test(clean),
+  !/(sk-ant-abc|hunter2|supersecret123|ghp_abcdef|abcdefghijklmnopqrstuvwx|abcdef0123456789|wJalrXUt|correct horse|AIzaSyD-abc|github_pat_11ABC|9f86d081884c)/.test(clean),
   clean,
 );
 check("scrub leaves ordinary text alone", scrub("the floor is $150 per video") === "the floor is $150 per video");
+
+// D1: a PEM whose END marker is clipped away must still be redacted by the body.
+const pem = "-----BEGIN RSA PRIVATE KEY-----\n" + "MIIEowIBAAKCAQEA" + "a".repeat(1500);
+check("scrub redacts a private-key BODY even without its END marker",
+  !scrub(pem).includes("MIIEowIBAAKCAQEA"), scrub(pem).slice(0, 60));
+
+// D1 (order): a secret past the 700-char per-turn clip must still be redacted,
+// because distil scrubs BEFORE renderTurns clips. Proven via the real path in
+// the distil test below; here we assert renderTurns of a pre-scrubbed turn is
+// clean.
+const longTurn = { role: "user", text: "x".repeat(720) + " AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMIK7MDENGbPxRfiCYEXAMPLEKEY" };
+check("a secret beyond the clip window is caught by pre-clip scrub",
+  !renderTurns([{ ...longTurn, text: scrub(longTurn.text) }]).includes("wJalrXUt"));
 
 // ------------------------------------------------------------------ budget
 
@@ -144,7 +164,6 @@ await writeListenConfig("/fake/vault", {
 });
 
 const result = await sweep("/fake/vault", port);
-server.close();
 
 if (result.skipped.noModel) {
   console.log("skip  sweep distillation — no local model running");
@@ -160,7 +179,29 @@ if (result.skipped.noModel) {
   // Second sweep: nothing new, nothing re-filed.
   const again = await sweep("/fake/vault", port);
   check("second sweep is a no-op", again.scanned === 0 && again.filed === 0, JSON.stringify(again));
+
+  // M5: append two records after sweep 1; the first must not be eaten. Read the
+  // filed content and confirm BOTH new facts survive the delta boundary.
+  const fs2 = await import("node:fs");
+  // The fact lives in the FIRST appended line — the one the old bug ate. If it
+  // survives distillation, the delta boundary is correct.
+  fs2.appendFileSync(
+    transcript,
+    [
+      JSON.stringify({ type: "user", message: { content: "Important decision to record permanently: from now on we invoice every client using the number prefix MS-2000 instead of the old MS-1100, because MS-1100 collided with the legacy Bubble portal's own numbering and two clients were double-billed last month. This applies to all new invoices starting today." } }),
+      JSON.stringify({ type: "assistant", message: { content: "Recorded: invoice number prefix is now MS-2000, replacing MS-1100, to stop the collision with the legacy Bubble numbering that caused double-billing." } }),
+    ].join("\n") + "\n",
+  );
+  const later = new Date(Date.now() - 10 * 60_000);
+  fs2.utimesSync(transcript, later, later);
+  const before = writes.length;
+  const third = await sweep("/fake/vault", port);
+  const newWrite = writes[writes.length - 1];
+  check("M5: a post-sweep append is not eaten at the delta boundary",
+    third.filed === 1 && newWrite && /MS-2000/.test(newWrite.body.content), JSON.stringify(third));
 }
+
+server.close();
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -103,6 +103,30 @@ export class Gate {
   }
 
   /**
+   * Take a slot and hand back an idempotent release, for work whose lifetime
+   * outlives the function that starts it.
+   *
+   * A streaming response is exactly that: the handler returns a Response the
+   * instant the stream is constructed, but the generation it wraps runs later,
+   * inside the stream's own callback. `run()` would release the slot when the
+   * Response object exists — before a single token is produced — so N streamed
+   * asks became N concurrent generations, and the gate protected nothing the
+   * UI actually used. The caller holds this release until the stream truly
+   * ends (done, error, or client disconnect) and calls it exactly once; the
+   * idempotence guard makes a double-call from both the finally and cancel()
+   * harmless.
+   */
+  async acquireSlot(): Promise<() => void> {
+    await this.acquire();
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.release();
+    };
+  }
+
+  /**
    * Run `work` only if a slot is free RIGHT NOW; otherwise return `fallback`.
    *
    * This is the degrade path: semantic search under load becomes lexical

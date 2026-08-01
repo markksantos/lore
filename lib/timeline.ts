@@ -253,11 +253,25 @@ export async function frameFor(uuid: string): Promise<string | null> {
   const imagePath = str(row?.image_path);
   if (!imagePath) return null;
   const absolute = path.isAbsolute(imagePath) ? imagePath : path.join(STORE_DIR, imagePath);
-  const resolved = path.resolve(absolute);
-  if (!resolved.startsWith(path.resolve(STORE_DIR) + path.sep)) return null;
+
+  /*
+   * Containment must survive a symlink.
+   *
+   * `path.resolve` collapses `..` but does NOT follow links, and `fs.stat`
+   * does — so a symlink planted anywhere inside the store (a compromised
+   * recorder, a hostile row) pointed the check at a path that started with the
+   * store prefix while the bytes came from `/etc/passwd`. The real path of both
+   * the file and the store are compared, so the file must physically live
+   * inside the store, links and all.
+   */
+  const [realStore, realFile] = await Promise.all([
+    fs.realpath(STORE_DIR).catch(() => path.resolve(STORE_DIR)),
+    fs.realpath(absolute).catch(() => null),
+  ]);
+  if (!realFile || !realFile.startsWith(realStore + path.sep)) return null;
   return fs
-    .stat(resolved)
-    .then((s) => (s.isFile() ? resolved : null))
+    .stat(realFile)
+    .then((s) => (s.isFile() ? realFile : null))
     .catch(() => null);
 }
 

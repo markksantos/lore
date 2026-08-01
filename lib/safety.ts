@@ -89,7 +89,26 @@ export const VAULT_WRITERS: Record<string, string[]> = {
   "/api/history": ["POST"],
   "/api/templates": ["POST"],
   "/api/git": ["POST"],
+  // Reverting an agent overwrites pages with writeRaw — that is a vault write,
+  // and it was missing here, so read-only mode did not stop it. The route also
+  // had no check of its own; centralising it is the fix, not a per-route one.
+  "/api/undo": ["POST"],
+  // Verify/quarantine can rewrite the ledger and touch frontmatter.
+  "/api/review": ["POST"],
 };
+
+/*
+ * The self-audit that keeps this list honest.
+ *
+ * The list is derived by hand from "every route that calls writeRaw /
+ * createPage / deletePage", and a hand-derived list is one somebody forgets to
+ * extend — which is exactly how /api/undo slipped past read-only mode. This
+ * function lets a test assert the two agree: given the set of routes that
+ * import a writer, every one must appear here. See scripts/test-safety.mjs.
+ */
+export function auditGap(writingRoutes: string[]): string[] {
+  return writingRoutes.filter((route) => !(route in VAULT_WRITERS));
+}
 
 export function wouldWriteVault(pathname: string, method: string): boolean {
   const methods = VAULT_WRITERS[pathname];

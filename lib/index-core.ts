@@ -129,7 +129,14 @@ export function toPlainText(markdown: string): string {
     .replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_m, target, alias) => alias || target)
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/^\s{0,3}>\s?/gm, "")
-    .replace(/[*_~]/g, "")
+    // Emphasis markers, but not the underscores inside identifiers: stripping
+    // every `_` turned MAX_RETRY_COUNT into MAXRETRYCOUNT and user_id into
+    // userid, mangling the very tokens a search would look for. Asterisks and
+    // tildes have no such collision; underscores are removed only when they
+    // wrap a word at its boundaries.
+    .replace(/[*~]/g, "")
+    .replace(/(?<![A-Za-z0-9])_+(?=\S)/g, "")
+    .replace(/(?<=\S)_+(?![A-Za-z0-9])/g, "")
     // Collapse runs of spaces and tabs, but never newlines.
     .replace(/[^\S\n]+/g, " ")
     // At most one blank line, so paragraph breaks stay detectable.

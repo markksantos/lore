@@ -47,7 +47,12 @@ const base = Date.parse(`${DAY}T15:00:00`) / 1000;
 
 // A real frame inside the store, and a hostile row pointing outside it.
 writeFileSync(path.join(STORE, "captures", "frame-a.jpg"), Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
-writeFileSync(path.join(SCRATCH, "outside.jpg"), Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
+// The hostile targets EXIST, so the only thing that can refuse them is the
+// containment check — not a stat() miss. This is what makes the test non-vacuous.
+mkdirSync(path.join(SCRATCH, "secrets"), { recursive: true });
+writeFileSync(path.join(SCRATCH, "secrets", "passwd.txt"), "root:x:0:0:secret\n");
+// And a symlink planted inside the store pointing outside it.
+try { symlinkSync(path.join(SCRATCH, "secrets"), path.join(STORE, "captures", "leak")); } catch {}
 
 const insert = db.prepare(
   `INSERT INTO captures (uuid, timestamp, image_path, active_app_name, active_app_bundle_id,
@@ -61,8 +66,10 @@ insert.run("cap-bbbb-2222", base + 120, "captures/frame-a.jpg", "Chrome", "com.g
   "https://www.youtube.com/watch?v=abc123XYZ_-");
 insert.run("cap-cccc-3333", base + 300, "captures/frame-a.jpg", "cmux", "com.cmux.app",
   "lore — panel fixes", "admission control gate", DAY, null);
-insert.run("cap-evil-6666", base + 400, "../../../../outside.jpg", "Evil", "com.evil",
-  "hostile row", "", DAY, null);
+insert.run("cap-evil-6666", base + 400, "../../secrets/passwd.txt", "Evil", "com.evil",
+  "hostile row via ..", "", DAY, null);
+insert.run("cap-link-7777", base + 410, "captures/leak/passwd.txt", "Evil", "com.evil",
+  "hostile row via symlink", "", DAY, null);
 db.prepare(
   `INSERT INTO captures_fts (rowid, ocr_text, active_window_title, active_app_name)
    SELECT id, ocr_text, active_window_title, active_app_name FROM captures`,
@@ -85,7 +92,7 @@ db.close();
 // ---- now import the module under test (HOME already redirected) ------------
 const { timelineStatus, around, searchScreen, frameFor, renderDayPage, blocksForDay } =
   await import("../lib/timeline.ts");
-const { dwelledUrls, normaliseUrl, youtubeId, vttToText, extractArticle } =
+const { dwelledUrls, normaliseUrl, youtubeId, vttToText, extractArticle, isPrivateHostLiteral, isPublicHost } =
   await import("../lib/enrich.ts");
 
 let pass = 0;
@@ -97,11 +104,11 @@ const check = (name, ok, detail = "") => {
 };
 
 const status = await timelineStatus();
-check("status sees the planted store", status.installed && status.captures === 4, JSON.stringify(status));
+check("status sees the planted store", status.installed && status.captures === 5, JSON.stringify(status));
 
 const windowed = await around(Date.parse(`${DAY}T15:02:00`), 30);
 check("around() returns the block with its note", windowed.blocks.length === 1 && windowed.blocks[0].note?.summary.includes("Rust"), JSON.stringify(windowed.blocks));
-check("around() returns the frames", windowed.captures.length === 4, `got ${windowed.captures.length}`);
+check("around() returns the frames", windowed.captures.length === 5, `got ${windowed.captures.length}`);
 
 const found = await searchScreen("borrow checker");
 check("screen FTS finds OCR text", found.length >= 1 && found[0].title.includes("Rust"), JSON.stringify(found.slice(0, 1)));
@@ -109,7 +116,9 @@ check("screen FTS finds OCR text", found.length >= 1 && found[0].title.includes(
 const good = await frameFor("cap-aaaa-1111");
 check("frame served from inside the store", good !== null && good.includes("DesktopRecord"));
 const evil = await frameFor("cap-evil-6666");
-check("frame outside the store is REFUSED", evil === null, String(evil));
+check("frame outside the store via .. is REFUSED (target exists)", evil === null, String(evil));
+const linked = await frameFor("cap-link-7777");
+check("frame outside the store via SYMLINK is REFUSED", linked === null, String(linked));
 check("frame by garbage uuid refused", (await frameFor("../../etc/passwd")) === null);
 
 const page = renderDayPage(DAY, await blocksForDay(DAY));
@@ -122,6 +131,14 @@ check("dwell: two frames 120s apart count, tracking param stripped",
   dwell.length === 1 && !dwell[0].url.includes("si="), JSON.stringify(dwell));
 
 check("private URLs are never fetchable", normaliseUrl("http://192.168.1.10/admin") === null && normaliseUrl("http://localhost:4646/x") === null);
+// D3/m2: every alternate loopback/LAN encoding the review named.
+check("SSRF literals all blocked (::1, 0.0.0.0, decimal, hex, CGNAT, metadata, .lan)",
+  ["[::1]","0.0.0.0","127.1","2130706433","0x7f000001","169.254.169.254","100.64.0.1","nas.lan","fd00::1","fe80::1","printer.home.arpa"]
+    .every((h) => isPrivateHostLiteral(h.replace(/^\[|\]$/g, ""))));
+check("public hosts are allowed", isPrivateHostLiteral("example.com") === false && isPrivateHostLiteral("8.8.8.8") === false);
+// D4: a public name resolving to loopback must be blocked by the DNS check.
+check("SSRF: DNS-to-loopback is blocked (D4)", (await isPublicHost("localtest.me")) === false);
+check("SSRF: a real public host resolves through", (await isPublicHost("example.com")) === true);
 check("youtube id from watch and short urls",
   youtubeId("https://www.youtube.com/watch?v=abc123XYZ_-") === "abc123XYZ_-" &&
   youtubeId("https://youtu.be/qqq111WWW22") === "qqq111WWW22");
@@ -130,8 +147,9 @@ const text = vttToText("WEBVTT\n\n00:00.000 --> 00:02.000\nhello <c>world</c>\n\
 check("vtt: tags stripped, scroll-repeats collapsed", text === "hello world next line", text);
 
 const article = extractArticle(`<html><head><title>The Test — Site</title></head><body>
-<nav>Home About</nav><article>${"<p>" + "This is a long paragraph of genuine article prose that goes on for quite a while to pass the length floor. ".repeat(2) + "</p>"}
-<p>${"Second paragraph with enough substance to be kept by the extractor rather than dropped as boilerplate chrome. ".repeat(2)}</p></article>
+<nav>Home About</nav><article>${"<p>" + "This is a long paragraph of genuine article prose that goes on for quite a while to comfortably pass the length floor and read like a real page. ".repeat(3) + "</p>"}
+<p>${"Second paragraph with enough substance to be kept by the extractor rather than dropped as boilerplate chrome, with several real sentences. ".repeat(3)}</p>
+<p>${"A third paragraph so the multi-paragraph requirement is clearly met by genuine editorial content rather than a consent banner. ".repeat(2)}</p></article>
 <footer>© corp</footer></body></html>`);
 check("article: prose extracted, nav and footer dropped",
   article !== null && article.text.includes("genuine article prose") && !article.text.includes("Home About"),

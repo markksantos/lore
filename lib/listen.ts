@@ -115,15 +115,35 @@ async function writeState(key: string, state: ListenState): Promise<void> {
  * plus the fact that distilled output is bullets about decisions, not config.
  */
 const SECRET_PATTERNS: RegExp[] = [
+  // Prefixed API keys: sk-…, pk-…, sk-ant-…, sk-proj-…, sk_live_…, github_pat_…
   /\b(sk|pk|rk)[-_](?:live|test|proj|ant|or)?[-_]?[A-Za-z0-9_-]{16,}\b/g,
+  /\bgithub_pat_[A-Za-z0-9_]{22,}\b/g,
   /\bgh[pousr]_[A-Za-z0-9]{20,}\b/g,
-  /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g,
+  /\bxox[baprsce]-[A-Za-z0-9-]{10,}\b/g,
   /\bAKIA[A-Z0-9]{16}\b/g,
-  /\beyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g,
+  // Google API keys.
+  /\bAIza[A-Za-z0-9_-]{30,}\b/g,
+  // JWTs.
+  /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{6,}\b/g,
   /\bBearer\s+[A-Za-z0-9._~+/-]{16,}\b/gi,
-  /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
-  /\b(password|passwd|secret|token|api[_-]?key)\s*[=:]\s*['"]?[^\s'"]{8,}/gi,
+  // A private key BODY, not the whole armoured block: the BEGIN/END markers can
+  // be clipped apart in a long transcript, so this catches the base64 payload
+  // that follows a BEGIN line even when the END never arrives.
+  /-----BEGIN[^\n]*PRIVATE KEY-----[\s\S]*?(?:-----END[^\n]*-----|$)/g,
+  /\bMII[A-Za-z0-9+/=\s]{100,}/g,
+  // Assignments. The old \b before the name could not match after an
+  // underscore, so CLOUDFLARE_API_TOKEN= — the single most common shape a
+  // secret takes in a transcript — was never touched. This keys on the
+  // OPERATOR and the value: any KEY = "value" / KEY: value where the key name
+  // signals a secret. Quoted values may contain spaces; unquoted may not.
+  /(?<![\w-])([\w-]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PWD|CREDENTIAL|PRIVATE|APIKEY|ACCESS[_-]?KEY)[\w-]*)\s*[:=]\s*(?:"[^"]{4,}"|'[^']{4,}'|[^\s"']{6,})/gi,
+  // Bare high-entropy hex/base64-ish tokens of key length. Anchored on being a
+  // standalone run so it does not eat commit hashes mid-word or ordinary prose.
+  /(?<![\w-])[A-Fa-f0-9]{40,64}(?![\w-])/g,
+  // Connection strings with an inline password.
   /\b\w+:\/\/[^\s:@/]+:[^\s@/]+@[^\s/]+/g,
+  // ssh private key one-liners occasionally pasted.
+  /\b(ssh-rsa|ssh-ed25519)\s+[A-Za-z0-9+/=]{40,}/g,
 ];
 
 export function scrub(text: string): string {
@@ -271,7 +291,12 @@ export async function distil(turns: Turn[]): Promise<DistilResult> {
     : null;
   if (!model) return { state: "no-model" };
 
-  const transcript = scrub(renderTurns(turns));
+  // Scrub BEFORE the turn budget clips anything, so a secret whose armour or
+  // context is longer than the 700-char per-turn clip is still redacted while
+  // the pattern can see the whole thing. renderTurns then clips the already-
+  // clean text, and scrub runs once more on the model's OUTPUT below.
+  const scrubbedTurns = turns.map((t) => ({ ...t, text: scrub(t.text) }));
+  const transcript = renderTurns(scrubbedTurns);
   if (transcript.trim().length < 200) return { state: "nothing" };
 
   /*
@@ -445,19 +470,55 @@ export async function sweep(root: string, port: number): Promise<SweepResult> {
   for (const candidate of candidates) {
     if (result.distilled >= MAX_DISTILS_PER_SWEEP) break;
 
+    /*
+     * A ChatGPT export is one JSON document, not a growing log.
+     *
+     * The line-delta machinery below is for JSONL transcripts that grow by
+     * appending records. A `conversations.json` is a single object, so reading
+     * "the trailing 512KB" of it and JSON.parsing that fragment fails, yields
+     * zero turns, and — worst of all — advanced the offset and archived the
+     * file as "processed", silently destroying the user's entire history while
+     * reporting success. Whole-document sources are read whole (to a sane
+     * ceiling) and never offset-clamped.
+     */
+    const isWholeDoc = candidate.source === "inbox" && candidate.file.endsWith(".json");
+    const MAX_WHOLE_DOC = 32 * 1024 * 1024;
+
+    if (isWholeDoc && candidate.size > MAX_WHOLE_DOC) {
+      // Too large to parse safely. Do NOT mark it processed — leave it in the
+      // inbox and report it, rather than archive an unread file as done.
+      result.skipped.nothing += 1;
+      continue;
+    }
+
     const handle = await fs.open(candidate.file, "r").catch(() => null);
     if (!handle) continue;
     let delta: string;
+    let clamped = false;
     try {
-      const from = Math.max(candidate.from, candidate.size - MAX_DELTA_BYTES);
+      const from = isWholeDoc
+        ? 0
+        : (() => {
+            const c = candidate.size - MAX_DELTA_BYTES;
+            if (c > candidate.from) {
+              clamped = true;
+              return c;
+            }
+            return candidate.from;
+          })();
       const length = candidate.size - from;
       const buffer = Buffer.alloc(length);
       await handle.read(buffer, 0, length, from);
       delta = buffer.toString("utf8");
-      // A byte offset can split a multibyte character or a JSONL line; the
-      // parsers below already skip torn lines, so the only correction needed
-      // is starting after the first newline when we did not start at zero.
-      if (from > 0) delta = delta.slice(delta.indexOf("\n") + 1);
+      /*
+       * Only trim a genuinely torn first line.
+       *
+       * The stored offset is always a byte a previous sweep saw as end-of-file,
+       * which is a line boundary — trimming there ate a whole valid record on
+       * every sweep after the first. A trim is needed ONLY when the read was
+       * clamped to the trailing window and therefore started mid-line.
+       */
+      if (clamped) delta = delta.slice(delta.indexOf("\n") + 1);
     } finally {
       await handle.close();
     }
@@ -470,6 +531,16 @@ export async function sweep(root: string, port: number): Promise<SweepResult> {
           : candidate.file.endsWith(".json")
             ? turnsFromChatGPTExport(delta)
             : turnsFromText(delta);
+
+    /*
+     * A whole-document source that parsed to nothing is a PARSE FAILURE, not an
+     * empty conversation — and it must not be archived as processed. Left in
+     * the inbox, reported, retried next sweep.
+     */
+    if (isWholeDoc && !turns.length) {
+      result.skipped.nothing += 1;
+      continue;
+    }
 
     const outcome = await distil(turns);
     if (outcome.state === "no-model") {

@@ -110,6 +110,33 @@ export function proxy(request: NextRequest) {
   const touchesDisk = touchesApi(pathname);
 
   /*
+   * CSRF: a web page you visit must not command your local Lore.
+   *
+   * The Host guard stops a remote packet; it does nothing about the browser
+   * already trusted to reach 127.0.0.1. Any open tab can fire a simple POST at
+   * http://localhost:4646/api/undo with a valid Host and — before this — it
+   * ran, so a visited page could revert a day of your wiki.
+   *
+   * The discriminator is `Sec-Fetch-Site`, which every modern browser sets on
+   * every request and no page can forge (it is a forbidden header). A
+   * cross-site value is a request one origin made against another, which for a
+   * local API is precisely the attack. Same-origin and same-site (the Lore app
+   * itself) pass; requests with no such header at all pass too, because those
+   * are the trusted non-browser clients — the CLI, the MCP server, curl — that
+   * this product is built around. So the rule costs the legitimate app and
+   * tooling nothing and closes the tab-driven write.
+   */
+  if (!siteMode && touchesDisk && request.method !== "GET" && request.method !== "HEAD") {
+    const site = request.headers.get("sec-fetch-site");
+    if (site && site !== "same-origin" && site !== "same-site" && site !== "none") {
+      return NextResponse.json(
+        { error: "Cross-site requests cannot change Lore. This request was blocked." },
+        { status: 403 },
+      );
+    }
+  }
+
+  /*
    * Read-only mode, enforced here rather than in each handler.
    *
    * Seven routes can change a file in the user's wiki. Asking seven handlers to

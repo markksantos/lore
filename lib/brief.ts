@@ -383,6 +383,9 @@ export function lineFrom(evidence: string): string {
     .split("\n")
     .map((raw) => ({
       heading: /^\s{0,3}#{1,6}\s+/.test(raw),
+      // A table row is not prose: `| Role | Start Here | Output |` was being
+      // emitted verbatim as a page's one-line summary.
+      table: /^\s*\|.*\|/.test(raw) || /^\s*\|?\s*:?-{3,}/.test(raw),
       text: unmark(
         raw
           .replace(/^\s{0,3}#{1,6}\s+/, "")
@@ -391,7 +394,7 @@ export function lineFrom(evidence: string): string {
           .trim(),
       ),
     }))
-    .filter((l) => l.text.length > 0);
+    .filter((l) => l.text.length > 0 && !l.table);
 
   const isField = (text: string) => /^[\w][\w /()&'-]{0,32}:\s*\S/.test(text);
   const isProse = (text: string) =>
@@ -409,9 +412,25 @@ export function lineFrom(evidence: string): string {
   if (!source) return "Changed, but the page has no readable body.";
 
   const sentence = (source.text.split(/(?<=[.!?])\s+/)[0] ?? source.text).trim();
-  if (sentence.length <= 180) return sentence;
-  const cut = sentence.slice(0, 177);
-  return `${cut.slice(0, cut.lastIndexOf(" "))}…`;
+  return clip(sentence, 180);
+}
+
+/**
+ * Clip to a length without ever ending mid-word — and without collapsing to a
+ * stub when the only space is near the start.
+ *
+ * The previous `slice(0, lastIndexOf(" "))` had two failures the review caught:
+ * a 187-char line whose first space sat at index 7 rendered as the 8-char
+ * "Source:…", and a line with no spaces at all hit `lastIndexOf → -1` and
+ * `slice(0, -1)` dropped a character mid-token. Here the word boundary is used
+ * only when it keeps most of the budget; otherwise it is a clean hard cut.
+ */
+function clip(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const window = text.slice(0, max - 1);
+  const lastSpace = window.lastIndexOf(" ");
+  const body = lastSpace > max * 0.6 ? window.slice(0, lastSpace) : window;
+  return `${body.trimEnd()}…`;
 }
 
 /**
@@ -432,8 +451,13 @@ function unmark(text: string): string {
     .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
     .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
     .replace(/!?\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_m, target, alias) => alias || target)
-    .replace(/(\*\*|__)(.*?)\1/g, "$2")
-    .replace(/(\*|_)(?=\S)(.*?)(?<=\S)\1/g, "$2")
+    // Bold/italic with asterisks — safe to be greedy, `*` never sits inside a
+    // word. Underscore emphasis is matched only at word boundaries so
+    // MAX_RETRY_COUNT survives intact.
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/\*(?=\S)(.*?)(?<=\S)\*/g, "$1")
+    .replace(/(?<![A-Za-z0-9])__(?=\S)(.+?)(?<=\S)__(?![A-Za-z0-9])/g, "$1")
+    .replace(/(?<![A-Za-z0-9])_(?=\S)(.+?)(?<=\S)_(?![A-Za-z0-9])/g, "$1")
     .replace(/`([^`]*)`/g, "$1")
     .replace(/^>\s*/g, "")
     .replace(/\s{2,}/g, " ")
