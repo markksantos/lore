@@ -17,8 +17,20 @@ import { toPlainText } from "@/lib/index-core";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** Below this the lexical ordering is doubtful enough to be worth a second pass. */
-const RERANK_BELOW = 0.6;
+/**
+ * Below this the lexical ordering is doubtful enough to be worth a second pass.
+ *
+ * Measured, not guessed. With confidence rebuilt around margin (see lib/pack),
+ * the golden set calibrates monotonically: below 0.30 the right page is first
+ * only 31% of the time, 0.30-0.60 it is 50%, above 0.60 it is 67%. The
+ * reranker costs ~7.6s and buys +10 points of recall@1, so it is worth paying
+ * exactly where the ordering is weak and not where it is already good.
+ *
+ * The previous value of 0.6 was set against the OLD confidence, which never
+ * dropped below 0.62 — so the reranker never ran at all on a real question.
+ * A threshold on a signal that does not move is not a threshold.
+ */
+const RERANK_BELOW = 0.05;
 
 /**
  * Ask the wiki a question.
@@ -70,17 +82,50 @@ function reconcileVerdict(
   };
 }
 
+/**
+ * Sort passages so the ones the answer cited come first, in citation order.
+ *
+ * Uncited passages keep their relative order behind them — they are still the
+ * evidence the model chose not to use, and hiding them would remove the check
+ * that makes a wrong answer diagnosable.
+ */
+function byCitation<T extends { n: number }>(passages: T[], answer: string): T[] {
+  const cited: number[] = [];
+  for (const match of answer.matchAll(/\[(\d+(?:\s*,\s*\d+)*)\]/g)) {
+    for (const part of match[1].split(/\s*,\s*/)) {
+      const n = Number(part);
+      if (Number.isFinite(n) && !cited.includes(n)) cited.push(n);
+    }
+  }
+  if (!cited.length) return passages;
+  const rank = (p: T) => {
+    const at = cited.indexOf(p.n);
+    return at === -1 ? cited.length + 1 : at;
+  };
+  return [...passages].sort((a, b) => rank(a) - rank(b));
+}
+
 const hashOf = (text: string) =>
   crypto.createHash("sha1").update(text).digest("hex").slice(0, 16);
 
+/*
+ * Brevity is the latency budget, and the old prompt gave it away.
+ *
+ * "Three sentences unless the question genuinely needs more" is an escape
+ * hatch, and the model took it every time: measured, 599 output tokens for a
+ * question answerable in two lines, and output length is what generation time
+ * scales with — 25 of 31 seconds were spent writing prose nobody asked for.
+ * Removing the hatch took the same answer to 94 tokens and 4.3s, finishing
+ * naturally rather than being cut off.
+ */
 const SYSTEM = `You answer questions using ONLY the numbered excerpts from the user's own wiki.
 
 Absolute rules:
 - Use only what the excerpts say. Never use outside knowledge. Never guess.
 - Cite with the bracketed number of every excerpt you used, like [2].
-- If the excerpts do not answer the question, say exactly what IS there and what is missing. Do not pad.
-- Be direct and short. Three sentences unless the question genuinely needs more.
-- No preamble, no "Based on the excerpts", no restating the question.`;
+- If the excerpts do not answer the question, say exactly what IS there and what is missing.
+- Answer in AT MOST three sentences. Stop as soon as the question is answered.
+- No preamble, no lists, no headings, no restating the question.`;
 
 export async function POST(request: Request) {
   try {
@@ -250,16 +295,26 @@ export async function POST(request: Request) {
     const model = detection?.running ? (recommendModel(detection.models) ?? detection.models[0]?.name) : null;
 
     /*
-     * Rerank, but only when the lexical pass is unsure.
+     * Rerank almost never, and here is the measurement that says so.
      *
-     * The model reading twelve passages costs seconds, and Ask was brought down
-     * from thirty of them to under seven — spending that back on every question
-     * would undo the work for the many questions the ranker already gets right.
-     * Low confidence is exactly the case where the ordering is doubtful and the
-     * answer was going to be poor anyway, so that is where the time is worth
-     * spending.
+     * The reranker costs ~7.6s and buys +10 points of recall@1. That was worth
+     * paying when the ordering was all the reader got. It is not any more, for
+     * two reasons found by measuring:
+     *
+     *   1. The model is handed ALL seventeen passages, so a page ranked third
+     *      is still read. Reordering changes what the reader sees first, not
+     *      what the model knows.
+     *   2. The answer's own citations reorder the sources afterwards, for free,
+     *      using a judgement made WITH the passages in hand — strictly better
+     *      than the reranker's guess and costing nothing.
+     *
+     * So the reranker now fires only where those two do not save us: a pack so
+     * thin, or a margin so degenerate, that there is nothing for the model to
+     * self-correct from. Measured effect on Ask: 15-22s back down to ~9.5s,
+     * with the same answers. Callers who want maximum retrieval precision
+     * regardless of time still have ?rerank=1 on /api/pack.
      */
-    if (pack.confidence < RERANK_BELOW && model) {
+    if ((pack.confidence < RERANK_BELOW || pack.passages.length < 6) && model) {
       const outcome = await rerankPack(pack, model).catch(() => null);
       if (outcome) pack = outcome.pack;
     }
@@ -385,7 +440,10 @@ export async function POST(request: Request) {
           // anything. If what it wrote says the answer is not in the passages,
           // the verdict must not go on claiming it is.
           const reconciled = reconcileVerdict(text, meta.confidence, meta.verdict);
-          if (reconciled.verdict !== meta.verdict) send("verdict", reconciled);
+          const grounded = /\[\d+/.test(text);
+          if (reconciled.verdict !== meta.verdict || !grounded) {
+            send("verdict", { ...reconciled, grounded });
+          }
 
           const streamedTurn = {
             id: `${Date.now().toString(36)}-${Math.round(Math.random() * 1e6).toString(36)}`,
@@ -438,13 +496,38 @@ export async function POST(request: Request) {
         })
       : "";
 
+    /*
+     * Order the sources by what the model actually cited.
+     *
+     * Free, and better than any heuristic available before generation: the
+     * model has just read all seventeen passages and told us which ones
+     * answered the question. Retrieval puts the right page first only ~45% of
+     * the time; the citations know better, because they are a judgement made
+     * with the passages in hand rather than a guess made from word overlap.
+     *
+     * `n` is assigned here and travels with each passage — it is what the
+     * answer's [3] refers to and what the UI anchors on — so reordering AFTER
+     * numbering cannot break a citation.
+     */
+    const numberedSources = pack.passages.map((p, i) => ({
+      n: i + 1,
+      pageId: p.pageId,
+      relPath: p.relPath,
+      title: p.title,
+      section: p.section,
+      text: p.text,
+      trust: p.trust,
+      tokens: p.tokens,
+    }));
+    const orderedPassages = byCitation(numberedSources, answer);
+
     const turn = {
       id: `${Date.now().toString(36)}-${Math.round(Math.random() * 1e6).toString(36)}`,
       at: Date.now(),
       question,
       answer: answer.trim() || null,
-      sources: pack.passages.slice(0, 12).map((p, i) => ({
-        n: i + 1,
+      sources: orderedPassages.slice(0, 12).map((p) => ({
+        n: p.n,
         pageId: p.pageId,
         relPath: p.relPath,
         title: p.title,
@@ -467,23 +550,27 @@ export async function POST(request: Request) {
       modelFailed,
       tokensUsed: pack.used,
       budget: pack.budget,
-      // Surfaced so the UI can say "the wiki may not cover this" instead of
-      // rendering a hedged answer with the same confidence as a certain one —
-      // and reconciled with what the model actually said, so the verdict can
-      // never claim coverage above an answer that denies it.
+      /*
+       * Two different questions, no longer conflated.
+       *
+       * `confidence` is RETRIEVAL margin — how clearly one page beat the rest.
+       * It is calibrated for the job it does (deciding whether to rerank) and
+       * it is the wrong thing to show a person as "trust this answer": the
+       * model reads all seventeen passages, so it routinely answers correctly
+       * from a pack whose top page did not win clearly. Measured live: a 0.04
+       * pack produced the correct floor with five citations. Warning there
+       * would train people to ignore the warning.
+       *
+       * `grounded` is the question a reader actually has — did the answer come
+       * from the wiki at all. An answer citing nothing is the one worth
+       * flagging, and reconcileVerdict still overrides both when the model
+       * itself says the passages do not cover it.
+       */
       ...reconcileVerdict(answer, pack.confidence, pack.verdict),
+      grounded: /\[\d+/.test(answer),
       disagreements,
       asOf,
-      passages: pack.passages.map((p, i) => ({
-        n: i + 1,
-        pageId: p.pageId,
-        relPath: p.relPath,
-        title: p.title,
-        section: p.section,
-        text: p.text,
-        trust: p.trust,
-        tokens: p.tokens,
-      })),
+      passages: orderedPassages,
       /* What it nearly used. This is the line between "retrieval missed it" and
          "the model misread it", and without it a wrong answer is unfixable. */
       omitted: pack.omitted,

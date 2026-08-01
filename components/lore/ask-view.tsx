@@ -51,6 +51,7 @@ type Answer = {
   modelFailed?: boolean;
   confidence?: number;
   verdict?: string;
+  grounded?: boolean;
   passages: Passage[];
   omitted: { relPath: string; title: string }[];
   disagreements?: { subject: string; values: number[]; pages: string[] }[];
@@ -80,6 +81,8 @@ type Message = {
   streaming?: boolean;
   confidence?: number;
   verdict?: string;
+  /** Did the answer cite anything from the wiki? See the ask route. */
+  grounded?: boolean;
   disagreements?: { subject: string; values: number[]; pages: string[] }[];
 };
 
@@ -218,6 +221,7 @@ export function AskView({
                     reason: data.reason,
                     needsModel: data.needsModel,
                     modelFailed: data.modelFailed,
+                    grounded: data.grounded,
                     disagreements: data.disagreements,
                   }
                 : msg,
@@ -596,12 +600,19 @@ function Exchange({
                   </div>
                 ) : null}
 
-                {!message.streaming &&
-                message.confidence !== undefined &&
-                message.confidence < 0.35 ? (
+                {/*
+                  * Warn on an UNGROUNDED answer, not a low retrieval margin.
+                  *
+                  * Retrieval confidence measures whether one page clearly beat
+                  * the others; the model reads all of them, so it answers
+                  * correctly from a low-margin pack all the time. Warning on
+                  * that trains people to ignore warnings. An answer that cites
+                  * nothing is the one actually worth flagging.
+                  */}
+                {!message.streaming && message.grounded === false ? (
                   <p className="t-meta mt-2 rounded-lg border border-dashed border-[var(--lore-border)] px-3 py-2 text-[var(--lore-text-tertiary)]">
-                    Retrieval was not confident about this one — the passages below are the
-                    closest matches, not necessarily the answer. Worth opening the sources.
+                    This answer cites nothing from your wiki — treat it as a summary of the
+                    passages below rather than something the wiki actually says.
                   </p>
                 ) : null}
               </>
@@ -784,8 +795,8 @@ async function consumeStream(
         case "verdict": {
           // The server re-judged its own confidence after reading what the
           // model wrote; the warning banner must follow the correction.
-          const v = payload as { confidence: number; verdict: string };
-          patch({ confidence: v.confidence, verdict: v.verdict });
+          const v = payload as { confidence: number; verdict: string; grounded?: boolean };
+          patch({ confidence: v.confidence, verdict: v.verdict, grounded: v.grounded });
           break;
         }
         case "error":

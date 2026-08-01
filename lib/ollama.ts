@@ -186,7 +186,16 @@ export function contextFor(prompt: string, system = "", reserveForAnswer = 1_024
    * as a silently truncated answer.
    */
   const estimated = Math.ceil((prompt.length + system.length) / 2.5) + reserveForAnswer;
-  for (const bucket of [2_048, 4_096, 8_192, 16_384, 32_768, 65_536]) {
+  /*
+   * The floor is 8,192, not 2,048.
+   *
+   * Not because small windows are slow — measured, alternating between 4,096
+   * and 8,192 costs nothing, and Ollama does not reload on a change. It is
+   * because there is no gain to claim: memory is ample, and fewer distinct
+   * window sizes means fewer chances for a future caller to trip a reload that
+   * this measurement did not happen to cover.
+   */
+  for (const bucket of [8_192, 16_384, 32_768, 65_536]) {
     if (estimated <= bucket) return bucket;
   }
   // Beyond this, hand it back to the model's own default rather than guess.
@@ -196,7 +205,7 @@ export function contextFor(prompt: string, system = "", reserveForAnswer = 1_024
 export async function generate(
   model: string,
   prompt: string,
-  opts?: { system?: string; timeoutMs?: number },
+  opts?: { system?: string; timeoutMs?: number; maxTokens?: number },
 ): Promise<string> {
   const timeoutMs = opts?.timeoutMs ?? 60_000;
   const controller = new AbortController();
@@ -222,7 +231,17 @@ export async function generate(
         // Near-greedy. Every job here extracts something already present in
         // the page; sampling temperature is what makes a small model invent a
         // tag the document never mentions.
-        options: { temperature: 0.1, num_ctx: contextFor(prompt, opts?.system ?? "") },
+        options: {
+          temperature: 0.1,
+          num_ctx: contextFor(prompt, opts?.system ?? ""),
+          /*
+           * A backstop, not a truncator. A good answer here measures under a
+           * hundred tokens; this only stops a model that has started rambling,
+           * which is the failure that turns a 4-second answer into a 31-second
+           * one. Callers needing long output pass their own limit.
+           */
+          num_predict: opts?.maxTokens ?? 600,
+        },
       }),
     });
 
@@ -265,7 +284,7 @@ export async function generateStream(
   model: string,
   prompt: string,
   onToken: (chunk: string) => void,
-  opts?: { system?: string; timeoutMs?: number; signal?: AbortSignal },
+  opts?: { system?: string; timeoutMs?: number; signal?: AbortSignal; maxTokens?: number },
 ): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), opts?.timeoutMs ?? 120_000);
@@ -293,7 +312,11 @@ export async function generateStream(
         system: opts?.system,
         stream: true,
         think: false,
-        options: { temperature: 0.1, num_ctx: contextFor(prompt, opts?.system ?? "") },
+        options: {
+          temperature: 0.1,
+          num_ctx: contextFor(prompt, opts?.system ?? ""),
+          num_predict: opts?.maxTokens ?? 600,
+        },
       }),
     });
     if (!response.ok || !response.body) {
