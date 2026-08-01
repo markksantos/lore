@@ -169,15 +169,30 @@ async function synthesise(brief: Brief): Promise<Brief> {
     }),
   );
 
-  let used = false;
+  /*
+   * `synthesised` means EVERY line was written, not merely one of them.
+   *
+   * It was true as soon as any line came back, so a brief where the model
+   * handled seven of eight reported itself as fully synthesised — and the
+   * "install Ollama and Lore will write these properly" banner disappeared on
+   * a brief that still had a fallback line in it, which is the one case where
+   * the banner is telling the truth. The count is reported alongside so the UI
+   * can say which lines are which rather than making a claim about all of them.
+   */
+  let written = 0;
   const items = brief.items.map((item, i) => {
     const line = lines[i];
     if (!line) return item;
-    used = true;
-    return { ...item, line };
+    written += 1;
+    return { ...item, line, written: true };
   });
 
-  return { ...brief, items, synthesised: used };
+  return {
+    ...brief,
+    items,
+    synthesised: written > 0 && written === brief.items.length,
+    written,
+  };
 }
 
 export async function GET(request: Request) {

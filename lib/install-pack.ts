@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { HOOK_MATCHER, hookCommand } from "@/lib/harness";
 
 /**
  * One command that wires Lore into every agent on the machine.
@@ -227,31 +228,59 @@ async function installClaudeHooks(opts: InstallOptions): Promise<StepResult> {
 
   const start: unknown[] = Array.isArray(hooks.SessionStart) ? [...hooks.SessionStart] : [];
   const end: unknown[] = Array.isArray(hooks.SessionEnd) ? [...hooks.SessionEnd] : [];
+  const post: unknown[] = Array.isArray(hooks.PostToolUse) ? [...hooks.PostToolUse] : [];
 
   // Matched on the subcommand rather than a marker comment, so a hook the user
   // has since reformatted or moved between groups is still recognised as ours.
   const needStart = !hasCommandContaining(start, "lore.mjs\" brief");
   const needEnd = !hasCommandContaining(end, "lore.mjs\" capture");
+  /*
+   * The attribution hook, which everything about authorship depends on.
+   *
+   * Without it Lore sees that a file changed and cannot see who changed it, so
+   * the brief cannot say "written by Codex", Review cannot separate one agent's
+   * work from another's, undo-an-agent has nothing to select on, and the
+   * authorship term in the brief's ranking is inert. It was a separate,
+   * separately-forgotten step on the Connections screen — which is why, on the
+   * machine this was built for, it had never been installed.
+   */
+  const needPost = !hasCommandContaining(post, "/api/harness");
 
-  if (!needStart && !needEnd) {
-    return { ...base, state: "already", detail: "Both session hooks are already installed." };
+  if (!needStart && !needEnd && !needPost) {
+    return { ...base, state: "already", detail: "All three hooks are already installed." };
   }
   if (opts.dryRun) {
-    return { ...base, state: "installed", detail: "Would add SessionStart and SessionEnd hooks." };
+    return { ...base, state: "installed", detail: "Would add the session and attribution hooks." };
   }
 
   if (needStart) start.push({ hooks: [{ type: "command", command: sessionStartCommand(binDir) }] });
   if (needEnd) end.push({ hooks: [{ type: "command", command: sessionEndCommand(binDir) }] });
+  if (needPost) {
+    const entry = { type: "command", command: hookCommand(opts.vaultRoot) };
+    // Prefer joining the user's existing matcher group over adding a second one
+    // with the same matcher — two identical matchers work and make their
+    // settings file harder for them to read.
+    const at = post.findIndex(
+      (group) => isRecord(group) && group.matcher === HOOK_MATCHER && Array.isArray(group.hooks),
+    );
+    if (at >= 0) {
+      const group = post[at] as Record<string, unknown>;
+      post[at] = { ...group, hooks: [...(group.hooks as unknown[]), entry] };
+    } else {
+      post.push({ matcher: HOOK_MATCHER, hooks: [entry] });
+    }
+  }
 
   if (read.state === "ok") await backup(file);
   await writeJson(file, {
     ...read.value,
-    hooks: { ...hooks, SessionStart: start, SessionEnd: end },
+    hooks: { ...hooks, SessionStart: start, SessionEnd: end, PostToolUse: post },
   });
   return {
     ...base,
     state: "installed",
-    detail: "Sessions now open with the brief and close by recording what they touched.",
+    detail:
+      "Sessions open with the brief, close by recording what they touched, and every write is attributed.",
   };
 }
 

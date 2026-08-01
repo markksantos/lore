@@ -47,6 +47,8 @@ export type BriefItem = {
    * labelled, and the header says how many were new.
    */
   repeat: boolean;
+  /** True when the model wrote this line rather than the page's own sentence. */
+  written?: boolean;
   /**
    * Pages that cite this one, and would be read differently now.
    *
@@ -86,8 +88,10 @@ export type Brief = {
     titles: string[];
     items?: BriefItem[];
   }[];
-  /** True when a local model wrote the lines rather than the fallback. */
+  /** True when a local model wrote EVERY line rather than the fallback. */
   synthesised: boolean;
+  /** How many lines the model wrote, so the UI can be specific. */
+  written?: number;
 };
 
 /**
@@ -358,9 +362,35 @@ export function lineFrom(evidence: string): string {
     .filter(Boolean)
     .join(" ");
   const sentence = prose.split(/(?<=[.!?])\s/)[0] ?? prose;
-  const trimmed = sentence.trim();
+  const trimmed = unmark(sentence).trim();
   if (!trimmed) return "Changed, but the page has no readable body.";
   return trimmed.length > 180 ? `${trimmed.slice(0, 177)}…` : trimmed;
+}
+
+/**
+ * Flatten the markdown a fallback line inherits from the page.
+ *
+ * The brief renders as plain text — the model-written lines are prose and have
+ * no markup in them — so a fallback line taken verbatim from a page arrived on
+ * screen as `[jmcartan](jmcartan/profile.md) - **Jared McArtan…**`. That is the
+ * one line on the screen that looks broken, and it is the line shown when the
+ * feature is least able to impress anyone.
+ *
+ * Links become their text, emphasis and code markers are dropped, images are
+ * removed entirely. Not a markdown parser: this runs on one sentence and only
+ * needs to handle the constructs that appear at the start of a page.
+ */
+function unmark(text: string): string {
+  return text
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/!?\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_m, target, alias) => alias || target)
+    .replace(/(\*\*|__)(.*?)\1/g, "$2")
+    .replace(/(\*|_)(?=\S)(.*?)(?<=\S)\1/g, "$2")
+    .replace(/`([^`]*)`/g, "$1")
+    .replace(/^>\s*/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 /** Kept for callers that only have the page. */

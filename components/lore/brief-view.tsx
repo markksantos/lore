@@ -43,6 +43,8 @@ type Brief = {
   total: number;
   threads: { subject: string; pages: string[]; titles: string[]; items?: Item[] }[];
   synthesised: boolean;
+  /** How many lines the model wrote, so the banner can be specific. */
+  written?: number;
   muted: string[];
 };
 
@@ -341,12 +343,18 @@ export function BriefView({ onOpenPage }: { onOpenPage: (pageId: string) => void
         </p>
       ) : null}
 
+      {/*
+        * Specific about which lines, because "these lines" was a lie whenever
+        * the model handled some of them — and the flag behind it read true as
+        * soon as one came back, so the banner vanished from briefs that still
+        * had fallbacks in them.
+        */}
       {data?.items.length && !data.synthesised ? (
         <p className="t-meta mt-4 flex items-start gap-2 rounded-xl border border-[var(--lore-border)] px-4 py-3 text-[var(--lore-text-tertiary)]">
           <Sparkles size={13} className="mt-0.5 shrink-0" />
-          These lines are each page&rsquo;s own first sentence. Install a local model with
-          Ollama and Lore will write them properly instead — it runs on your machine and
-          nothing is sent anywhere.
+          {data.written
+            ? `${data.items.length - data.written} of these lines are the page's own first sentence rather than a written summary — the local model did not get to them in time.`
+            : "These lines are each page's own first sentence. Install a local model with Ollama and Lore will write them properly instead — it runs on your machine and nothing is sent anywhere."}
         </p>
       ) : null}
     </div>
