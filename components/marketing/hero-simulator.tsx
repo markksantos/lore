@@ -438,7 +438,9 @@ export function HeroSimulator({ fullHeight = false }: { fullHeight?: boolean } =
             <Search size={13} className="text-[var(--lore-text-tertiary)]" />
             <span className="text-[13px] text-[var(--lore-text-tertiary)]">Search</span>
             <kbd className="ml-auto rounded border border-[var(--lore-border)] px-1 py-px text-[10px] text-[var(--lore-text-tertiary)]">
-              ⌘K
+              {/* The product shows "/" here — ⌘K opens the command palette.
+                  A mockup that contradicts the app teaches the wrong shortcut. */}
+              /
             </kbd>
           </div>
 

@@ -9,7 +9,6 @@ import {
   ShieldCheck,
   ChevronDown,
   Download as DownloadIcon,
-  Smartphone,
 } from "lucide-react";
 import { SceneryImage } from "@/components/marketing/scenery-image";
 import { MarketingFooter, MarketingHeader } from "@/components/marketing/site-chrome";
@@ -62,13 +61,9 @@ export function Landing({
       </div>
 
       <WhyNotJustAsk />
-      <Safety />
       <Measured />
       <HowItWorks />
-      <Ask />
-      <Budget />
       <Stack logos={logos} />
-      <Platforms />
       <Steps siteMode={siteMode} />
       <Faq />
       <Finale scene={scene} cta={cta} ctaLabel={ctaLabel} />
@@ -128,9 +123,23 @@ function Hero({ scene, cta, ctaLabel }: { scene: Scene; cta: string; ctaLabel: s
 
               <p className="mx-auto mt-5 max-w-xl text-[15px] font-semibold text-white/90 md:mt-6 md:text-[18px]">
                 Point Lore at the markdown folder Claude Code, Cursor or Obsidian already
-                writes to. It reads what your agents changed and tells you, in one sentence
+                writes to. It reads what your agents changed and tells you, in one line
                 each — and answers questions from your own pages. Nothing to review, nothing
                 to approve, no file touched.
+              </p>
+
+              {/*
+                * Who it is not for, in the hero, before the download button.
+                *
+                * Two non-technical reviewers in a blind panel scored this 2.5
+                * and left within three screens. The product was not wrong for
+                * them; the page was, by never saying that something has to be
+                * writing files for any of this to have content. One sentence
+                * here is worth more than a paragraph of apology later.
+                */}
+              <p className="mx-auto mt-3 max-w-xl text-[13px] text-white/60 md:text-[14px]">
+                Built for people whose AI already writes files on their machine. If nothing
+                writes markdown for you yet, Lore will have nothing to show you.
               </p>
 
               <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
@@ -281,39 +290,6 @@ function WhyNotJustAsk() {
  * read-only lock is the same promise made of code, so this section can say
  * something checkable instead of something reassuring.
  */
-function Safety() {
-  return (
-    <Section
-      eyebrow="Your files"
-      title="It won't change your wiki."
-      lede="Read-only is on when you install it. Eight routes in this app can write to a page, and with the lock on every one of them is refused before it runs — so this is a check you can read in the source, not a promise about intent."
-    >
-      <Reveal className="mt-11 grid gap-4 sm:grid-cols-2">
-        <Plain
-          slot={4}
-          title="Read-only is the default"
-          body="First run asks what Lore may do to your wiki; the recommended answer is 'look, don't touch'. It is enforced in one file — proxy.ts — rather than in eight handlers that each have to remember, and it fails closed: a corrupt or missing setting reads as locked."
-        />
-        <Plain
-          slot={2}
-          title="It never undoes your agent's work"
-          body="Lore has no background job, no cleanup pass, and no opinion about what your agent wrote. It reads and it reports. The only things that ever change a file are things you did, in front of you."
-        />
-        <Plain
-          slot={5}
-          title="Nothing to approve"
-          body="There is no queue and no gate. Your agents keep writing exactly as they do now, without asking Lore or you for permission. Review is a record of what happened, not a list you are expected to clear."
-        />
-        <Plain
-          slot={7}
-          title="It keeps the old version anyway"
-          body="Every change your agents make is snapshotted outside your wiki, so the page as it was last Tuesday is still readable. Restoring one is a button you press, never something Lore decides."
-        />
-      </Reveal>
-    </Section>
-  );
-}
-
 /** A plain titled paragraph — no number, no demo, no chrome. */
 function Plain({ slot, title, body }: { slot: number; title: string; body: string }) {
   return (
@@ -407,62 +383,6 @@ function HowItWorks() {
  * been given anything. Sign-off still exists and is still optional; it is no
  * longer worth a section of the landing page. This is.
  */
-function Ask() {
-  return (
-    <Section
-      eyebrow="Ask"
-      title="A wiki too big to read is fine, if it answers."
-      lede="Type a question. Lore retrieves from your own pages, answers from those passages only, and shows you every one it used. When your wiki does not contain the answer it says so instead of inventing one."
-    >
-      <Reveal className="mt-11 grid gap-4 md:grid-cols-3">
-        <Plain
-          slot={0}
-          title="Your pages, nothing else"
-          body="The answer is assembled only from passages retrieved out of your own markdown, each one cited. No outside knowledge, no filling in the gaps."
-        />
-        <Plain
-          slot={5}
-          title="Shows its work"
-          body="Every answer ships with the passages it read and the pages it nearly read — so when it is wrong you can see whether retrieval missed the page or the model misread it."
-        />
-        <Plain
-          slot={6}
-          title="Runs on your machine"
-          body="Retrieval and the model are both local. Nothing is uploaded, and there is no account. It works on a plane."
-        />
-      </Reveal>
-    </Section>
-  );
-}
-
-function Budget() {
-  return (
-    <Section
-      eyebrow="Context"
-      title="2.3 million tokens."
-      lede="That is the reference vault: 1,424 pages, counted with a real BPE tokenizer rather than characters divided by four. A 200k context window holds about a twelfth of it."
-    >
-      <div className="mt-11 grid min-w-0 gap-8 lg:grid-cols-[22rem_1fr] lg:items-center">
-        <Reveal>
-          <BudgetDemo />
-        </Reveal>
-        <Reveal delay={0.06}>
-          <p className="t-body max-w-xl text-[var(--lore-text-secondary)]">
-            Nothing will ever read your wiki whole. Every answer an agent gives you is
-            assembled out of the handful of pages a search happened to surface, which is
-            precisely why it matters whether those pages are still true.
-          </p>
-          <p className="t-body mt-4 max-w-xl text-[var(--lore-text-secondary)]">
-            Lore measures the same budget folder by folder and page by page, so the corner
-            of the vault that is too heavy to hand to anything is a number you can look at
-            rather than a surprise you hit mid-task.
-          </p>
-        </Reveal>
-      </div>
-    </Section>
-  );
-}
-
 /** The compatibility wall — its own section, between the argument and the steps. */
 function Stack({ logos }: { logos: string[] }) {
   return (
@@ -499,108 +419,6 @@ function Stack({ logos }: { logos: string[] }) {
  * with my agent" and this one answers "will it work on my machine" — the two
  * questions someone asks in that order before they will click anything.
  */
-function Platforms() {
-  /*
-   * Real brand marks rather than lucide's generic shapes. The previous version
-   * used a fruit outline, a desktop monitor and a terminal prompt to mean Apple,
-   * Windows and Linux, which reads as three drawings of the idea of a computer
-   * — the one place on this page where a viewer scans for a logo they recognise
-   * and does not have to read.
-   */
-  const platforms = [
-    {
-      slot: 0,
-      mark: "/assets/platforms/apple.svg",
-      title: "macOS",
-      body: "Apple silicon and Intel. The only platform where the folder picker also works straight from a browser tab.",
-    },
-    {
-      slot: 2,
-      mark: "/assets/platforms/windows.svg",
-      title: "Windows",
-      body: "The desktop build is how you get a native folder picker here — a browser cannot open one.",
-    },
-    {
-      slot: 4,
-      mark: "/assets/platforms/linux.svg",
-      // Tux is a tall silhouette with internal cut-outs, where Apple and the
-      // Windows squares are solid shapes. At a shared size it reads as a smudge,
-      // so it gets a little more room.
-      markScale: "scale-[1.18]",
-      title: "Linux",
-      body: "AppImage or .deb, x64 and arm64. Or skip packaging entirely and run it from source.",
-    },
-    {
-      // No brand exists for "a phone you own", so this one keeps a drawn glyph
-      // — which is honest, because it is not naming a product.
-      slot: 6,
-      icon: Smartphone,
-      title: "Your phone",
-      body: "Installable as a PWA and pairable with the machine your wiki is on, over your own network.",
-    },
-  ];
-
-  return (
-    <Section
-      eyebrow="Everywhere"
-      title="One app, four places."
-      lede="The same local server behind all of them. The desktop build is a window onto 127.0.0.1, not a different product with a different backend."
-    >
-      <Reveal className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {platforms.map((platform) => {
-          const Icon = platform.icon;
-          return (
-            <div
-              key={platform.title}
-              style={paletteVars(platform.slot)}
-              className="rounded-2xl border border-[var(--lore-border)] bg-[var(--lore-surface)] p-5"
-            >
-              <span
-                className="flex h-9 w-9 items-center justify-center rounded-xl text-white"
-                style={{ background: "var(--plate)" }}
-              >
-                {platform.mark ? (
-                  // currentColor in the file, white here, so one asset works on
-                  // any plate colour and in either theme.
-                  <img
-                    src={platform.mark}
-                    alt=""
-                    width={18}
-                    height={18}
-                    className={cn(
-                      "h-[18px] w-[18px] [filter:brightness(0)_invert(1)]",
-                      platform.markScale,
-                    )}
-                  />
-                ) : Icon ? (
-                  <Icon size={17} />
-                ) : null}
-              </span>
-              <h3 className="pal-title mt-4 text-[16px] font-semibold tracking-[-0.02em]">
-                {platform.title}
-              </h3>
-              <p className="t-body mt-1.5 text-[var(--lore-text-secondary)]">{platform.body}</p>
-            </div>
-          );
-        })}
-      </Reveal>
-
-      <Reveal className="mt-8">
-        <Link
-          href="/download"
-          className="group inline-flex h-10 items-center gap-2 rounded-xl bg-[var(--lore-accent)] pl-4 pr-3.5 text-[14px] font-semibold text-white transition-colors hover:bg-[var(--lore-accent-hover)]"
-        >
-          Get Lore for your machine
-          <ArrowRight
-            size={15}
-            className="transition-transform duration-200 group-hover:translate-x-0.5"
-          />
-        </Link>
-      </Reveal>
-    </Section>
-  );
-}
-
 function Steps({ siteMode }: { siteMode: boolean }) {
   const steps = [
     // Step one differs by context: from the public site the first real action is
@@ -670,62 +488,55 @@ function Steps({ siteMode }: { siteMode: boolean }) {
  */
 const FAQ = [
   {
+    /*
+     * First, because it is the question that decides whether the rest matters.
+     *
+     * Both non-technical reviewers in a blind panel scored this product 2.5 and
+     * left inside three screens — not because it is bad, but because nothing
+     * told them it was not for them. Saying so plainly costs one entry and
+     * saves everyone the wrong download.
+     */
+    q: "Do I need AI agents for this to be useful?",
+    a: "Yes, effectively. Lore is built for people whose AI tools already write markdown files on their machine — Claude Code, Codex, Cursor, or anything writing into an Obsidian vault. The brief, the watcher and the gap log all describe what your agents wrote; with nothing writing files for you they have nothing to describe. Lore is not a note-taking app, and if you are looking for one it will disappoint you.",
+  },
+{
     q: "Will Lore change or delete anything in my wiki?",
     a: "Not unless you switch off the lock, and it is on when you install it. Read-only mode refuses every route that could write to a page, at the boundary, before the code runs — it is not a setting Lore promises to honour. Turn it off and Lore can edit, but even then it only writes when you do something: save a page, create one, capture a link. There is no background job, no cleanup pass, and nothing that runs while you are not looking.",
   },
-  {
+{
     q: "My agent already edits my wiki and I approve its changes. Why would I want another app for that?",
     a: "You wouldn't, and this isn't one. Lore has no approval queue and cannot gate your agent — it tried, and that was removed, because an agent with filesystem access simply writes and nothing you install can stop it. Your workflow does not change at all. Lore sits beside it and answers the question your current setup does not: across everything your agents have written, which pages have a human actually read, and what changed while you were not watching.",
   },
-  {
+{
     q: "Why not just use git and a folder?",
     a: "You should use git — Lore is not a replacement and reads a repo happily. But git only records what someone remembered to commit, and most agent writes happen between commits: one measured vault had 303 changed pages in a week and two commits. More to the point, `git log` gives you diffs, and a diff is not meaning — it can tell you a file lost twelve lines, not that a client moved their deadline. Lore reads the change and says what is true now. And because your agents read through Lore, it sees every search that came back empty, which is a to-write list git cannot produce.",
   },
-  {
+{
     q: "Can't my AI already do all of this?",
     a: "Your AI can read your wiki. You cannot — not 1,400 files in a folder. It also has no memory of what it changed last week, no way to show you which pages nothing links to, and no reason to distinguish a page you confirmed from one it guessed at. Lore is the reader for a folder that only had writers.",
   },
-  {
-    q: "What if Lore undoes something my agent did?",
-    a: "It has no mechanism to. Nothing in Lore reverts, cleans up or reconciles on its own. It does keep a snapshot of each page before a change, so you can read what a page said last Tuesday and put it back if you want to — but that restore is a button, pressed by you, on a page you are looking at.",
-  },
-  {
-    q: "What can an agent do through Lore?",
-    a: "Read the index, search, read a page, pull a context pack, check health, see what changed — and write, if you let it. The write tool exists for agents that have MCP and no filesystem, like ChatGPT on a phone, which otherwise could read your wiki and never add to it. Anything written that way is attributed and lands unverified, and read-only mode blocks it like everything else.",
-  },
-    {
+{
     q: "What are the eight MCP tools?",
     a: "wiki_index (the map of every page), wiki_search, wiki_read, wiki_context (the best passages on a subject, assembled to a token budget, each citing its page), wiki_brief (what the wiki learned recently, one sentence per page — so a new session can catch up without re-reading), wiki_changes (what moved since a timestamp), wiki_health (dead links, orphans, stale pages) and wiki_write. Seven read, one writes — and the write tool is blocked entirely by read-only mode.",
   },
-  {
-    q: "Can I use it from a script or in CI?",
-    a: "Yes. There is a CLI — `lore health --max-dead 0 --min-score 70` exits non-zero when the wiki fails your thresholds, so it can gate a pull request. It reimplements nothing: it talks to the same code the app runs, and starts its own server if one is not already up. A GitHub Action that fails a PR when the docs it touches have lapsed ships in the repo.",
-  },
-  {
+{
     q: "Does Lore move or reformat my files?",
     a: "No. It reads the markdown where it sits — your headings, your frontmatter, your [[wikilinks]], your folder names. Its own state lives in ~/.lore, outside the vault, so it never turns up in a git diff of your notes. No page is reformatted on the way through.",
   },
-  {
+{
     q: "Does it work with my Obsidian vault?",
     a: "Yes — that is the intended case, and here is exactly what is supported. [[Wikilinks]] resolve by full path, by basename and by frontmatter aliases, and [[page|display text]] shows your label. ![[image.png]] embeds render as images; ![[note]] embeds render as a link to that note rather than inlining it. Inline #tags, YAML frontmatter and block ids (^abc123) are all handled, and .obsidian and .trash are skipped. A [[page#heading]] link opens the page — it does not scroll to the heading. Dataview inline fields are left exactly as written; if you want your sign-offs queryable in Dataview, Settings can stamp lore_verified into the frontmatter, off by default.",
   },
-  {
-    q: "Where do the history snapshots live, and how big do they get?",
-    a: "In ~/.lore/history, outside your vault, so they never appear in a git diff. Lore keeps up to 40 past versions of each page and only stores a copy when the text actually changes — identical content is stored once. On a real 1,482-page wiki changing 300 times a week that is a few megabytes. Delete the folder any time; you lose the ability to see what changed, and nothing else.",
-  },
-  {
+{
     q: "Can I try it without installing anything?",
     a: "Yes, on your own notes rather than a sample. Open /web in Chrome, Edge, Arc or Brave and pick your markdown folder: the page reads it off your disk, nothing is uploaded, and the folder is opened read-only so the browser itself refuses a write. What the download adds is the part a web page cannot do — a watcher that sees what your agents changed and by how much, page history and diffs, the MCP server your agents connect to, local AI, and reading your wiki from your phone.",
   },
-  {
+{
     q: "Is anything uploaded?",
     a: "Nothing. Lore is a local app talking to your own filesystem. There is no account and no server behind the free build. Hosted plans exist for sync across machines, and they are opt-in — the version you download has no upload code in it at all.",
   },
-  {
-    q: "If I turn on hosted sync, can you read my wiki?",
-    a: "Hosted sync is not open yet, so today the answer is that there is nothing to read — the app you can download has no upload code in it at all. When it does open it will be end-to-end encrypted by default: the key derived from your passphrase on your machine, ciphertext on the server, no recovery if you lose the passphrase. That is a commitment made before the code exists rather than a feature you can check, which is exactly why it is written down here.",
-  },
 ];
+
 
 function Faq() {
   const [open, setOpen] = useState<number | null>(0);

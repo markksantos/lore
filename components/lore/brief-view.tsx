@@ -65,7 +65,17 @@ const KIND_LABEL: Record<Item["kind"], string> = {
   deleted: "Deleted",
 };
 
-export function BriefView({ onOpenPage }: { onOpenPage: (pageId: string) => void }) {
+export function BriefView({
+  onOpenPage,
+  onNavigate,
+}: {
+  onOpenPage: (pageId: string) => void;
+  /**
+   * Optional: the browser build renders this screen too, and it has no shell to
+   * navigate. Absent, the empty state simply omits the buttons.
+   */
+  onNavigate?: (view: "ask" | "wiki") => void;
+}) {
   const [days, setDays] = useState(1);
   const [data, setData] = useState<Brief | null>(null);
   const [loading, setLoading] = useState(true);
@@ -315,11 +325,44 @@ export function BriefView({ onOpenPage }: { onOpenPage: (pageId: string) => void
           Reading what changed and summarising it locally…
         </div>
       ) : !data?.items.length ? (
-        <p className="rounded-xl border border-dashed border-[var(--lore-border)] px-4 py-10 text-center text-[13px] leading-relaxed text-[var(--lore-text-tertiary)]">
-          Nothing changed in this window. Lore only sees writes that happen while it is
-          running, so a wiki you linked a minute ago starts empty here and fills as your
-          agents work.
-        </p>
+        /*
+         * The empty state is the FIRST screen of every fresh install.
+         *
+         * The brief is built from the journal, and a journal that has observed
+         * nothing is empty by construction — so the default view of a
+         * just-linked wiki was a paragraph explaining why there was nothing to
+         * see, with no way onward. Meanwhile Ask and the page browser work
+         * fully, on every page, immediately. Explaining the emptiness is
+         * honest; leaving someone in it is not.
+         */
+        <div className="rounded-xl border border-dashed border-[var(--lore-border)] px-4 py-10 text-center">
+          <p className="text-[13px] leading-relaxed text-[var(--lore-text-tertiary)]">
+            Nothing changed in this window. Lore only sees writes that happen while it is
+            running, so a wiki you linked a minute ago starts empty here and fills as your
+            agents work.
+          </p>
+          {onNavigate ? (
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={() => onNavigate("ask")}
+                className="rounded-lg border border-[var(--lore-border)] px-3 py-1.5 text-[13px] text-[var(--lore-text-secondary)] transition-colors hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)]"
+              >
+                Ask your wiki a question
+              </button>
+              <button
+                type="button"
+                onClick={() => onNavigate("wiki")}
+                className="rounded-lg border border-[var(--lore-border)] px-3 py-1.5 text-[13px] text-[var(--lore-text-secondary)] transition-colors hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)]"
+              >
+                Browse your pages
+              </button>
+            </div>
+          ) : null}
+          <p className="t-meta mt-3 text-[var(--lore-text-tertiary)]">
+            Both work on every page you already have — they do not wait for the journal.
+          </p>
+        </div>
       ) : (
         <div className="space-y-4">
           {/*

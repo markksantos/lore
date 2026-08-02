@@ -169,7 +169,7 @@ export function VaultApp({
           }}
         />
       ) : null}
-      {view === "brief" ? <BriefView onOpenPage={openPage} /> : null}
+      {view === "brief" ? <BriefView onOpenPage={openPage} onNavigate={setView} /> : null}
       {view === "ask" ? <AskView onOpenPage={openPage} handoff={handoff} /> : null}
       {view === "review" ? <ReviewView onOpenPage={openPage} /> : null}
       {view === "watch" ? <WatchView onOpenPage={openPage} /> : null}
