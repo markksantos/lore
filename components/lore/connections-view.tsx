@@ -110,6 +110,10 @@ export function ConnectionsView({ root, installDir }: { root: string; installDir
 
       <AutoWiki />
 
+      <AccessTokens />
+
+      <ObsidianPlugin />
+
       <section className="mt-7">
         <h2 className="text-[18px] font-semibold tracking-[-0.02em] text-[var(--lore-text-primary)]">
           On this machine
@@ -566,6 +570,228 @@ function AutoWiki() {
           </button>
         </>
       ) : null}
+    </section>
+  );
+}
+
+type AgentToken = {
+  id: string;
+  name: string;
+  role: string;
+  createdAt: number;
+  lastUsedAt: number | null;
+  revokedAt: number | null;
+  scopes: string[];
+};
+
+/**
+ * Access tokens for the HTTP MCP endpoint.
+ *
+ * `/api/mcp` has always worked and has always been unreachable: it requires a
+ * bearer token, and nothing in the product could mint one. A feature that
+ * returns 401 to every possible caller is not a security posture, it is a
+ * missing button — and the audit that found it also found DOCUMENTATION.md
+ * describing the endpoint as available.
+ *
+ * The plaintext token exists in exactly one response and is never recoverable,
+ * so it is shown once, loudly, with the reason. Revoked tokens are kept rather
+ * than deleted: the usage log refers to them, and an audit trail with holes in
+ * it explains nothing.
+ */
+function AccessTokens() {
+  const [tokens, setTokens] = useState<AgentToken[] | null>(null);
+  const [name, setName] = useState("");
+  const [role, setRole] = useState("reader");
+  const [issued, setIssued] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    fetch("/api/access", { signal: AbortSignal.timeout(12_000) })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setTokens(d?.tokens ?? []))
+      .catch(() => setTokens([]));
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const issue = async () => {
+    const response = await fetch("/api/access", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name, role }),
+    }).catch(() => null);
+    if (!response?.ok) return;
+    const data = (await response.json()) as { token?: string };
+    if (data.token) setIssued(data.token);
+    setName("");
+    load();
+  };
+
+  const revoke = async (id: string) => {
+    // The route reads ?id= from the query string, not a JSON body. Sending a
+    // body returned 400 and left the token live — caught by driving the whole
+    // mint/use/revoke cycle rather than by reading the component.
+    await fetch(`/api/access?id=${encodeURIComponent(id)}`, { method: "DELETE" }).catch(
+      () => null,
+    );
+    load();
+  };
+
+  if (!tokens) return null;
+  const live = tokens.filter((t) => !t.revokedAt);
+
+  return (
+    <section className="mt-7 rounded-xl border border-[var(--lore-border)] bg-[var(--lore-surface)] px-5 py-4">
+      <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-[var(--lore-text-primary)]">
+        Access tokens
+      </h2>
+      <p className="t-meta mt-1 text-[var(--lore-text-tertiary)]">
+        For agents that reach Lore over HTTP rather than stdio — a hosted assistant, a
+        script on this machine, a phone. A reader token can search and read; a writer
+        token can also write. Tokens are stored hashed and shown once.
+      </p>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="What is this token for?"
+          className="min-w-0 flex-1 rounded-lg border border-[var(--lore-border)] bg-[var(--lore-background)] px-3 py-2 text-[13.5px] text-[var(--lore-text-primary)] outline-none placeholder:text-[var(--lore-text-tertiary)] focus:border-[var(--lore-text-tertiary)]"
+        />
+        <select
+          value={role}
+          onChange={(e) => setRole(e.target.value)}
+          className="shrink-0 rounded-lg border border-[var(--lore-border)] bg-[var(--lore-background)] px-2.5 py-2 text-[13px] text-[var(--lore-text-primary)] outline-none"
+        >
+          <option value="reader">reader</option>
+          <option value="writer">writer</option>
+        </select>
+        <button
+          type="button"
+          onClick={issue}
+          disabled={!name.trim()}
+          className="shrink-0 rounded-lg border border-[var(--lore-border)] px-3 py-2 text-[13px] text-[var(--lore-text-secondary)] transition-colors hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)] disabled:opacity-40"
+        >
+          Issue
+        </button>
+      </div>
+
+      {issued ? (
+        <div className="mt-3 rounded-lg border border-[var(--lore-accent)] px-3 py-2.5">
+          <p className="t-meta text-[var(--lore-text-secondary)]">
+            Copy this now — it is stored hashed and cannot be shown again.
+          </p>
+          <code className="mt-1 block break-all text-[12.5px] text-[var(--lore-text-primary)]">
+            {issued}
+          </code>
+          <button
+            type="button"
+            onClick={() => {
+              navigator.clipboard?.writeText(issued);
+              setIssued(null);
+            }}
+            className="t-meta mt-2 rounded border border-[var(--lore-border)] px-2 py-1 text-[var(--lore-text-secondary)] transition-colors hover:text-[var(--lore-text-primary)]"
+          >
+            Copy and dismiss
+          </button>
+        </div>
+      ) : null}
+
+      {live.length ? (
+        <ul className="mt-3 divide-y divide-[var(--lore-border)] rounded-lg border border-[var(--lore-border)]">
+          {live.map((token) => (
+            <li key={token.id} className="flex items-center gap-3 px-3 py-2">
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[13.5px] text-[var(--lore-text-primary)]">
+                  {token.name}
+                </span>
+                <span className="t-meta text-[var(--lore-text-tertiary)]">
+                  {token.role} · {token.lastUsedAt ? `last used ${relativeTime(token.lastUsedAt)}` : "never used"}
+                </span>
+              </span>
+              <button
+                type="button"
+                onClick={() => revoke(token.id)}
+                className="t-meta shrink-0 text-[var(--lore-text-tertiary)] transition-colors hover:text-[var(--lore-danger)]"
+              >
+                Revoke
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  );
+}
+
+/**
+ * The Obsidian plugin, from the app that generates it.
+ *
+ * `/api/obsidian` writes a complete plugin into the vault's own
+ * `.obsidian/plugins/` and has never had a caller — the feature shipped and
+ * could only be reached by curling it. It belongs here rather than in Settings
+ * because installing it is the same category of act as connecting an agent:
+ * you are giving another program a door into this wiki.
+ *
+ * Enabling it stays manual. Editing `community-plugins.json` to switch on code
+ * inside somebody's editor is not a thing one app should do to another.
+ */
+function ObsidianPlugin() {
+  const [state, setState] = useState<{ isObsidian: boolean; installed: boolean; path: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    fetch("/api/obsidian", { signal: AbortSignal.timeout(12_000) })
+      .then((r) => (r.ok ? r.json() : null))
+      .then(setState)
+      .catch(() => setState(null));
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  // Nothing to offer someone whose wiki is not an Obsidian vault.
+  if (!state?.isObsidian) return null;
+
+  const install = async () => {
+    setBusy(true);
+    const response = await fetch("/api/obsidian", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ port: APP_PORT }),
+    }).catch(() => null);
+    const body = response?.ok ? await response.json() : null;
+    setDone(body?.next ?? "Could not write the plugin.");
+    setBusy(false);
+    load();
+  };
+
+  return (
+    <section className="mt-7 rounded-xl border border-[var(--lore-border)] bg-[var(--lore-surface)] px-5 py-4">
+      <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-[var(--lore-text-primary)]">
+        Obsidian plugin
+      </h2>
+      <p className="t-meta mt-1 text-[var(--lore-text-tertiary)]">
+        This wiki is an Obsidian vault. Lore can write a small plugin into it that shows
+        the brief in a side panel and lets you ask your wiki without leaving Obsidian. It
+        talks only to Lore on this machine, and never writes to your notes.
+      </p>
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          onClick={install}
+          disabled={busy}
+          className="rounded-lg border border-[var(--lore-border)] px-3 py-1.5 text-[13px] text-[var(--lore-text-secondary)] transition-colors hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)] disabled:opacity-40"
+        >
+          {busy ? "Writing…" : state.installed ? "Reinstall the plugin" : "Install the plugin"}
+        </button>
+        <span className="t-meta text-[var(--lore-text-tertiary)]">
+          {done ?? (state.installed ? "Installed. Enable it in Obsidian's community plugins." : state.path)}
+        </span>
+      </div>
     </section>
   );
 }

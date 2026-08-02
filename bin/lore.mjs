@@ -639,6 +639,35 @@ end run`;
         return 0;
       }
 
+      /*
+       * `lore publish <prefix>` — the endpoint existed with no caller.
+       *
+       * /api/publish renders a folder as one self-contained HTML file and has
+       * shipped, tested, since it was written; nothing in the product or the
+       * CLI ever called it, so the feature existed only for someone who read
+       * the source. Writing to a file rather than stdout because the output is
+       * ~80KB of HTML and a terminal is the wrong place for it.
+       */
+      case "publish": {
+        const prefix = argv[1];
+        if (!prefix || prefix.startsWith("--")) fail("usage: lore publish <folder/> [--out file]");
+        const res = await fetch(
+          `${BASE}/api/publish?prefix=${encodeURIComponent(prefix)}`,
+        );
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          fail(body.error ?? `Lore returned ${res.status}`);
+        }
+        const html = await res.text();
+        const target =
+          typeof flag("out") === "string"
+            ? String(flag("out"))
+            : path.join(process.cwd(), `${prefix.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "")}.html`);
+        await fs.writeFile(target, html, "utf8");
+        process.stdout.write(`${target}  (${Math.round(html.length / 1024)}kb, self-contained)\n`);
+        return 0;
+      }
+
       case "sync": {
         const res = await fetch(`${BASE}/api/sync`, { method: "POST" });
         const body = await res.json();
@@ -680,6 +709,7 @@ end run`;
             "  digest   [--days N] [--notify] [--install]   the brief, on a schedule",
             "  sync     pull then push, if the vault is a git repo",
             "  listen   [--sweep]   auto-wiki status, or run a pass now",
+            "  publish  <folder/> [--out file]   one folder as a self-contained HTML page",
             "",
             "Exit 1 when a health threshold is breached, so it can gate CI.",
             "",
