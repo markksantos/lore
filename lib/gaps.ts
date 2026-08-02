@@ -1,3 +1,4 @@
+import { jaccardOf } from "@/lib/utils";
 import type { UsageEvent } from "@/lib/usage";
 
 /**
@@ -42,11 +43,6 @@ export type GapCluster = {
 };
 
 /** Jaccard over the token sets. Cheap, and the sets are three or four words. */
-function overlap(a: Set<string>, b: Set<string>): number {
-  let shared = 0;
-  for (const t of a) if (b.has(t)) shared++;
-  return shared / (a.size + b.size - shared || 1);
-}
 
 /**
  * Single-link agglomeration at a fixed threshold.
@@ -91,7 +87,7 @@ export function clusterGaps(events: UsageEvent[], limit = 20): GapCluster[] {
 
   const clusters: { seeds: Seed[]; terms: Set<string> }[] = [];
   for (const seed of seeds) {
-    const hit = clusters.find((c) => overlap(c.terms, seed.terms) >= THRESHOLD);
+    const hit = clusters.find((c) => jaccardOf(c.terms, seed.terms) >= THRESHOLD);
     if (hit) {
       hit.seeds.push(seed);
       for (const t of seed.terms) hit.terms.add(t);

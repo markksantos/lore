@@ -1,4 +1,5 @@
 import { fail, requireVault } from "@/lib/server";
+import { factHistory } from "@/lib/fact-history";
 import { vaultKey, watchVault } from "@/lib/journal";
 import { listVersions, readVersion, searchHistory } from "@/lib/history";
 import { readRaw, writeRaw } from "@/lib/wiki";
@@ -30,6 +31,21 @@ export async function GET(request: Request) {
     }
 
     if (!relPath) return fail(new Error("Pass ?path= or ?q="));
+
+    /*
+     * `?facts=1` — how this page's NUMBERS changed, not its lines.
+     *
+     * A line diff shows that a page was edited. What a reader wants to know is
+     * that the rate on it has been $100, then $150, then $120 — a fact drifting,
+     * which is invisible in a diff that shows a rewritten paragraph around it.
+     * lib/fact-history tracks a value across versions using the same claim
+     * extractor as the contradiction detector, so a number that moves between
+     * two differently-worded sentences is still one fact changing.
+     */
+    if (params.get("facts") === "1") {
+      const raw = await readRaw(vault.root, relPath).catch(() => null);
+      return Response.json({ relPath, facts: await factHistory(key, relPath, raw) });
+    }
 
     const at = params.get("at");
     if (at) {

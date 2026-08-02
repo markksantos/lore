@@ -38,3 +38,21 @@ export function formatCount(n: number): string {
 export function count(n: number, singular: string, plural = `${singular}s`): string {
   return `${formatCount(n)} ${n === 1 ? singular : plural}`;
 }
+
+
+/**
+ * Jaccard similarity over two token sets.
+ *
+ * Extracted because lib/gaps.ts and lib/write-feedback.ts each carried a
+ * byte-identical private copy — two implementations of one measure is a pair
+ * that drifts, and a similarity threshold that means different things in two
+ * places is a bug nobody can see. Deliberately NOT applied to canon.ts's
+ * `overlap`, which is the overlap COEFFICIENT (divides by the smaller set) and
+ * is a different measure chosen on purpose.
+ */
+export function jaccardOf(a: Set<string>, b: Set<string>): number {
+  if (!a.size || !b.size) return 0;
+  let shared = 0;
+  for (const t of a) if (b.has(t)) shared++;
+  return shared / (a.size + b.size - shared);
+}

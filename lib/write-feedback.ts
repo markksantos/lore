@@ -1,3 +1,4 @@
+import { jaccardOf } from "@/lib/utils";
 import { extractClaims, conflictsWith, type Claim } from "@/lib/claims";
 import { checkPages, parseSchemaRules, type FieldRule } from "@/lib/schema-check";
 import { toPlainText, type WikiIndex, type WikiPage } from "@/lib/index-core";
@@ -54,12 +55,6 @@ function words(text: string): Set<string> {
   );
 }
 
-function overlapOf(a: Set<string>, b: Set<string>): number {
-  if (!a.size || !b.size) return 0;
-  let shared = 0;
-  for (const t of a) if (b.has(t)) shared++;
-  return shared / (a.size + b.size - shared);
-}
 
 /**
  * Claims for the whole vault, cached.
@@ -235,7 +230,7 @@ export function reviewWrite(ctx: WriteContext): WriteFeedback {
   if (mineTokens.size >= 12) {
     let best: { page: WikiPage; score: number } | null = null;
     for (const other of duplicateCandidates(ctx.index, ctx.relPath, title)) {
-      const score = overlapOf(mineTokens, words(`${other.title} ${other.plain}`));
+      const score = jaccardOf(mineTokens, words(`${other.title} ${other.plain}`));
       if (!best || score > best.score) best = { page: other, score };
     }
     if (best && best.score >= DUPLICATE_WEAK) {
