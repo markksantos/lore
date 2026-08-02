@@ -92,10 +92,23 @@ function cacheKey(pageId: string, evidence: string): string {
   return `${pageId}:${(h >>> 0).toString(16)}`;
 }
 
+/*
+ * The brief's line is the product's first sentence, so it is worth being exact
+ * about what makes one good.
+ *
+ * Judged on eight real items, the model beat the fallback every time — but two
+ * or three restated the page's identity ("X is a client who runs a YouTube
+ * channel") rather than reporting what changed. That is not a summarisation
+ * failure; the prompt never asked for the most CONSEQUENTIAL fact, and never
+ * said that a line whose content the title already implies carries no
+ * information. Both rules are now explicit.
+ */
 const SYSTEM = `You turn a wiki edit into a one-line update for the person who owns the wiki.
 Rules, all of them absolute:
 - Exactly one sentence, under 22 words, no trailing period needed.
 - Say what is TRUE NOW according to the new text. Never describe the edit, the file, or the line count.
+- Pick the single most CONSEQUENTIAL fact — a decision, a number, a deadline, a change of plan. Prefer what someone would act on.
+- Never write a sentence the page title already implies. If the title is "Acme — video client", "Acme is a video client" tells the reader nothing.
 - Use only facts present in the text given. If it is too thin to summarise, reply with the single word SKIP.
 - No preamble, no quotes, no markdown, no "This page". Just the sentence.`;
 
@@ -157,13 +170,27 @@ async function synthesiseInner(brief: Brief): Promise<Brief> {
   const lines = await Promise.all(
     targets.map(async (item) => {
       if (!item.evidence.trim()) return null;
-      const key = cacheKey(item.pageId, item.evidence);
+      const key = cacheKey(item.pageId, `${item.kind}|${item.evidence}`);
       const cached = lineCache.get(key);
       // "" is a cached rejection — the model already declined this text.
       if (cached !== undefined) return cached || null;
+      /*
+       * A new page and an edited page need different sentences.
+       *
+       * On a page that did not exist yesterday, who or what it is IS the news —
+       * "Jared commissions recruiting reels for his daughter's matches" is
+       * exactly what a reader wants. On a page that already existed, the same
+       * sentence is a restatement of something they already knew, and the news
+       * is only what changed. The model cannot tell these apart from the
+       * excerpt alone, so it is told.
+       */
+      const context =
+        item.kind === "created"
+          ? "This page is NEW. Say what it establishes — who or what it is, and the most consequential fact about it."
+          : "This page ALREADY EXISTED and was edited. Say only what CHANGED. Do not restate what the page has always been.";
       const text = await generate(
         model,
-        `Page title: ${item.title}\n\nExcerpt:\n${item.evidence}\n\nOne sentence:`,
+        `Page title: ${item.title}\n\n${context}\n\nExcerpt:\n${item.evidence}\n\nOne sentence:`,
         { system: SYSTEM, timeoutMs: 25_000 },
       ).catch(() => "");
       const clean = text.trim().split("\n")[0].replace(/^["'`]|["'`]$/g, "").trim();
