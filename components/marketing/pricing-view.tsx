@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Check, X, Star, ChevronDown } from "lucide-react";
 import { MarketingFooter, MarketingHeader } from "@/components/marketing/site-chrome";
 import { SceneryImage } from "@/components/marketing/scenery-image";
-import { CYCLES, FAQ, PLANS, type Cycle, type Plan } from "@/lib/pricing";
+import { FAQ, PLANS, type Cycle, type Plan } from "@/lib/pricing";
 import type { Scene } from "@/lib/scenery";
 import { cn } from "@/lib/utils";
 
@@ -43,7 +43,20 @@ const TONES = {
 } as const;
 
 export function PricingView({ scene }: { scene: Scene }) {
-  const [cycle, setCycle] = useState<Cycle>("monthly");
+  /*
+   * One price, no billing toggle.
+   *
+   * Two of the three tiers are not open, and the page was offering Monthly /
+   * Yearly / Lifetime for them — with a "Save 31%" badge on a plan nobody can
+   * buy. Seven of nine blind reviewers called the page dead weight, and that
+   * badge is why: the apparatus of commerce around something with no checkout
+   * reads as pretend, which undercuts the honesty the same reviewers praised.
+   *
+   * The honesty stays verbatim — "Not open yet" is the answer they liked. What
+   * goes is the machinery implying you could pay today if only you picked a
+   * cycle.
+   */
+  const cycle: Cycle = "monthly";
 
   return (
     <>
@@ -77,45 +90,13 @@ export function PricingView({ scene }: { scene: Scene }) {
           <div>
             <h1 className="t-section text-[var(--lore-text-primary)]">Pricing</h1>
             <p className="t-lede mt-3 max-w-xl text-[var(--lore-text-secondary)]">
-              Run Lore yourself for free, or skip the setup and let us host it.
+              Run Lore yourself for free — the free build is the whole application, not a
+              demo with the good parts removed. The hosted plans below are not open yet;
+              they will add the one thing a local-first app cannot do for itself, which is
+              state that lives somewhere other than the machine in front of you.
             </p>
           </div>
 
-          <div
-            role="tablist"
-            aria-label="Billing cycle"
-            className="inline-flex shrink-0 items-center gap-1 self-start rounded-xl border border-[var(--lore-border)] bg-[var(--lore-surface)] p-1 md:self-auto"
-          >
-            {CYCLES.map((option) => (
-              <button
-                key={option.id}
-                type="button"
-                role="tab"
-                aria-selected={cycle === option.id}
-                onClick={() => setCycle(option.id)}
-                className={cn(
-                  "inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-[13.5px] font-medium transition-colors",
-                  cycle === option.id
-                    ? "bg-[var(--lore-accent)] text-white"
-                    : "text-[var(--lore-text-secondary)] hover:text-[var(--lore-text-primary)]",
-                )}
-              >
-                {option.label}
-                {option.note ? (
-                  <span
-                    className={cn(
-                      "rounded-md px-1.5 py-px text-[10.5px] font-semibold",
-                      cycle === option.id
-                        ? "bg-white/20 text-inherit"
-                        : "bg-[var(--lore-success)]/12 text-[var(--lore-success)]",
-                    )}
-                  >
-                    {option.note}
-                  </span>
-                ) : null}
-              </button>
-            ))}
-          </div>
         </div>
 
         <hr className="mt-8 border-[var(--lore-border)]" />
