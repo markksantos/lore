@@ -163,24 +163,24 @@ function Hero({ scene, cta, ctaLabel }: { scene: Scene; cta: string; ctaLabel: s
 function Measured() {
   return (
     <Section
-      eyebrow="Measured on a real wiki"
-      title="1,546 pages. Nobody reads them."
-      lede="One person's vault, built by agents in three months. 2.3 million tokens — twelve context windows. Fifty-six per cent of it is linked from nowhere. The problem was never trusting it; it was that none of it comes back to you."
+      eyebrow="Measured, not claimed"
+      title="Your wiki keeps growing. Your reading doesn't."
+      lede="The numbers below were measured on one real agent-written vault, with a harness that ships in the repo so you can run it on yours. Your wiki is a different size — what carries over is the ratio, not the total."
     >
       <Reveal className="mt-12 grid gap-4 sm:grid-cols-3">
         <Stat
           slot={0}
-          value="8"
-          unit="lines"
-          label="instead of 300 pages"
-          body="The brief reads what your agents changed and says what is true now — one line each. A local model writes the lines when you have one; without it you get each page's own opening, clearly labelled."
+          value="1"
+          unit="screen"
+          label="however much changed"
+          body="The brief reads everything your agents touched since you last looked and says what is true now — one line per change, whether that is three pages this week or three hundred."
         />
         <Stat
           slot={1}
           value="90%"
           unit="recall@5"
-          label="on questions about the corpus"
-          body="Measured with a harness that ships in the repo: generate a question from a real page, check whether that page comes back. Ripgrep on the same questions: 65%."
+          label="on that vault's own questions"
+          body="Generate a question from a real page, then check whether that page comes back in the top five. Ripgrep, asked the same questions, managed 65%. Run it on your own wiki and see."
         />
         <Stat
           slot={2}

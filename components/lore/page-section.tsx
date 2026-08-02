@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, Loader2, Pencil, Eye } from "lucide-react";
+import { Check, Eye, Loader2, Lock, LockOpen, Pencil } from "lucide-react";
 import type { PageMeta } from "@/lib/types";
 import { renderMarkdown, stripFrontmatter, stripLeadingTitle } from "@/lib/markdown";
 import { paletteVars } from "@/lib/palette";
@@ -87,6 +87,10 @@ export function PageSection({
     [visible, raw, page.title, pageTitles],
   );
 
+  /* Set when a save is refused by the read-only gate in proxy.ts. */
+  const [locked, setLocked] = useState(false);
+  const [unlocking, setUnlocking] = useState(false);
+
   const save = useCallback(async () => {
     setSaving(true);
     setError(null);
@@ -97,12 +101,39 @@ export function PageSection({
     });
     setSaving(false);
     if (!response.ok) {
-      setError((await response.json()).error ?? "Save failed.");
+      const body = await response.json().catch(() => ({}));
+      /* The read-only lock is the product's headline promise, so hitting it is
+         a normal outcome, not an error. It gets its own state with the switch
+         attached rather than a red sentence the reader cannot act on. */
+      if (response.status === 403 && body.readOnly) {
+        setLocked(true);
+        return;
+      }
+      setError(body.error ?? "Save failed.");
       return;
     }
     setEditing(false);
     onChanged();
   }, [draft, page.relPath, onChanged]);
+
+  const unlockAndSave = useCallback(async () => {
+    setUnlocking(true);
+    const ok = await fetch("/api/safety", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ readOnly: false }),
+    })
+      .then((r) => r.ok)
+      .catch(() => false);
+    setUnlocking(false);
+    if (!ok) {
+      setError("Could not turn off read-only mode.");
+      return;
+    }
+    setLocked(false);
+    await save();
+  }, [save]);
+
 
   const proseRef = useRef<HTMLDivElement | null>(null);
   useRichBlocks(html, proseRef);
@@ -130,12 +161,21 @@ export function PageSection({
 
         <span className="flex-1" />
 
-        {/* Controls stay hidden until the section is hovered or focused, so a
-            long document reads as prose rather than as a wall of buttons. */}
+        {/*
+          * Dimmed until hover, never hidden.
+          *
+          * These were opacity-0, which reads as "there is no edit button" to
+          * anyone who did not sweep the mouse across the heading, and to every
+          * touch device it was simply absent. Sixty per cent opacity keeps a
+          * long document from reading as a wall of buttons while leaving the
+          * one action on the page discoverable.
+          */}
         <span
           className={cn(
             "flex items-center gap-1 transition-opacity",
-            editing ? "opacity-100" : "opacity-0 focus-within:opacity-100 group-hover:opacity-100",
+            editing
+              ? "opacity-100"
+              : "opacity-60 focus-within:opacity-100 group-hover:opacity-100",
           )}
         >
           {editing ? (
@@ -177,6 +217,35 @@ export function PageSection({
       </p>
 
       {error ? <p className="t-meta mt-2 text-[var(--lore-danger)]">{error}</p> : null}
+
+      {/* Refused by the read-only lock. Says which promise stopped the save and
+          offers the switch, rather than reporting a number the reader would
+          have to go and look up. */}
+      {locked ? (
+        <div className="mt-2 flex flex-wrap items-center gap-2.5 rounded-lg border border-[var(--lore-border)] bg-[var(--lore-surface-raised)] px-3 py-2">
+          <Lock size={13} className="shrink-0 text-[var(--lore-text-tertiary)]" />
+          <span className="t-meta text-[var(--lore-text-secondary)]">
+            Lore is read-only, so it did not change your file.
+          </span>
+          <span className="flex-1" />
+          <button
+            type="button"
+            onClick={() => setLocked(false)}
+            className="rounded-md px-2 py-1 text-[12.5px] font-medium text-[var(--lore-text-secondary)] transition-colors hover:bg-[var(--lore-surface)]"
+          >
+            Keep it on
+          </button>
+          <button
+            type="button"
+            onClick={unlockAndSave}
+            disabled={unlocking}
+            className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-[var(--lore-accent)] px-2.5 text-[12.5px] font-medium text-white transition-colors hover:bg-[var(--lore-accent-hover)] disabled:opacity-60"
+          >
+            {unlocking ? <Loader2 size={12} className="animate-spin" /> : <LockOpen size={12} />}
+            Turn off and save
+          </button>
+        </div>
+      ) : null}
 
       {editing ? (
         /* CodeMirror rather than a textarea: [[wikilink]] autocomplete against

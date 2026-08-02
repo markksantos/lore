@@ -448,7 +448,7 @@ export function HeroSimulator({ fullHeight = false }: { fullHeight?: boolean } =
 
       <div className={fullHeight ? "flex h-[calc(100svh-11rem)] min-h-[520px]" : "flex h-[540px] sm:h-[580px] lg:h-[620px]"}>
         {/* -------------------------------------------------------- sidebar */}
-        <div className="hidden w-[212px] shrink-0 flex-col border-r border-[var(--lore-border)] px-5 py-5 sm:flex">
+        <div className="hidden w-[212px] shrink-0 flex-col overflow-hidden border-r border-[var(--lore-border)] px-5 py-5 sm:flex">
           <div className="flex items-center gap-2.5 text-[var(--lore-text-primary)]">
             <BrandMark size={20} />
             <span className="text-[16px] font-semibold tracking-[-0.025em]">Lore</span>
@@ -498,10 +498,13 @@ export function HeroSimulator({ fullHeight = false }: { fullHeight?: boolean } =
             </kbd>
           </div>
 
-          <p className="mb-1.5 mt-4 text-[11px] font-semibold uppercase tracking-[0.09em] text-[var(--lore-text-tertiary)]">
+          <p className="mb-1.5 mt-4 shrink-0 text-[11px] font-semibold uppercase tracking-[0.09em] text-[var(--lore-text-tertiary)]">
             Folders
           </p>
-          <div className="space-y-0.5">
+          {/* Ten nav items above this leave the folder list short of room, and
+              without a scroll boundary the last row was sliced through the
+              middle at the card's edge. */}
+          <div className="lore-scrollbar min-h-0 flex-1 space-y-0.5 overflow-y-auto">
             {FOLDERS.map((name, i) => {
               const pageCount = pages.filter((page) => page.folder === name).length;
               return (
