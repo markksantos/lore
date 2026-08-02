@@ -9,21 +9,19 @@ import {
   ChevronRight,
   Compass,
   MessageCircleQuestion,
-  Moon,
   Newspaper,
+  PanelLeft,
   Plug,
   Plus,
   Search,
   Settings,
   ShieldCheck,
-  Sun,
   X,
 } from "lucide-react";
 import type { SearchResult, VaultIndex } from "@/lib/types";
 import type { View } from "@/components/lore/vault-app";
 import { BrandMark } from "@/components/marketing/brand-mark";
 import { useShell } from "@/components/lore/app-shell";
-import { useTheme } from "@/components/lore/theme-provider";
 import { colorForIndex } from "@/lib/palette";
 import { ancestorsOf, buildFolderTree, visibleRows } from "@/lib/tree";
 import { cn, count, formatCount, relativeTime } from "@/lib/utils";
@@ -114,8 +112,7 @@ export function Sidebar({
   onOpenPage: (pageId: string) => void;
   onCreated: (relPath: string) => void;
 }) {
-  const { theme, toggle } = useTheme();
-  const { closeDrawer } = useShell();
+  const { closeDrawer, collapsed, toggleCollapsed } = useShell();
   const [creating, setCreating] = useState(false);
   const [filter, setFilter] = useState("");
   /* Only the top level opens by default. On a real vault the tree is 262
@@ -182,20 +179,35 @@ export function Sidebar({
       className="flex h-full w-full min-w-0 flex-col border-r border-[var(--lore-border)] bg-[var(--lore-surface)]"
       style={{ paddingTop: "env(safe-area-inset-top)" }}
     >
-      <div className="flex items-center gap-1 px-3 pb-3 pt-3 md:px-4 md:pt-4">
-        <div className="flex min-w-0 flex-1 items-center gap-2 pl-1 text-[var(--lore-text-primary)]">
-          <BrandMark size={18} />
-          <span className="truncate text-[14px] font-semibold tracking-[-0.02em]">
-            {index.name}
-          </span>
-        </div>
+      <div
+        className={cn(
+          "flex items-center gap-1 pb-3 pt-3 md:pt-4",
+          collapsed ? "justify-center px-0" : "px-3 md:px-4",
+        )}
+      >
+        {collapsed ? null : (
+          <div className="flex min-w-0 flex-1 items-center gap-2 pl-1 text-[var(--lore-text-primary)]">
+            <BrandMark size={18} />
+            <span className="truncate text-[14px] font-semibold tracking-[-0.02em]">
+              {index.name}
+            </span>
+          </div>
+        )}
+        {/* Desktop only: on a phone the drawer already opens and closes, and a
+            second control that does almost the same thing is worse than none. */}
         <button
           type="button"
-          onClick={toggle}
-          aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-[var(--lore-text-tertiary)] transition-colors hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)] md:h-7 md:w-7"
+          onClick={toggleCollapsed}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-expanded={!collapsed}
+          aria-controls="lore-sidebar"
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          className="hidden h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--lore-text-tertiary)] transition-colors hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)] md:flex"
         >
-          {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
+          <PanelLeft
+            size={15}
+            className={cn("transition-transform duration-200", collapsed && "rotate-180")}
+          />
         </button>
         {/* The drawer's own dismiss. Escape and the backdrop do the same thing,
             but neither is discoverable with a thumb. */}
@@ -212,7 +224,7 @@ export function Sidebar({
       {/* Wiki is where you read. Review and Insights are the two things only
           Lore can tell you — what your agents changed, and what they asked for.
           Explore holds the lenses. Connections and Settings are plumbing. */}
-      <nav className="space-y-0.5 px-3">
+      <nav className={cn("space-y-0.5", collapsed ? "px-2" : "px-3")}>
         {NAV.map((item) => {
           const Icon = item.icon;
           return (
@@ -223,15 +235,17 @@ export function Sidebar({
                 onView(item.id);
                 closeDrawer();
               }}
+              title={collapsed ? VIEW_LABEL[item.id] : undefined}
               className={cn(
-                "flex min-h-11 w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13.5px] transition-colors md:min-h-0",
+                "flex min-h-11 w-full items-center rounded-lg text-[13.5px] transition-colors md:min-h-0",
+                collapsed ? "justify-center px-0 py-2" : "gap-2.5 px-2.5 py-2",
                 view === item.id
                   ? "bg-[var(--lore-surface-raised)] font-medium text-[var(--lore-text-primary)]"
                   : "text-[var(--lore-text-secondary)] hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)]",
               )}
             >
               <Icon size={15} className="opacity-80" />
-              {VIEW_LABEL[item.id]}
+              {collapsed ? null : VIEW_LABEL[item.id]}
               {/*
                 * A quiet dot, not a count.
                 *
@@ -245,6 +259,11 @@ export function Sidebar({
         })}
       </nav>
 
+      {/* Search, the folder tree and the footer are all prose-width. None of
+          them has an honest 3.5rem form, so the rail drops them rather than
+          rendering three truncated stubs. */}
+      {collapsed ? null : (
+        <>
       <div className="px-3 pb-2 pt-4">
         <div className="relative">
           <Search
@@ -429,6 +448,8 @@ export function Sidebar({
           {count(index.pages.length, "page")} · scanned {relativeTime(index.scannedAt)}
         </p>
       </div>
+        </>
+      )}
     </aside>
   );
 }
