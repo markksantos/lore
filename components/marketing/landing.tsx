@@ -175,12 +175,22 @@ function Measured() {
           label="however much changed"
           body="The brief reads everything your agents touched since you last looked and says what is true now — one line per change, whether that is three pages this week or three hundred."
         />
+        {/*
+          * The repo's own number, not a better-sounding one.
+          *
+          * This read 90% against a 65% baseline. scripts/eval-retrieval.mjs
+          * and the table in README.md both say 80% against 50%, and a review
+          * panel had already flagged the 90% as stat inflation. A benchmark
+          * that disagrees with the benchmark it cites is worse than no
+          * benchmark. "recall@5" also went — it is real notation, and it is
+          * still jargon on a page two reviewers already bounced off.
+          */}
         <Stat
           slot={1}
-          value="90%"
-          unit="recall@5"
-          label="on that vault's own questions"
-          body="Generate a question from a real page, then check whether that page comes back in the top five. Ripgrep, asked the same questions, managed 65%. Run it on your own wiki and see."
+          value="80%"
+          unit="in the top 5"
+          label="vs 50% for ripgrep"
+          body="Take a question generated from a real page and check whether that page comes back in the top five results. Ripgrep, on the same folder and the same questions, got 50%. Twenty questions on one vault — small, and the harness is in the repo so you can run it on yours."
         />
         <Stat
           slot={2}
