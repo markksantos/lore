@@ -101,51 +101,27 @@ function Hero({ scene, cta, ctaLabel }: { scene: Scene; cta: string; ctaLabel: s
 
         <div className="relative z-10 flex flex-1 flex-col px-6 py-5 md:px-10 md:py-7">
           <div className="flex flex-1 items-start justify-center pt-[14vh] text-center md:pt-[13vh]">
-            <div className="w-full max-w-3xl">
-              {/* The two-line lockup is held on tablet and up; below that the
-                  clamp alone isn't enough to keep the second line intact at
-                  375px, so it is allowed to wrap rather than overflow. */}
-              {/* Says what the thing is, in words someone who has never heard of
-                  MCP can follow. The previous headline named a problem ("your
-                  agents are already writing to your wiki") without naming the
-                  product, so two readers in a row came away unsure what it did. */}
+            <div className="w-full max-w-4xl">
               {/*
-                * "This is where you read them" was the old promise, and it was
-                * the wrong one: nobody reads their AI's notes — that is the
-                * entire reason they had the AI take them. The product now
-                * assumes you will never read the wiki and works anyway.
-                */}
-              <h1 className="t-hero text-white">
-                <span className="block">Your agents wrote 300 pages</span>
-                <span className="block md:whitespace-nowrap">this week. Here are the eight</span>
-                <span className="block">that matter.</span>
-              </h1>
-
-              <p className="mx-auto mt-5 max-w-xl text-[15px] font-semibold text-white/90 md:mt-6 md:text-[18px]">
-                Point Lore at the markdown folder Claude Code, Cursor or Obsidian already
-                writes to. It reads what your agents changed and tells you, in one line
-                each — and answers questions from your own pages. Nothing to review, nothing
-                to approve, no file touched.
-              </p>
-
-              {/*
-                * Who it is not for, in the hero, before the download button.
+                * One line, one sentence, one button row.
                 *
-                * Two non-technical reviewers in a blind panel scored this 2.5
-                * and left within three screens. The product was not wrong for
-                * them; the page was, by never saying that something has to be
-                * writing files for any of this to have content. One sentence
-                * here is worth more than a paragraph of apology later.
+                * This carried a three-line headline, a four-line bold
+                * paragraph, a two-line caveat and a trust line — five blocks
+                * before the fold. A hero has one job: say what this is and
+                * offer the next step. Everything cut from here still exists
+                * further down the page, where a reader who wants it will look.
                 */}
-              <p className="mx-auto mt-3 max-w-xl text-[13px] text-white/60 md:text-[14px]">
-                Built for people whose AI already writes files on their machine. If nothing
-                writes markdown for you yet, Lore will have nothing to show you.
+              <h1 className="t-hero text-balance text-white">Know what your agents wrote.</h1>
+
+              <p className="mx-auto mt-5 max-w-xl text-[16px] font-medium text-white/90 md:mt-6 md:text-[19px]">
+                Lore reads the markdown folder your AI already writes to, and tells you what
+                changed.
               </p>
 
-              <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
+              <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
                 <Link
                   href={cta}
-                  className="group inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-white pl-4 pr-3 text-[14px] font-medium text-[#12356f] transition-colors hover:bg-[#eef2fb]"
+                  className="group inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-white pl-5 pr-4 text-[15px] font-semibold text-[#12356f] transition-colors hover:bg-[#eef2fb]"
                 >
                   <span className="leading-none">{ctaLabel}</span>
                   <ArrowRight
@@ -154,21 +130,20 @@ function Hero({ scene, cta, ctaLabel }: { scene: Scene; cta: string; ctaLabel: s
                   />
                 </Link>
 
-                {/* Second door. Plenty of people will not try a local app in a
-                    browser tab but will install one, and the desktop build was
-                    reachable from nowhere on this page. */}
                 <Link
                   href="/download"
-                  className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-white/35 px-4 text-[14px] font-medium text-white backdrop-blur-[2px] transition-colors hover:border-white/60 hover:bg-white/10"
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-white/35 px-4 text-[15px] font-medium text-white backdrop-blur-[2px] transition-colors hover:border-white/60 hover:bg-white/10"
                 >
                   <DownloadIcon size={15} />
                   <span className="leading-none">Download</span>
                 </Link>
               </div>
 
-              <p className="mt-4 text-[13px] text-white/70">
-                Read-only by default — it cannot change your files. Free, open source, and
-                runs entirely on your own machine.
+              {/* Four claims, four words each. The fit caveat that used to sit
+                  above the buttons now opens the section directly below, where
+                  it qualifies rather than deflects. */}
+              <p className="mt-5 text-[13px] text-white/65">
+                Read-only · Free · Open source · Runs on your machine
               </p>
             </div>
           </div>
@@ -234,50 +209,32 @@ function WhyNotJustAsk() {
     <Section
       eyebrow="The obvious question"
       title="Can't my AI just do this?"
-      lede="It already does the writing. That was never the missing half."
+      lede="It already does the writing. Lore is the half that reads it back."
     >
+      {/*
+        * Three cards, not six, and roughly thirty words each.
+        *
+        * This was a 3x2 wall of dense paragraphs whose second row answered a
+        * different question entirely ("why not git?"). Objections belong in the
+        * FAQ, where a reader who has one goes looking; a card grid is for the
+        * three things everyone needs, said briefly enough to actually be read.
+        */}
       <Reveal className="mt-11 grid gap-4 sm:grid-cols-3">
         <Plain
           slot={0}
-          title="Your AI can read your notes. You can't."
-          body="A folder with 1,400 markdown files in it is readable by a machine and unreadable by a person. Lore is the side of that folder built for the human — search that works, a map of what connects to what, and a way to actually open the thing."
+          title="It can read the folder. You can't."
+          body="Fourteen hundred markdown files are legible to a machine and opaque to a person. Lore is the side of that folder built for you."
         />
         <Plain
           slot={3}
-          title="It never tells you what it changed."
-          body="Agents rewrite pages between conversations and nothing announces it. Lore watches the folder itself, so it can show you what moved this week, how much prose got deleted, and which agent did it — including the ones that never asked permission."
+          title="Nothing tells you what changed."
+          body="Agents rewrite pages between conversations and announce none of it. Lore watches the folder and says what moved this week, and which agent moved it."
         />
         <Plain
           slot={6}
           title="Every page looks equally true."
-          body="Something an agent guessed at in April and something you confirmed yesterday sit in the same folder looking identical. Lore keeps the record of which is which, and that record expires by itself when a page gets rewritten."
+          body="A guess from April and a fact you confirmed yesterday sit in the same folder looking identical. Lore keeps the record of which is which."
         />
-      </Reveal>
-
-      {/* Asked by every single reviewer who saw this page, and previously
-          answered nowhere — which reads as avoidance rather than oversight. */}
-      <Reveal className="mt-4 grid gap-4 sm:grid-cols-3">
-        <Plain
-          slot={1}
-          title="Why not just use git?"
-          body="Use git. Lore is not a replacement for it. But most of what your agents write never reaches a commit — it happens between them, and on a measured vault that was 303 changed pages in a week against two commits. Git records what you remembered to record."
-        />
-        <Plain
-          slot={4}
-          title="git shows you diffs, not meaning"
-          body="`git log` tells you a file changed by twelve lines. It cannot tell you that a client moved their deadline or that a rate was renegotiated. Lore reads the diff and says what is true now, in a sentence — which is the difference between a changelog and knowing something."
-        />
-        <Plain
-          slot={7}
-          title="git cannot hear the questions"
-          body="Because your agents read the wiki through Lore, it sees every search that came back with nothing. That is a list of what to write next, assembled from real demand. No amount of version control produces it."
-        />
-      </Reveal>
-
-      <Reveal>
-        <p className="t-body mx-auto mt-10 max-w-2xl text-center text-[var(--lore-text-secondary)]">
-          Put shortly: your agents are the writers. Nothing was the reader.
-        </p>
       </Reveal>
     </Section>
   );
@@ -295,11 +252,15 @@ function Plain({ slot, title, body }: { slot: number; title: string; body: strin
   return (
     <div
       style={paletteVars(slot)}
-      className="rounded-2xl border border-[var(--lore-border)] bg-[var(--lore-surface)] p-5"
+      className="rounded-2xl border border-[var(--lore-border)] bg-[var(--lore-surface)] p-6"
     >
-      <span className="pal-bar" />
-      <h3 className="pal-title mt-3 text-[16px] font-semibold tracking-[-0.02em]">{title}</h3>
-      <p className="t-body mt-2 text-[var(--lore-text-secondary)]">{body}</p>
+      <div className="flex items-center gap-2.5">
+        <span className="pal-bar !h-5" />
+        <h3 className="text-[16px] font-semibold tracking-[-0.02em] text-[var(--lore-text-primary)]">
+          {title}
+        </h3>
+      </div>
+      <p className="t-body mt-2.5 text-[var(--lore-text-secondary)]">{body}</p>
     </div>
   );
 }
@@ -487,6 +448,14 @@ function Steps({ siteMode }: { siteMode: boolean }) {
  * two readers raised unprompted; the rest are the mechanics.
  */
 const FAQ = [
+  {
+    /* Moved out of the card grid. Three cards arguing with git, above the fold
+       of the section that answers "what is this", read as defensiveness — and
+       an objection nobody has yet is an objection you just planted. Here it is
+       one entry, opened only by the reader who came with the question. */
+    q: "Why not just use git?",
+    a: "Use git — Lore is not a replacement for it. But most of what your agents write never reaches a commit; it happens between them. On the vault this was built against that was 303 changed pages in a week against two commits. And a diff tells you a file changed by twelve lines, not that a client moved their deadline.",
+  },
   {
     /*
      * First, because it is the question that decides whether the rest matters.

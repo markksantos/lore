@@ -5,9 +5,12 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   BarChart3,
   BookText,
+  Camera,
   Check,
   Clock,
+  Compass,
   Copy,
+  Eye,
   FileDown,
   Flame,
   HelpCircle,
@@ -283,7 +286,71 @@ const SEGMENT_FILL: Record<Trust, string> = {
 
 const ORDER: Trust[] = ["verified", "aging", "lapsed", "unverified"];
 
-type Tab = "review" | "wiki" | "insights" | "connections";
+/*
+ * The real nav, not a curated subset.
+ *
+ * This showed four items with invented labels — `review` captioned "Brief",
+ * `insights` captioned "Ask" — so the shot advertised an app that does not
+ * exist and mislabelled the screens it did show. The list below is copied from
+ * the app's own VIEW_LABEL, in the app's own order.
+ */
+type Tab =
+  | "brief"
+  | "ask"
+  | "wiki"
+  | "changes"
+  | "watch"
+  | "timeline"
+  | "insights"
+  | "explore"
+  | "connections"
+  | "settings";
+
+/** The four with a working pane here; the rest describe themselves. */
+const LIVE_TABS = new Set<Tab>(["brief", "wiki", "ask", "connections"]);
+
+const TABS: { id: Tab; label: string; icon: typeof BookText; blurb?: string }[] = [
+  { id: "brief", label: "Brief", icon: Newspaper },
+  { id: "ask", label: "Ask", icon: MessageCircleQuestion },
+  { id: "wiki", label: "Wiki", icon: BookText },
+  {
+    id: "changes",
+    label: "Changes",
+    icon: ShieldCheck,
+    blurb: "Every page an agent rewrote, with what it removed and who did it.",
+  },
+  {
+    id: "watch",
+    label: "Watch",
+    icon: Eye,
+    blurb: "A live feed of writes as they land, straight from the folder.",
+  },
+  {
+    id: "timeline",
+    label: "Timeline",
+    icon: Camera,
+    blurb: "What the wiki said on any past day, reconstructed from its history.",
+  },
+  {
+    id: "insights",
+    label: "Insights",
+    icon: BarChart3,
+    blurb: "Which pages carry the wiki, and which searches came back empty.",
+  },
+  {
+    id: "explore",
+    label: "Explore",
+    icon: Compass,
+    blurb: "The link graph, duplicate pages, and coverage across the corpus.",
+  },
+  { id: "connections", label: "Connections", icon: Plug },
+  {
+    id: "settings",
+    label: "Settings",
+    icon: Settings,
+    blurb: "The linked folder, the read-only lock, and the local model.",
+  },
+];
 
 export function HeroSimulator({ fullHeight = false }: { fullHeight?: boolean } = {}) {
   const [pages, setPages] = useState(INITIAL);
@@ -388,20 +455,7 @@ export function HeroSimulator({ fullHeight = false }: { fullHeight?: boolean } =
           </div>
 
           <div className="mt-4 space-y-0.5">
-            {(
-              [
-                /* The product shot has to be the product. This showed Review
-                   first — the round-1 app — under a headline promising there is
-                   nothing to approve. */
-                { id: "review", label: "Brief", icon: Newspaper },
-                { id: "wiki", label: "Wiki", icon: BookText },
-                /* The app has four screens now, not eight. A product shot that
-                   shows tabs the product does not have is a promise it cannot
-                   keep the moment someone installs it. */
-                { id: "insights", label: "Ask", icon: MessageCircleQuestion },
-                { id: "connections", label: "Settings", icon: Settings },
-              ] as const
-            ).map((item) => {
+            {TABS.map((item) => {
               const Icon = item.icon;
               return (
                 <button
@@ -409,15 +463,15 @@ export function HeroSimulator({ fullHeight = false }: { fullHeight?: boolean } =
                   type="button"
                   onClick={() => setTab(item.id)}
                   className={cn(
-                    "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[14px] transition-colors",
+                    "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[13.5px] transition-colors",
                     tab === item.id
                       ? "bg-[var(--lore-surface-raised)] font-medium text-[var(--lore-text-primary)]"
                       : "text-[var(--lore-text-secondary)] hover:bg-[var(--lore-surface-raised)]",
                   )}
                 >
-                  <Icon size={16} className="opacity-80" />
+                  <Icon size={15} className="opacity-80" />
                   {item.label}
-                  {item.id === "review" && counts.lapsed > 0 ? (
+                  {item.id === "changes" && counts.lapsed > 0 ? (
                     // Accent, not danger: this is the app's own badge colour, and
                     // white on the dark-mode danger red is unreadable.
                     <motion.span
@@ -500,7 +554,7 @@ export function HeroSimulator({ fullHeight = false }: { fullHeight?: boolean } =
         {/* ----------------------------------------------------------- main */}
         <div className="lore-scrollbar flex-1 overflow-y-auto">
           <div className="mx-auto max-w-[700px] px-4 pb-10 pt-6 md:px-7">
-            {tab === "review" ? (
+            {tab === "brief" ? (
               <ReviewPane
                 counts={counts}
                 triage={triage}
@@ -511,8 +565,11 @@ export function HeroSimulator({ fullHeight = false }: { fullHeight?: boolean } =
               />
             ) : null}
             {tab === "wiki" ? <WikiPane folder={folder} pages={folderPages} /> : null}
-            {tab === "insights" ? <InsightsPane /> : null}
+            {tab === "ask" ? <InsightsPane /> : null}
             {tab === "connections" ? <ConnectionsPane /> : null}
+            {LIVE_TABS.has(tab) ? null : (
+              <OtherScreen tab={TABS.find((t) => t.id === tab)!} />
+            )}
           </div>
         </div>
       </div>
@@ -837,6 +894,36 @@ function InsightsPane() {
 }
 
 // -------------------------------------------------------------- connections
+
+/**
+ * A screen the app has that this shot does not demonstrate.
+ *
+ * The alternative was showing four tabs and calling that the app, which is
+ * what this did — and a product shot that omits six of ten screens is a
+ * different promise from the one the download makes. Naming them costs a
+ * sentence each and makes the nav true.
+ */
+function OtherScreen({
+  tab,
+}: {
+  tab: { label: string; icon: typeof BookText; blurb?: string };
+}) {
+  const Icon = tab.icon;
+  return (
+    <div className="lore-fade-up flex h-full flex-col items-center justify-center px-8 py-16 text-center">
+      <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--lore-surface-raised)] text-[var(--lore-text-secondary)]">
+        <Icon size={19} />
+      </span>
+      <h3 className="mt-4 text-[19px] font-semibold tracking-[-0.03em] text-[var(--lore-text-primary)]">
+        {tab.label}
+      </h3>
+      <p className="t-body mt-2 max-w-sm text-[var(--lore-text-secondary)]">{tab.blurb}</p>
+      <p className="t-meta mt-4 text-[var(--lore-text-tertiary)]">
+        Live in the app — this shot demonstrates Brief, Wiki, Ask and Connections.
+      </p>
+    </div>
+  );
+}
 
 function ConnectionsPane() {
   return (
