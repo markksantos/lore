@@ -29,8 +29,15 @@ import type { Pack, Passage } from "@/lib/pack";
 /** How many passages are worth the model's time. */
 const RERANK_TOP = 12;
 
-/** Characters of each passage shown to the judge. */
-const EXCERPT = 500;
+/**
+ * Characters of each passage shown to the judge.
+ *
+ * 500 truncated most passages mid-thought — `splitSections` caps a section at
+ * ~400 tokens, which is about 1,600 characters, so the judge was scoring the
+ * first third of the evidence and demoting correct pages whose answer sat
+ * below the cut. Raised and re-measured on the golden set rather than assumed.
+ */
+const EXCERPT = 1_600;
 
 /**
  * Blend rather than replace.

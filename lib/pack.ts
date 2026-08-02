@@ -267,16 +267,28 @@ const TRUST_WEIGHT: Record<string, number> = {
  * deal. That single change is the difference between this feature working and
  * being a toy.
  */
+/**
+ * How well a piece of text answers the query, and how much of the query it
+ * actually covers.
+ *
+ * `score` is the familiar weighted-hit sum. `hitMass` is new and is the reason
+ * this returns a pair: the IDF mass of the DISTINCT query terms present. Two
+ * passages can score identically while one mentions a single rare term six
+ * times and the other mentions every term in the question once — and the second
+ * is almost always the one the asker meant. Counting hits alone cannot tell
+ * them apart, so coverage is measured separately and applied by the caller.
+ */
 function relevance(
   text: string,
   terms: string[],
   title: string,
   heading: string | null,
   idf: Map<string, number>,
-): number {
+): { score: number; hitMass: number } {
   const hay = text.toLowerCase();
   const head = `${title} ${heading ?? ""}`.toLowerCase();
   let score = 0;
+  let hitMass = 0;
   for (const term of terms) {
     if (!term) continue;
     const weight = idf.get(term) ?? 1;
@@ -287,8 +299,11 @@ function relevance(
     // A term in the title or heading is the author saying what the page is
     // about, which beats any number of mentions in a body.
     if (head.includes(term)) score += 10 * weight;
+    // Counted once per distinct term, however many times it appears — this is
+    // breadth, and repetition must not buy it.
+    if (inBody || head.includes(term)) hitMass += weight;
   }
-  return score;
+  return { score, hitMass };
 }
 
 /**
@@ -475,6 +490,13 @@ export function buildPack(
   const now = Date.now();
 
   const idf = idfFor(pages, terms);
+  /*
+   * The denominator for coverage: the IDF mass of the query terms that exist
+   * in this corpus at all. A term nobody has ever written cannot be covered,
+   * and counting it would punish every passage equally for the asker's
+   * vocabulary.
+   */
+  const askMass = terms.reduce((sum, t) => sum + (idf.get(t) ?? 0), 0);
 
   const scored: Passage[] = [];
   for (const page of pages) {
@@ -491,16 +513,28 @@ export function buildPack(
      * subject. The page is evidence about the passage, so it carries weight —
      * damped with a log so a long page cannot win on repetition alone.
      */
+    const pageRelevance = relevance(page.plain, terms, page.title, null, idf);
     const pageScore =
-      Math.log1p(relevance(page.plain, terms, page.title, null, idf)) * 6 +
-      (semanticBoost.get(page.id) ?? 0) * 14;
+      Math.log1p(pageRelevance.score) * 6 + (semanticBoost.get(page.id) ?? 0) * 14;
 
     const semantic = semanticBoost.get(page.id) ?? 0;
     for (const section of cached(page).sections) {
-      const own = relevance(section.text, terms, page.title, section.heading, idf);
+      const section_ = relevance(section.text, terms, page.title, section.heading, idf);
+      const own = section_.score;
       // A page the embedding model matched may contain none of the query's
       // literal words — which is the entire point of having it.
       if (own <= 0 && semantic <= 0) continue;
+      /*
+       * Reward covering the QUESTION, not repeating one word of it.
+       *
+       * Without this a page that says "rate" nine times outranks the page that
+       * answers "what is my video edit rate", because nine hits on one term
+       * beat one hit on each of four. Scaled to [0.5, 1] rather than [0, 1]:
+       * partial coverage is common and legitimate — the answer is often split
+       * across sections — so this tilts the ranking rather than gating it.
+       */
+      const coverage = askMass > 0 ? Math.min(1, section_.hitMass / askMass) : 1;
+      const coverageBoost = 0.5 + 0.5 * coverage;
       const tokens = tokensFor(section.text);
       scored.push({
         pageId: page.id,
@@ -524,7 +558,8 @@ export function buildPack(
         score: (own / Math.max(tokens, 1) + pageScore * 0.04) *
           (TRUST_WEIGHT[trust] ?? 1) *
           capture *
-          recency,
+          recency *
+          coverageBoost,
         trust,
       });
     }
