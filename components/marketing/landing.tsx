@@ -165,7 +165,7 @@ function Measured() {
     <Section
       eyebrow="Measured, not claimed"
       title="Your wiki keeps growing. Your reading doesn't."
-      lede="The numbers below were measured on one real agent-written vault, with a harness that ships in the repo so you can run it on yours. Your wiki is a different size — what carries over is the ratio, not the total."
+      lede="Measured on one real agent-written vault. Yours is a different size — the ratio is what carries over, and the harness ships in the repo so you can check it."
     >
       <Reveal className="mt-12 grid gap-4 sm:grid-cols-3">
         <Stat
@@ -281,22 +281,22 @@ function HowItWorks() {
       icon: Radio,
       slot: 3,
       demo: <WriteFeedDemo />,
-      title: "Lore watches the folder, not the agent",
-      body: "Every write lands in a journal — Claude Code, Codex, Cursor, a sync script, you in your editor at midnight. Reading the filesystem instead of intercepting a tool call is what makes that possible: no harness has to opt in, so none of them can quietly opt out. What comes back is a ranked list of what changed, how much prose it deleted, and how many pages link to the thing it touched.",
+      title: "It watches the folder, not the agent",
+      body: "Every write lands in a journal — Claude Code, Cursor, a sync script, you at midnight. Nothing has to opt in, so nothing can quietly opt out.",
     },
     {
       icon: ShieldCheck,
       slot: 0,
       demo: <BudgetDemo />,
-      title: "Ask it, instead of reading it",
-      body: "A wiki this size is never going to be read, so the only way it pays you back is by answering. Lore retrieves passages from your own pages, answers from those alone, and shows every one it used — and says so plainly when your wiki does not contain the answer, rather than inventing something that sounds right. Retrieval and the model both run on your machine.",
+      title: "Ask it instead of reading it",
+      body: "Answers come from your own pages, with every source shown — and it says so when your wiki does not have the answer instead of inventing one. All of it on your machine.",
     },
     {
       icon: Plug,
       slot: 6,
       demo: <GapsDemo />,
-      title: "Being the MCP server makes Lore a sensor",
-      body: "Your agents read the wiki through Lore. That is a poor place to stand if you want to block a write, and an excellent one if you want to hear the questions. Lore logs which pages actually get opened and every search that came back with nothing. The empty ones are a to-write list assembled out of real demand instead of a planning session.",
+      title: "It hears what your agents could not find",
+      body: "Because they read the wiki through Lore, every search that came back empty is logged. That list is what to write next, assembled from real demand.",
     },
   ];
 
@@ -304,7 +304,7 @@ function HowItWorks() {
     <Section
       eyebrow="How it works"
       title="It reads it so you do not have to."
-      lede="Nothing is blocked and nothing is queued. Lore watches what your agents write, tells you the handful worth knowing, and answers questions from the rest."
+      lede="Nothing is blocked and nothing is queued."
     >
       {/* Each module sits in a thick colour frame — the pattern that carries
           most of the page's colour. */}
