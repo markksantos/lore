@@ -37,3 +37,24 @@ void (async () => {
     log("warmup", error);
   }
 })();
+
+/*
+ * The observers' background loop.
+ *
+ * This is the only place it starts. Booting it from a route would mean the
+ * screen recorder begins when someone happens to open a tab, which is both
+ * unpredictable and the wrong mental model — the app being open is what makes
+ * an observer able to run, and this file is what "the app is open" means.
+ *
+ * Every job inside re-checks consent on every tick, so starting the loop is not
+ * the same as starting any observation: on a fresh install this schedules six
+ * timers that each decide, correctly, to do nothing.
+ */
+void (async () => {
+  try {
+    const { wireObservers } = await import("@/lib/observer-jobs");
+    wireObservers();
+  } catch (error) {
+    log("observers", error);
+  }
+})();

@@ -15,6 +15,16 @@ import { Palette } from "@/components/lore/palette";
 import { TimelineDesktopView } from "@/components/lore/timeline-desktop-view";
 import { ExploreShell } from "@/components/lore/explore-shell";
 import { ConnectionsView } from "@/components/lore/connections-view";
+import { desktopBridge } from "@/lib/desktop";
+import { NeedsTheApp, OBSERVER_BLURB } from "@/components/lore/needs-the-app";
+import { isBrowserVault } from "@/lib/browser-api";
+import { GhostView } from "@/components/lore/ghost-view";
+import { LedgerView } from "@/components/lore/ledger-view";
+import { OracleView } from "@/components/lore/oracle-view";
+import { ChorusView } from "@/components/lore/chorus-view";
+import { TwinView } from "@/components/lore/twin-view";
+import { UnderstudyView } from "@/components/lore/understudy-view";
+import { ProphetView } from "@/components/lore/prophet-view";
 
 export type View =
   | "brief"
@@ -26,7 +36,58 @@ export type View =
   | "insights"
   | "explore"
   | "connections"
-  | "settings";
+  | "settings"
+  /* The observers. These read this machine rather than the wiki, and each is
+     off until switched on — see lib/observers.ts, which is the single place
+     that decides whether any of them may run. */
+  | "prophet"
+  | "ghost"
+  | "ledger"
+  | "oracle"
+  | "chorus"
+  | "understudy"
+  | "twin";
+
+/**
+ * Every view name, as data.
+ *
+ * The type alone cannot validate a string that arrived from a URL or from the
+ * desktop shell, and `setView(anything as View)` would put the router into a
+ * state that renders nothing at all — a blank screen with no error. This is the
+ * runtime half of the same list, and the `satisfies` keeps the two in step: a
+ * view added to the union and forgotten here is a compile error.
+ */
+export const VIEW_NAMES = [
+  "brief",
+  "ask",
+  "wiki",
+  "review",
+  "watch",
+  "timeline",
+  "insights",
+  "explore",
+  "connections",
+  "settings",
+  "prophet",
+  "ghost",
+  "ledger",
+  "oracle",
+  "chorus",
+  "understudy",
+  "twin",
+] as const satisfies readonly View[];
+
+/*
+ * `satisfies` proves every entry is a view. This proves every view is an entry.
+ *
+ * Without it the list can silently fall behind the union, and the symptom is a
+ * deep link or a hotkey that does nothing for exactly one screen — which is
+ * both hard to notice and hard to attribute. Adding a view without adding it
+ * here now fails the typecheck.
+ */
+type MissingFromViewNames = Exclude<View, (typeof VIEW_NAMES)[number]>;
+const _everyViewIsNamed: MissingFromViewNames extends never ? true : never = true;
+void _everyViewIsNamed;
 
 export function VaultApp({
   initialIndex,
@@ -50,6 +111,15 @@ export function VaultApp({
    * distinct event rather than a value to compare.
    */
   const [handoff, setHandoff] = useState<{ question: string; key: number } | null>(null);
+  /*
+   * Resolved after mount, never during render.
+   *
+   * The server renders this component too (the desktop half is a real Next
+   * app), and there `isBrowserVault()` is false while in the browser vault it
+   * is true — reading it during render is a hydration mismatch by construction.
+   */
+  const [browserVault, setBrowserVault] = useState(false);
+  useEffect(() => setBrowserVault(isBrowserVault()), []);
 
   /*
    * ⌘K anywhere, except while typing into something.
@@ -67,6 +137,27 @@ export function VaultApp({
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, []);
+  /*
+   * Two ways in from outside the app, both landing here.
+   *
+   * `?view=ghost` makes every screen linkable, which is what the desktop
+   * shell's first navigation uses — the window is created pointed at /vault and
+   * there is no renderer listening yet. After that the IPC channel is used
+   * instead, because it does not reload the page and therefore does not throw
+   * away a half-written draft.
+   */
+  useEffect(() => {
+    const wanted = new URLSearchParams(window.location.search).get("view");
+    if (wanted && (VIEW_NAMES as readonly string[]).includes(wanted)) {
+      setView(wanted as View);
+    }
+    const bridge = desktopBridge();
+    if (!bridge?.onNavigate) return;
+    return bridge.onNavigate((next) => {
+      if ((VIEW_NAMES as readonly string[]).includes(next)) setView(next as View);
+    });
+  }, []);
+
   const [folder, setFolder] = useState<string>(initialIndex.folders[0]?.folder ?? "");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[] | null>(null);
@@ -195,6 +286,37 @@ export function VaultApp({
       {view === "settings" ? (
         <SettingsView index={index} onOpenPage={openPage} onChanged={refresh} />
       ) : null}
+
+      {/*
+        * The observers.
+        *
+        * Each is mounted only while it is the current view. They poll their own
+        * status while open — Ghost every eight seconds, Prophet every minute —
+        * and keeping seven of those alive behind a hidden tab would be seven
+        * timers doing nothing useful for the whole session.
+        */}
+      {/*
+        * In a browser tab, five of the seven cannot run and should not pretend
+        * to. Caught here rather than inside each view: the alternative is seven
+        * copies of the same check, and the failure mode of forgetting one is a
+        * screen that spins on a request the shim will never answer.
+        *
+        * Understudy is deliberately NOT in this list. Its measurements are pure
+        * arithmetic over pages this tab already has, so it works here for real.
+        */}
+      {browserVault && view in OBSERVER_BLURB && view !== "understudy" ? (
+        <NeedsTheApp feature={view as keyof typeof OBSERVER_BLURB} />
+      ) : (
+        <>
+          {view === "prophet" ? <ProphetView onNavigate={(next) => setView(next as View)} /> : null}
+          {view === "ghost" ? <GhostView /> : null}
+          {view === "ledger" ? <LedgerView /> : null}
+          {view === "oracle" ? <OracleView /> : null}
+          {view === "chorus" ? <ChorusView /> : null}
+          {view === "understudy" ? <UnderstudyView /> : null}
+          {view === "twin" ? <TwinView /> : null}
+        </>
+      )}
     </AppShell>
   );
 }

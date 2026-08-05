@@ -74,6 +74,36 @@ Small sample, and questions are model-generated per run, so treat recall@5 and
 the median as the signal rather than any single figure. The harness is in the
 repo so you can disagree with it.
 
+## And the machine it runs on
+
+The wiki is half of Lore. The other half reads the computer — and every one of
+these is **off until you switch it on**, individually, with one switch that
+pauses all of them at once.
+
+| | |
+| --- | --- |
+| **Ghost** | Photographs your screen every few seconds and describes it with a model on your machine. Then: *what was that error twenty minutes ago?* |
+| **Ledger** | Every Claude Code session, Codex run and Cursor chat on this Mac, in one search box. 2,090 conversations and 55,000 messages indexed in a minute on the machine this was built on. |
+| **Oracle** | Files, mail, calendar, iMessage, Notes, browser history, photos — one index, one question. Each source is a separate decision. |
+| **Understudy** | Measures how you actually write — median sentence length, contraction rate, the words you reach for — and drafts in that. Scores the draft against you afterwards. Never leaves the machine. |
+| **Twin** | Notices the filing you repeat and offers to take it over, as a rule you read before it runs, dry-run first, undoable after. |
+| **Chorus** | Several models answer, critique each other blind, then one writes the verdict — and names what the panel could not agree on. |
+| **Prophet** | Speaks first, and only when it has something. Your call is in twenty minutes; here is what was left open last time. Wave a card away twice and that kind stops appearing. |
+
+**The promises, in code rather than in words.** Consent is one file
+(`lib/observers.ts`) that every observer asks before doing anything, checked per
+tick so pausing takes effect immediately. Password managers are skipped *before*
+the screenshot is taken, not filtered after. Extracted text runs through the
+same secret scrubber the rest of Lore uses. Every index is a file you can
+delete, and the delete button removes the write-ahead log too. Chorus is the
+only module in the project that opens a socket to the internet.
+
+Ghost, Ledger, Oracle, Twin and Prophet need the app — a web page cannot
+photograph your screen or read your mail, which is the browser working
+correctly. Understudy's measurements run in a browser tab for real; drafting
+needs a local model. See [DOCUMENTATION.md](DOCUMENTATION.md#17-the-observers--lore-and-the-machine-it-runs-on)
+for how each one works and what is deliberately not built.
+
 ## For your agents
 
 The brief is not only for you. The reader who most needs "what did the other

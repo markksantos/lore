@@ -14,6 +14,7 @@ import {
   type Policy,
 } from "@/lib/policy-defaults";
 import { renderHealth } from "@/lib/health-core";
+import { measureVoice, voiceBrief } from "@/lib/voice-core";
 import { buildBudget } from "@/lib/tokens";
 import type { PageMeta, VaultIndex } from "@/lib/types";
 
@@ -155,6 +156,31 @@ const ELSEWHERE: Record<string, string> = {
   "/api/harness": "Which agent made a change is recorded by a hook on your machine.",
   "/api/usage": "Usage is measured by the local MCP server.",
   "/api/mcp": "The MCP server runs on your machine so your agents can reach it.",
+
+  /*
+   * The observers.
+   *
+   * Every one of these reads the machine it runs on — the screen, the mail
+   * store, the filesystem, other applications' databases. A web page has none
+   * of that and should not: the browser sandbox exists precisely to stop a page
+   * doing what these do. So they say so, name what they would do, and point at
+   * the app that can.
+   *
+   * Understudy is the exception and is handled below rather than here: its
+   * measurements are pure arithmetic over text this tab already has.
+   */
+  "/api/ghost":
+    "Ghost photographs your screen. A web page cannot, by design — this needs the Lore app on your Mac.",
+  "/api/ledger":
+    "Ledger reads the conversation logs your AI tools keep on disk. A browser tab has no access to them; the Lore app does.",
+  "/api/oracle":
+    "Oracle indexes your mail, messages, calendar and files. Those live behind macOS permissions that only a real application can be granted.",
+  "/api/twin":
+    "Twin watches folders and moves files. A browser tab is given one folder, read-only, and can move nothing.",
+  "/api/prophet":
+    "Prophet reads what the other observers found. None of them can run in a browser tab, so it would have nothing to read.",
+  "/api/chorus":
+    "Chorus sends your question to model providers. Doing that from a page would put your API keys in a browser and your question through a proxy — the app keeps both on your machine.",
 };
 
 async function handle(url: URL, init?: RequestInit): Promise<Response | null> {
@@ -412,6 +438,98 @@ async function handle(url: URL, init?: RequestInit): Promise<Response | null> {
     });
   }
 
+  /*
+   * What is watching, in a tab: nothing, and it says so with the same shape the
+   * server uses.
+   *
+   * A 501 here would be honest but would break the sidebar's running-dots poll
+   * into a permanent failure. Answering properly — six observers, all off, none
+   * of them able to run — is both true and useful.
+   */
+  if (p === "/api/observers") {
+    const OBSERVERS: [string, string, string][] = [
+      ["ghost", "Ghost", "Takes a picture of your screen every few seconds."],
+      ["twin", "Twin", "Watches which files change and which apps you switch between."],
+      ["understudy", "Understudy", "Reads writing you have already done, to learn how you write."],
+      ["oracle", "Oracle", "Indexes the files, mail, messages, calendar and history you point it at."],
+      ["ledger", "Ledger", "Reads the conversation logs your AI tools already keep."],
+      ["prophet", "Prophet", "Reads what the other observers found, and your calendar."],
+    ];
+    return json({
+      browser: true,
+      observers: OBSERVERS.map(([id, label, reads]) => ({
+        id,
+        label,
+        reads,
+        enabled: false,
+        enabledAt: null,
+        blockedBecause: "A browser tab cannot observe this machine. The Lore app can.",
+        jobs: [],
+      })),
+      pausedUntil: null,
+      quietHours: null,
+      daemon: { started: false, jobs: 0 },
+      log: [],
+    });
+  }
+
+  /*
+   * Understudy, for real, in the browser.
+   *
+   * The measurements are pure — sentence lengths, contraction rate, the words
+   * this person reaches for — so they run over the pages already in memory and
+   * produce exactly the profile the desktop build produces from the same
+   * source. Drafting is the part that needs a model, and that part says so.
+   *
+   * This is the one observer with an honest browser implementation, and it is
+   * worth having: "here is how you write, measured from your own wiki, computed
+   * in your browser, uploaded nowhere" is a complete thing rather than a teaser.
+   */
+  if (p === "/api/understudy") {
+    if (method === "GET") {
+      const texts = s.index.pages.map((page) => page.plain).filter((text) => text.trim().length > 120);
+      const overall = measureVoice(texts);
+      const profile = { at: Date.now(), overall, byAudience: [] };
+      return json({
+        browser: true,
+        config: {
+          sources: { wiki: true, "sent-mail": false, messages: false, folders: false },
+          folders: [],
+          minWords: 25,
+          redact: true,
+        },
+        status: {
+          samples: overall.samples,
+          words: overall.words,
+          bySource: [{ source: "wiki", n: overall.samples, words: overall.words }],
+          audiences: [],
+          profileAt: profile.at,
+          diskBytes: 0,
+          drafts: 0,
+        },
+        profile: overall.samples ? profile : null,
+        brief: overall.samples ? voiceBrief(overall) : null,
+        localModel: {
+          state: "unsupported",
+          detail:
+            "Drafting needs a model running on your machine, which a web page cannot reach. The measurements below are the real thing and were computed in this tab.",
+          model: null,
+        },
+        enabled: true,
+        running: true,
+        blockedBecause: null,
+      });
+    }
+    return json(
+      {
+        error:
+          "Understudy measured your voice here in the browser, but drafting in it needs a local model — that part is in the Lore app.",
+        desktopOnly: true,
+      },
+      501,
+    );
+  }
+
   const reason = Object.entries(ELSEWHERE).find(([route]) => p === route || p.startsWith(`${route}/`));
   if (reason) return json({ error: reason[1], desktopOnly: true }, 501);
 
@@ -424,6 +542,18 @@ async function handle(url: URL, init?: RequestInit): Promise<Response | null> {
  * Only same-origin `/api/` paths are intercepted — everything else, including
  * Next's own chunk loading, goes straight through to the real fetch.
  */
+/**
+ * Is this tab serving the vault from memory rather than from a local server?
+ *
+ * Read by the app shell to decide whether a screen that needs this machine can
+ * be shown at all. Answering from the installed state rather than from a build
+ * flag matters: the same components render in both halves of the product, and
+ * the difference is which fetch is in place, not which bundle was compiled.
+ */
+export function isBrowserVault(): boolean {
+  return state !== null;
+}
+
 export function installBrowserApi(next: State): void {
   state = next;
   if (original) return;

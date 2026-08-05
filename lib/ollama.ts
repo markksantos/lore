@@ -358,3 +358,151 @@ export async function generateStream(
     clearTimeout(timer);
   }
 }
+
+// ------------------------------------------------------------------- vision
+
+/**
+ * What a model can actually do, according to Ollama.
+ *
+ * Guessing from the tag name was the alternative and it is wrong in both
+ * directions: `llama3.2-vision` is obvious, `gemma4` is not (it sees), and a
+ * community fine-tune can be named anything at all. `/api/show` reports a
+ * `capabilities` array — "vision", "tools", "thinking" — which is the model's
+ * own answer rather than ours.
+ *
+ * Cached for the process. Capabilities do not change under a running server,
+ * and this is called before every screen frame is described.
+ */
+const capabilityCache = new Map<string, string[]>();
+
+export async function modelCapabilities(model: string): Promise<string[]> {
+  const cached = capabilityCache.get(model);
+  if (cached) return cached;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 4_000);
+  try {
+    const response = await fetch(`${OLLAMA_HOST}/api/show`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      cache: "no-store",
+      signal: controller.signal,
+      body: JSON.stringify({ model }),
+    });
+    if (!response.ok) return [];
+    const body = (await response.json()) as { capabilities?: unknown };
+    const caps = Array.isArray(body.capabilities)
+      ? body.capabilities.filter((c): c is string => typeof c === "string")
+      : [];
+    capabilityCache.set(model, caps);
+    return caps;
+  } catch {
+    /* Not cached: a timeout is a transient condition, and caching it would
+       leave vision permanently "absent" after one slow moment at boot. */
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Above this, a vision model cannot keep up with the shutter.
+ *
+ * Ghost captures every fifteen seconds and describes what changed. On this
+ * machine the installed models are a 39 GB Qwen and a 10 GB Gemma; the Qwen is
+ * the better reader and takes long enough per frame that the queue grows
+ * faster than it drains, so the "best" model produces a permanent backlog and
+ * evicts whatever Ask had resident. Twenty-four gigabytes is the line between
+ * a model that answers between frames and one that does not.
+ */
+const VISION_SIZE_CEILING = 24 * 1024 ** 3;
+
+/**
+ * The best installed model that can look at an image AND keep up.
+ *
+ * Largest first, unlike recommendModel's smallest-first: describing a
+ * screenshot is a comprehension task where a small model produces confident
+ * nonsense, and Ghost's whole value is that its notes are true. But largest
+ * WITHIN the ceiling — an enormous model that falls permanently behind
+ * describes fewer frames correctly than a smaller one that finishes.
+ *
+ * If everything installed is over the ceiling, the smallest of them is used
+ * rather than none: a slow description is still better than a blank note.
+ */
+export async function pickVisionModel(models: OllamaModel[]): Promise<string | null> {
+  const capable: OllamaModel[] = [];
+  for (const model of models) {
+    const caps = await modelCapabilities(model.name);
+    if (caps.includes("vision")) capable.push(model);
+  }
+  if (!capable.length) return null;
+
+  const affordable = capable.filter((model) => model.size > 0 && model.size <= VISION_SIZE_CEILING);
+  if (affordable.length) {
+    return [...affordable].sort((a, b) => b.size - a.size)[0].name;
+  }
+  /* A size of zero means Ollama did not report one; treat it as unknown rather
+     than as free, and fall in behind anything with a real measurement. */
+  return [...capable].sort((a, b) => (a.size || Infinity) - (b.size || Infinity))[0].name;
+}
+
+/**
+ * Describe an image with a local vision model.
+ *
+ * `images` takes bare base64 — no data-URL prefix, which Ollama rejects with a
+ * decode error rather than a helpful message. The timeout is generous because
+ * a vision prompt on a cold model can take a minute on the first frame and
+ * three seconds on every one after it.
+ */
+export async function describeImage(
+  model: string,
+  imageBase64: string,
+  prompt: string,
+  opts?: { system?: string; timeoutMs?: number; maxTokens?: number; signal?: AbortSignal },
+): Promise<string> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), opts?.timeoutMs ?? 120_000);
+  if (opts?.signal) {
+    if (opts.signal.aborted) controller.abort();
+    else opts.signal.addEventListener("abort", () => controller.abort(), { once: true });
+  }
+  try {
+    const response = await fetch(`${OLLAMA_HOST}/api/generate`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      cache: "no-store",
+      signal: controller.signal,
+      body: JSON.stringify({
+        model,
+        prompt,
+        images: [imageBase64],
+        system: opts?.system,
+        stream: false,
+        think: false,
+        options: {
+          temperature: 0.1,
+          /* No num_ctx here. A vision prompt's real length is the image's token
+             expansion, which this side cannot estimate — contextFor would size
+             the window from the text alone and silently truncate the picture. */
+          num_predict: opts?.maxTokens ?? 400,
+        },
+      }),
+    });
+    const body = (await response.json().catch(() => null)) as {
+      response?: unknown;
+      error?: unknown;
+    } | null;
+    if (!response.ok || typeof body?.error === "string") {
+      const detail = typeof body?.error === "string" ? body.error : `HTTP ${response.status}`;
+      throw new Error(`Ollama refused the image: ${detail}`);
+    }
+    if (typeof body?.response !== "string") throw new Error("Ollama returned no description.");
+    return stripThinking(body.response);
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`${model} did not describe the frame in time.`);
+    }
+    throw error instanceof Error ? error : new Error("Could not reach Ollama.");
+  } finally {
+    clearTimeout(timer);
+  }
+}

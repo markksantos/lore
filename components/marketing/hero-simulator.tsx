@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   BarChart3,
+  Bell,
   BookText,
   Camera,
   Check,
@@ -14,6 +15,7 @@ import {
   FileDown,
   Flame,
   HelpCircle,
+  History,
   MessageCircleQuestion,
   Newspaper,
   PenLine,
@@ -21,10 +23,13 @@ import {
   Plug,
   Radio,
   RotateCcw,
+  Scale,
   Search,
   Settings,
   Shield,
   ShieldCheck,
+  Telescope,
+  Wand2,
 } from "lucide-react";
 import { BrandMark } from "@/components/marketing/brand-mark";
 import { BrowserChrome } from "@/components/marketing/browser-chrome";
@@ -298,6 +303,13 @@ type Tab =
   | "brief"
   | "ask"
   | "wiki"
+  | "prophet"
+  | "ghost"
+  | "ledger"
+  | "oracle"
+  | "understudy"
+  | "twin"
+  | "chorus"
   | "changes"
   | "watch"
   | "timeline"
@@ -313,6 +325,52 @@ const TABS: { id: Tab; label: string; icon: typeof BookText; blurb?: string }[] 
   { id: "brief", label: "Brief", icon: Newspaper },
   { id: "ask", label: "Ask", icon: MessageCircleQuestion },
   { id: "wiki", label: "Wiki", icon: BookText },
+  /* The observers, in the app's own order. Each is off until switched on, and
+     each blurb says what it reads — the same sentence that sits beside its
+     switch, so the shot cannot promise something the settings screen then
+     hedges. */
+  {
+    id: "prophet",
+    label: "Prophet",
+    icon: Bell,
+    blurb: "Speaks first: your call is in twenty minutes, and here is what was left open last time.",
+  },
+  {
+    id: "ghost",
+    label: "Ghost",
+    icon: Telescope,
+    blurb: "A picture of your screen every few seconds, read by a model on this machine. Ask it what you were doing.",
+  },
+  {
+    id: "ledger",
+    label: "Ledger",
+    icon: History,
+    blurb: "Every Claude Code session, Codex run and Cursor chat on this Mac, in one search box.",
+  },
+  {
+    id: "oracle",
+    label: "Oracle",
+    icon: Search,
+    blurb: "Files, mail, messages, calendar, notes and browsing — one index, one question.",
+  },
+  {
+    id: "understudy",
+    label: "Understudy",
+    icon: PenLine,
+    blurb: "Measures how you actually write, then drafts in it. Never leaves the machine.",
+  },
+  {
+    id: "twin",
+    label: "Twin",
+    icon: Wand2,
+    blurb: "Notices the filing you repeat and offers to take it over, as a rule you can read first.",
+  },
+  {
+    id: "chorus",
+    label: "Chorus",
+    icon: Scale,
+    blurb: "Several models answer, critique each other, then name what they could not agree on.",
+  },
   {
     id: "changes",
     label: "Changes",

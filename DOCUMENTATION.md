@@ -896,7 +896,384 @@ mode most of the time.
 
 ---
 
-## 17. Known limitations
+## 17. The observers — Lore and the machine it runs on
+
+Everything above this section is about a folder of markdown. This section is
+about the other half of the product: seven features that read the computer Lore
+is installed on. They share a foundation, a consent model and a set of promises,
+and those are documented here once rather than seven times.
+
+### 17.1 What they are
+
+| Feature | What it reads | What it gives you |
+| --- | --- | --- |
+| **Ghost** | Your screen, every few seconds | "What was that error twenty minutes ago" |
+| **Ledger** | Transcripts your AI tools already keep | One search box over every AI conversation |
+| **Oracle** | Files, mail, calendar, Messages, Notes, browser history, photos | One question across your whole digital life |
+| **Understudy** | Writing you have already done | Drafts measured against how you actually write |
+| **Twin** | Folders you nominate | Notices repeated filing and offers to take it over |
+| **Chorus** | Only the question you type | Several models argue, then answer, and name the split |
+| **Prophet** | What the other observers found | Speaks first, when it has something worth saying |
+
+Chorus is the odd one out and is grouped here anyway: it observes nothing, but
+it is the only other feature that is about the machine rather than the wiki.
+
+### 17.2 Consent (`lib/observers.ts`)
+
+One file decides whether any observer may run, and every one of them asks it
+before doing anything.
+
+```
+mayObserve(id) === enabled(id) && !paused && !quietHours
+```
+
+Four properties, all deliberate:
+
+- **Off by default, individually.** There is no master switch that turns on six
+  things at once. `DEFAULT_OBSERVERS` has every `enabled` set to `false`, and
+  `scripts/test-observers.mjs` asserts it.
+- **The check is per tick, never cached.** A job that was allowed when it was
+  scheduled asks again every time it fires, which is what makes pausing take
+  effect within one tick rather than one restart.
+- **It fails closed on anything that is not literally `true`.** A hand-edited
+  `"enabled": "yes"` is not consent. This is checked twice — once when the file
+  is parsed and once at the gate — because the gate accepts a config object from
+  any caller.
+- **Every change is logged.** `~/.lore/observers-log.jsonl` records what was
+  switched and when, so "how long has this been watching me" has an answer.
+
+Pause is a *timestamp*, not a boolean. A boolean plus a `setTimeout` resumes
+silently across a restart; a deadline survives one.
+
+Quiet hours wrap midnight. `22:00–07:00` is the shape everybody configures and
+the naive comparison is false for every hour of it, so both directions are
+handled and both are tested.
+
+### 17.3 Storage (`lib/signal-store.ts`)
+
+The wiki half of Lore stores everything as append-only JSONL, which is right for
+a few thousand records read whole. The observers are a different size of
+problem: Ghost writes a frame every fifteen seconds, Ledger indexed 2,090
+conversations and 55,403 messages on the development machine, and Oracle wants
+every email on the disk in one searchable place.
+
+So: SQLite with FTS5, one database per observer under `~/.lore/db/`.
+
+`node:sqlite` — the engine inside Node itself. No native module, no `node-gyp`,
+no `electron-rebuild`, no prebuilt binary to miss an architecture. The packaged
+desktop app gets the same engine as `next dev` because it is the same engine.
+
+It is reached through `process.getBuiltinModule("node:sqlite")` rather than
+imported. A static import of a module a given Node might not have is a boot
+failure for the whole server; and Next's bundler rewrites static specifiers, so
+it tries to inline a builtin that has no browser equivalent. The first attempt
+used `createRequire(import.meta.url)`, which works under plain Node and returns
+null under Turbopack — so every observer reported "this build of Node has no
+SQLite" on a Node that plainly had it.
+
+One database per observer is a privacy decision as much as an engineering one:
+"delete everything Ghost knows about me" is `rm`, not a migration. `dropDb`
+removes the `-wal` and `-shm` sidecars too, because deleting only the `.db`
+leaves a write-ahead log holding the very rows the user just asked to be rid of.
+
+**Reading other applications' databases.** Messages, Notes, Photos and every
+Chromium browser keep a live SQLite file that is frequently locked. `openForeignCopy`
+snapshots it and its WAL sidecars to a scratch directory and opens the copy
+read-only, so Lore can never be the reason somebody's message history is
+corrupt.
+
+**FTS5 queries are always escaped.** `-`, `*`, `"`, `:`, `(`, `^` and the bare
+words `AND`/`OR`/`NOT` are query syntax. Passing a human sentence through
+unescaped either throws on the apostrophe in "client's" or silently reinterprets
+"not found" as a boolean negation and returns the opposite of what was asked —
+and both have the same symptom in the UI. `ftsQuery` quotes every token;
+`ftsLadder` degrades from AND to OR so a five-word question with one absent word
+still finds something.
+
+### 17.4 The background loop (`lib/daemon.ts`)
+
+One loop, inside the Next server process that is already running.
+
+Deliberately **not** a separate daemon. A second process is a second thing to
+install, supervise, update, kill on uninstall and explain in a support thread,
+and its only advantage is surviving the app being closed — which for a tool that
+watches your screen is a liability rather than a feature. Quitting Lore stops
+Lore watching.
+
+| Job | Every | Gated on |
+| --- | --- | --- |
+| `ghost:capture` | the user's setting (default 15s) | ghost |
+| `ghost:describe` | 25s | ghost |
+| `ghost:forget` | 1h | **nothing** |
+| `ledger:index` | 10m | ledger |
+| `oracle:index` | 5m | oracle |
+| `twin:watch` | 60s | twin |
+| `twin:mine` | 30m | twin |
+| `twin:run` | 2m | twin |
+| `understudy:learn` | 6h | understudy |
+| `prophet:think` | 3m | prophet |
+
+`ghost:forget` is ungated on purpose. Retention *deletes* things; skipping it
+while Ghost is paused would mean pausing quietly extends how long the
+screenshots are kept, which is the opposite of what pausing is for.
+
+Jobs cannot overlap themselves, failures back off exponentially to a ten-minute
+ceiling, and nothing throws out of the loop — an unhandled rejection in a
+background timer takes the whole server with it under Node's defaults, and the
+server is also the user's wiki.
+
+### 17.5 Ghost (`lib/ghost.ts`)
+
+Three loops that never block each other: capture (cheap, does no thinking),
+describe (expensive, a queue rather than a step), forget (hourly).
+
+**Capture.** `screencapture -x -o -t jpg`, then `sips -Z 1440` to shrink it.
+The order matters and is the privacy design: the frontmost application is
+checked FIRST, and if it is on the never-capture list the function returns
+without ever invoking the shutter. There is no moment at which a 1Password
+window exists as a file on disk. The default list is eleven password managers.
+
+**Deduplication.** A 64-bit average hash via a 16×16 BMP that `sips` renders —
+a decoder Lore does not have to ship and a format simple enough to read in
+twenty lines. Frames within 5 of 64 bits are the same scene: a moving cursor, a
+blinking caret and a ticking clock all read as unchanged, while a tab or window
+switch does not. At one frame every fifteen seconds a working day is 2,880
+captures and fewer than one in eight is a genuinely new scene.
+
+**Description.** A local vision model writes two things per frame: one sentence
+naming the app and the task, and the visible text verbatim. Both go through the
+same secret scrubber the transcript listener uses, so a key on screen becomes a
+redaction in the index rather than a searchable secret.
+
+The vision model is chosen as *the largest under 24 GB*. Largest, because
+describing a screen is comprehension and a small model produces confident
+nonsense; under a ceiling, because a model that cannot finish between frames
+produces a permanent backlog and evicts whatever Ask had resident.
+
+**Recall.** `parseWhen` turns "twenty minutes ago" into a window before any
+retrieval happens — a model asked to output a timestamp will cheerfully output a
+plausible one. The window is a *filter*, not a ranking signal: if the asker said
+"twenty minutes ago" then a perfect text match from Tuesday is the wrong answer.
+When the words match nothing but the moment was named, frames are sampled evenly
+across the window rather than taking the first N.
+
+Measured on the development machine: capture 1.2 s, description 7 s, recall
+11.5 s end to end.
+
+### 17.6 Ledger (`lib/ledger.ts`)
+
+Full-text first, on purpose. The failure mode of an "AI memory" product is a
+semantic index that returns vibes; you searched for `createReadStream` because
+you remember typing `createReadStream`, and an exact match is not a lesser
+answer than a plausible one. The local model sits on top, never in between.
+
+Sources: Claude Code JSONL, Codex rollouts, Cursor and Windsurf's `state.vscdb`
+key-value store, the Claude desktop app's session records (used for *titles*,
+which the JSONL transcripts do not carry), and exports dropped into
+`~/.lore/ledger/imports` — both ChatGPT's message graph and Claude.ai's flat
+array are understood.
+
+Incremental by file fingerprint (size + mtime). Measured: a first pass over
+2,090 conversations took 63 s; the next pass skipped 2,084 files in 1.0 s.
+
+**Titles are not the first user turn.** That rule produced eight consecutive
+rows reading `Base directory for this skill: …/fiverr-inbox`, which identifies
+the skill and not one of the eight conversations. Slash-command wrappers, hook
+announcements, resumed-session caveats and system reminders are stripped and
+skipped; if every human turn is machinery, the assistant's opening line is used.
+
+### 17.7 Oracle (`lib/oracle.ts`, `lib/oracle-sources.ts`)
+
+Seven adapters, one shape: `probe()` says whether the source exists on this Mac
+and why not, `collect()` is an async generator so a mailbox of eighty thousand
+messages costs one message of memory at a time.
+
+Three parsing hazards, all of which shipped as bugs before they were fixed:
+
+- **Big integers.** `message.date` on a modern Mac is nanoseconds since 2001 —
+  about 8.1 × 10¹⁷, two orders of magnitude past what a JavaScript number holds
+  exactly. `node:sqlite` does not round it; it refuses the row outright, which
+  took the entire Messages source down with one throw. The epoch conversion now
+  happens inside SQL. Chromium's microseconds-since-1601 had the same problem.
+- **Mixed units in one column.** Messages switched from seconds to nanoseconds
+  in macOS 10.13 and did not migrate the old rows, so a single database holds
+  both.
+- **Sentinels.** A real calendar on the development machine has rows whose
+  `start_date` decodes to February 1604. `appleTime` rejects anything before
+  1990 or more than a decade out.
+
+Newer Messages rows leave `text` null and put the message in an
+`NSKeyedArchiver` blob; `decodeAttributedBody` scans it for its longest
+printable run, which is the message, because the rest of the archive is class
+names. Apple Notes stores each note as a gzipped protobuf, handled the same way.
+
+Passes are **bounded** — a few thousand items per source — so a first index of a
+decade of mail completes over several passes rather than in one twenty-minute
+stall, and can be interrupted without losing what it already did. A pass that
+returns less than a full batch has caught up, which is how "still indexing" ends
+with a real answer instead of a progress bar that never resolves.
+
+### 17.8 Understudy (`lib/understudy.ts`, `lib/voice-core.ts`)
+
+The measurements, not a description. Median sentence length, contraction rate
+against contraction *opportunities*, punctuation habits per thousand words,
+opener and closer phrases, and the words this person uses far more than baseline
+English. Those go into the prompt as numbers, and the draft is measured the same
+way afterwards and scored against them — so "sounds like me" becomes a diff
+rather than an opinion, and a draft that reads wrong has a named reason
+attached.
+
+Audiences are separate profiles. The same person writes to a client and to a
+friend differently, and one averaged voice is nobody's. An audience needs eight
+samples before it gets its own numbers; below that the profile would be built on
+a rounding error.
+
+The stylometry lives in `lib/voice-core.ts` — pure, no filesystem, no model, no
+network — following the same split as `index-core`, `health-core` and
+`trust-core`. That is what lets the browser build run the real measurements over
+a folder opened in a tab.
+
+**It has no network path.** Not "we don't train on it": there is no code in this
+module that opens a socket, and drafting refuses any provider that is not the
+local Ollama. The corpus is somebody's private mail and messages, and the only
+defensible design is one where it physically cannot go anywhere.
+
+### 17.9 Twin (`lib/twin.ts`)
+
+**What it watches:** files appearing, disappearing and moving inside folders you
+nominate, and which application is in front. That is all. There is no keylogger
+and there will not be — system-wide keyboard capture on macOS requires an
+accessibility hook that can read every password you type, and no pattern worth
+finding justifies building that.
+
+A move is an unlink and an add with the same basename inside five seconds; the
+filesystem does not report moves across directories and nothing else connects
+them. A delete is recorded only once its move window closes with no matching
+add, or every move would be logged twice.
+
+**An automation is a rule, not a script.** It would have been less code to have
+the model write shell and run it, and that would be a remote-code-execution
+feature with a friendly name: a background process executing model-authored
+shell against a home directory, where a hallucinated `rm` costs a folder. A rule
+is a trigger plus a short list of verbs this file implements — move, copy,
+sort-by-date — so it can be read in full before it runs, dry-run against real
+files, and undone afterwards. The model still writes the *sentence* describing
+it, which is the part it is good at.
+
+New rules start in dry-run: they report what they would do and move nothing
+until a person, having read a list of real files, decides otherwise. Runs are
+capped at fifty files, so a mistake is fifty files to undo rather than two
+thousand. `moveFile` falls back to copy-then-delete on `EXDEV`, because `rename`
+fails the moment the destination is on another volume — which is exactly where
+people file things.
+
+Pattern signatures are joined with the ASCII unit separator, not a space: the
+fields are paths, and `~/Documents/Client Work` would split into three.
+
+### 17.10 Chorus (`lib/chorus.ts`, `lib/chorus-providers.ts`)
+
+The only part of Lore that talks to the internet, isolated in one module for
+exactly that reason.
+
+Three rounds: independent answers in parallel, blind cross-critique, synthesis.
+
+**The critique round is blind.** Panelists see the other answers labelled "A",
+"B", "C" with no provider names attached, because a model told it is reviewing
+Claude behaves differently from one reviewing an unattributed answer.
+
+**The synthesis must name the split.** Its instruction says the disagreements
+are the most valuable output, and the UI pulls them out above the answer. On a
+hard question the disagreement between models is more informative than any
+single confident paragraph, and smoothing it away destroys the only advantage of
+having asked more than one.
+
+One panelist failing does not stop the debate — a panel of two is still a panel,
+and losing the whole run to one expired key is not acceptable. The chair is the
+first panelist that actually *answered*, not `panel[0]`, which on a run where
+the first provider's key had expired would hand the synthesis to a model that
+failed.
+
+**Keys** are read from the environment first, then from `~/.lore/chorus-keys.json`
+at mode 0600 — created with that mode *before* the key is written, because
+`writeFile`'s mode only applies when it creates the file and a pre-existing 0644
+would leave the key world-readable. No endpoint returns a key, a prefix, a
+length or a masked form. Provider error bodies are redacted before they reach a
+screen, because some shapes echo the request back.
+
+### 17.11 Prophet (`lib/prophet.ts`)
+
+The failure mode is not "it misses something", it is "it becomes noise". An
+agent that speaks when it has nothing to say gets muted within a week, and a
+muted agent is worth nothing.
+
+- Every card has a weight and the bar is high. Cards below it are computed,
+  stored and never shown.
+- Dismissing teaches it. Two dismissals of a kind halve its weight; six take it
+  near zero, which puts every card of that kind permanently under the bar.
+  Acting on one pulls it back.
+- Every card has a dedupe key, so the same meeting does not produce a new card
+  every three minutes. A dismissed card is never re-raised.
+- It has **no sources of its own**. Every card derives from an observer the user
+  already switched on, so the screen says which of them are live rather than
+  leaving a permanently empty board to be interpreted.
+
+Card kinds: meeting soon, meeting prep, gone quiet (median inter-contact gap
+exceeded threefold — median, not mean, because one three-month silence in a
+weekly correspondence would drag a mean far enough that nothing ever looks
+late), awaiting reply (only for people who normally *do* reply, and only past
+the time they normally take), monthly habit, a Twin pattern, and questions the
+wiki could not answer.
+
+### 17.12 Platforms
+
+| | Local server | Desktop app | Browser (`/web`) | Deployed site |
+| --- | --- | --- | --- | --- |
+| Ghost | ✓ | ✓ + hotkey | — | — |
+| Ledger | ✓ | ✓ | — | — |
+| Oracle | ✓ | ✓ | — | — |
+| Understudy | ✓ | ✓ + hotkey | measurement only | — |
+| Twin | ✓ | ✓ | — | — |
+| Chorus | ✓ | ✓ | — | — |
+| Prophet | ✓ | ✓ + notifications | — | — |
+
+The deployed site has no machine to observe and every filesystem route returns
+404 there; `detectCapabilities` short-circuits in site mode rather than
+reporting the *host's* capabilities as the visitor's.
+
+In a browser tab the five that cannot run say so with a designed screen naming
+what the feature does and why a page cannot do it — the browser's inability here
+is a security property, not a gap. Understudy is the exception: its measurements
+are pure arithmetic over pages the tab already has, so they run for real and
+only drafting needs the app.
+
+**Desktop additions.** The shell writes `~/.lore/desktop.json` with the
+screen-recording permission status, which is answerable only through
+`systemPreferences.getMediaAccessStatus` in the main process; the file is
+rewritten every launch, removed on quit, and treated as stale after a day.
+Global shortcuts are ⌘⇧G for Ghost and ⌘⇧D for Understudy — the two features
+whose value is being available while another application is in front —
+registered with the return value checked, because a shortcut another app already
+owns fails silently. A menu-bar item carries the pause switch, and Prophet's
+notifications are polled from the server so the threshold decision stays in one
+place.
+
+### 17.13 What is deliberately not built
+
+- **Keyboard and mouse capture.** Twin's pitch mentioned them. Building it means
+  an accessibility hook that reads every password typed on the machine.
+- **Model-authored shell scripts.** See 17.9.
+- **Ghost on Windows and Linux.** The capture path is `screencapture`; the
+  feature reports itself unsupported elsewhere rather than half-working.
+- **Cloud models for Understudy.** See 17.8.
+- **Reading Claude.ai and ChatGPT directly.** Those conversations live on a
+  server. Ledger reads their exports and says so, rather than listing them as
+  sources and quietly indexing nothing.
+
+---
+
+---
+
+## 18. Known limitations
 
 Stated plainly rather than discovered later.
 

@@ -13,6 +13,15 @@ export type LoreDesktopBridge = {
   chooseVaultFolder: () => Promise<string | null>;
   /** Folder chosen from the native menu. Returns an unsubscribe function. */
   onVaultFolderChosen: (handler: (folder: string) => void) => () => void;
+  /**
+   * The shell asking for a particular screen — a global hotkey, a menu-bar
+   * item, or a clicked Prophet notification. Returns an unsubscribe function.
+   *
+   * Optional because an older packaged build's preload will not have it, and a
+   * renderer that assumes it exists would throw on launch against that build
+   * rather than simply having no hotkeys.
+   */
+  onNavigate?: (handler: (view: string) => void) => () => void;
 };
 
 declare global {

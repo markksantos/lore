@@ -3,19 +3,25 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
+  Bell,
   Camera,
   Eye,
   BookText,
   ChevronRight,
   Compass,
+  History,
   MessageCircleQuestion,
   Newspaper,
   PanelLeft,
+  PenLine,
   Plug,
   Plus,
+  Scale,
   Search,
   Settings,
   ShieldCheck,
+  Telescope,
+  Wand2,
   X,
 } from "lucide-react";
 import type { SearchResult, VaultIndex } from "@/lib/types";
@@ -32,6 +38,13 @@ export const VIEW_LABEL: Record<View, string> = {
   brief: "Brief",
   ask: "Ask",
   wiki: "Wiki",
+  prophet: "Prophet",
+  ghost: "Ghost",
+  ledger: "Ledger",
+  oracle: "Oracle",
+  chorus: "Chorus",
+  understudy: "Understudy",
+  twin: "Twin",
   review: "Changes",
   watch: "Watch",
   timeline: "Timeline",
@@ -40,6 +53,46 @@ export const VIEW_LABEL: Record<View, string> = {
   connections: "Connections",
   settings: "Settings",
 };
+
+/**
+ * The nav has two halves and they mean different things.
+ *
+ * Everything above the rule reads your wiki. Everything below it observes this
+ * machine — your screen, your files, your correspondence — and every one of
+ * those is off until you switch it on. Mixing the two into one list would put
+ * "photographs your screen" one row below "Wiki" with nothing to mark the
+ * difference, and the difference is the most important thing on this screen.
+ */
+export const OBSERVER_VIEWS: View[] = [
+  "prophet",
+  "ghost",
+  "ledger",
+  "oracle",
+  "understudy",
+  "twin",
+  "chorus",
+];
+
+/**
+ * Order is an argument about what these are for.
+ *
+ * Prophet first because it is the only one that speaks without being opened.
+ * Ghost and Ledger next: both answer "what happened", which is the question
+ * people actually arrive with. Oracle and Understudy are tools you go to
+ * deliberately. Twin is a background arrangement you check on. Chorus is last
+ * because it is the only one that is not about this machine at all — it is a
+ * way of asking a hard question, and it happens to live here because nothing
+ * else in the app convenes models.
+ */
+const OBSERVER_NAV: { id: View; icon: typeof BookText }[] = [
+  { id: "prophet", icon: Bell },
+  { id: "ghost", icon: Telescope },
+  { id: "ledger", icon: History },
+  { id: "oracle", icon: Search },
+  { id: "understudy", icon: PenLine },
+  { id: "twin", icon: Wand2 },
+  { id: "chorus", icon: Scale },
+];
 
 /**
  * Order is the product's opinion about what this app is for.
@@ -113,6 +166,40 @@ export function Sidebar({
   onCreated: (relPath: string) => void;
 }) {
   const { closeDrawer, collapsed, toggleCollapsed } = useShell();
+  /*
+   * Which observers are currently running.
+   *
+   * Polled rather than passed down: the answer changes without any user action
+   * — a pause expires, quiet hours begin — and a sidebar showing a stale green
+   * dot beside "Ghost" would be the most misleading pixel in the application.
+   */
+  const [running, setRunning] = useState<View[]>([]);
+  useEffect(() => {
+    let alive = true;
+    const check = async () => {
+      try {
+        const response = await fetch("/api/observers", { signal: AbortSignal.timeout(8_000) });
+        if (!response.ok) return;
+        const body = (await response.json()) as {
+          observers?: { id: string; enabled: boolean; blockedBecause: string | null }[];
+        };
+        if (!alive) return;
+        setRunning(
+          (body.observers ?? [])
+            .filter((observer) => observer.enabled && !observer.blockedBecause)
+            .map((observer) => observer.id as View),
+        );
+      } catch {
+        /* The dots are decoration; a failure just means none are shown. */
+      }
+    };
+    void check();
+    const timer = setInterval(check, 30_000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, []);
   const [creating, setCreating] = useState(false);
   const [filter, setFilter] = useState("");
   /* Only the top level opens by default. On a real vault the tree is 262
@@ -258,6 +345,59 @@ export function Sidebar({
           );
         })}
       </nav>
+
+      {/*
+        * The observers, behind a rule and a label.
+        *
+        * Not a second-class section — Ghost and Oracle are the largest features
+        * in the product. The separation is about what they touch: these read
+        * this machine rather than the wiki, so they are grouped under a heading
+        * that says exactly that, and a dot marks the ones currently running.
+        */}
+      <div className={cn("mt-3 border-t border-[var(--lore-border)] pt-3", collapsed ? "px-2" : "px-3")}>
+        {collapsed ? null : (
+          <p className="mb-1 px-2.5 text-[10px] font-semibold uppercase tracking-[0.09em] text-[var(--lore-text-tertiary)]">
+            This machine
+          </p>
+        )}
+        <nav className="space-y-0.5">
+          {OBSERVER_NAV.map((item) => {
+            const Icon = item.icon;
+            const live = running.includes(item.id);
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => {
+                  onView(item.id);
+                  closeDrawer();
+                }}
+                title={collapsed ? VIEW_LABEL[item.id] : undefined}
+                className={cn(
+                  "flex min-h-11 w-full items-center rounded-lg text-[13.5px] transition-colors md:min-h-0",
+                  collapsed ? "justify-center px-0 py-2" : "gap-2.5 px-2.5 py-2",
+                  view === item.id
+                    ? "bg-[var(--lore-surface-raised)] font-medium text-[var(--lore-text-primary)]"
+                    : "text-[var(--lore-text-secondary)] hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)]",
+                )}
+              >
+                <Icon size={15} className="opacity-80" />
+                {collapsed ? null : <span className="min-w-0 flex-1 text-left">{VIEW_LABEL[item.id]}</span>}
+                {/* A dot, not a count. It says "this is observing right now",
+                    which is the one thing a person needs to be able to see
+                    without opening anything. */}
+                {live ? (
+                  <span
+                    aria-label="running"
+                    title="Running"
+                    className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--lore-success)]"
+                  />
+                ) : null}
+              </button>
+            );
+          })}
+        </nav>
+      </div>
 
       {/* Search, the folder tree and the footer are all prose-width. None of
           them has an honest 3.5rem form, so the rail drops them rather than

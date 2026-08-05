@@ -17,11 +17,24 @@
  *     clean quit, crash, signal — kills the child.
  */
 
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require("electron");
+const {
+  app,
+  BrowserWindow,
+  Menu,
+  Notification,
+  Tray,
+  dialog,
+  globalShortcut,
+  ipcMain,
+  nativeImage,
+  shell,
+  systemPreferences,
+} = require("electron");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const http = require("node:http");
 const net = require("node:net");
+const os = require("node:os");
 const path = require("node:path");
 
 const HOST = "127.0.0.1";
@@ -41,6 +54,18 @@ const READY_POLL_MS = 150;
 
 const CHOOSE_VAULT_CHANNEL = "lore:choose-vault-folder";
 const VAULT_CHOSEN_CHANNEL = "lore:vault-folder-chosen";
+const NAVIGATE_CHANNEL = "lore:navigate";
+
+/** Where the shell records what only it can know. See lib/capabilities.ts. */
+const DESKTOP_FACTS = path.join(os.homedir(), ".lore", "desktop.json");
+
+/** How often Prophet is asked whether it has anything worth interrupting for. */
+const PROPHET_POLL_MS = 60_000;
+
+/** @type {Tray | null} */
+let tray = null;
+/** @type {NodeJS.Timeout | null} */
+let prophetTimer = null;
 
 /** @type {import("node:child_process").ChildProcess | null} */
 let serverProcess = null;
@@ -300,6 +325,380 @@ async function chooseVaultFromMenu() {
 }
 
 // ---------------------------------------------------------------------------
+// What only the shell knows
+// ---------------------------------------------------------------------------
+
+/**
+ * Tell the server what it cannot find out for itself.
+ *
+ * Screen-recording permission is answerable only through
+ * `systemPreferences.getMediaAccessStatus`, which exists in this process and
+ * not in the Next server running as a child. Rather than build an IPC channel
+ * across two process boundaries for two strings, the shell writes them to a
+ * file that lib/capabilities.ts reads.
+ *
+ * Rewritten on every launch, and treated as stale after a day — otherwise a
+ * desktop session three weeks ago would convince a browser session today that
+ * it has global hotkeys.
+ */
+function writeDesktopFacts() {
+  let screenAccess = "unknown";
+  let accessibility = false;
+  try {
+    if (process.platform === "darwin") {
+      screenAccess = systemPreferences.getMediaAccessStatus("screen");
+      // `false` as the argument means "do not show the prompt". Asking on every
+      // launch would put a system dialog in front of someone who only wanted to
+      // read their wiki.
+      accessibility = systemPreferences.isTrustedAccessibilityClient(false);
+    }
+  } catch {
+    // An unsupported platform or a future rename. Unknown is the honest answer.
+  }
+
+  try {
+    fs.mkdirSync(path.dirname(DESKTOP_FACTS), { recursive: true, mode: 0o700 });
+    fs.writeFileSync(
+      DESKTOP_FACTS,
+      JSON.stringify(
+        {
+          version: app.getVersion(),
+          platform: process.platform,
+          screenAccess,
+          accessibility,
+          writtenAt: Date.now(),
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+  } catch {
+    // The server falls back to probing. Nothing here is worth failing a launch.
+  }
+}
+
+/** Remove the file on quit, so a stale one cannot outlive the app. */
+function clearDesktopFacts() {
+  try {
+    fs.rmSync(DESKTOP_FACTS, { force: true });
+  } catch {
+    // Nothing to do; the timestamp check covers it.
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Talking to the local server
+// ---------------------------------------------------------------------------
+
+/**
+ * A small JSON request to Lore's own server.
+ *
+ * The shell needs this for exactly one thing — asking Prophet whether it has
+ * anything to say — and a dependency-free forty lines beats adding an HTTP
+ * client to a process that otherwise has none.
+ *
+ * @param {string} pathname
+ * @param {unknown} [body] POST when present, GET when not.
+ * @returns {Promise<any | null>}
+ */
+function askServer(pathname, body) {
+  return new Promise((resolve) => {
+    if (!serverPort) {
+      resolve(null);
+      return;
+    }
+    const payload = body === undefined ? null : Buffer.from(JSON.stringify(body));
+    const request = http.request(
+      {
+        host: HOST,
+        port: serverPort,
+        path: pathname,
+        method: payload ? "POST" : "GET",
+        timeout: 10_000,
+        headers: payload
+          ? { "content-type": "application/json", "content-length": payload.length }
+          : {},
+      },
+      (response) => {
+        let text = "";
+        response.setEncoding("utf8");
+        response.on("data", (chunk) => {
+          text += chunk;
+        });
+        response.on("end", () => {
+          try {
+            resolve(JSON.parse(text));
+          } catch {
+            resolve(null);
+          }
+        });
+      },
+    );
+    request.on("timeout", () => request.destroy());
+    request.on("error", () => resolve(null));
+    if (payload) request.write(payload);
+    request.end();
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Showing a screen
+// ---------------------------------------------------------------------------
+
+/**
+ * Every screen a hotkey, tray item or notification may open.
+ *
+ * An allowlist rather than a free string: this value crosses into the renderer
+ * and becomes a view name, and "the shell can only ask for one of these seven"
+ * is a much easier property to hold than "nothing malformed ever reaches the
+ * router".
+ */
+const NAVIGABLE = [
+  "brief",
+  "ask",
+  "wiki",
+  "prophet",
+  "ghost",
+  "ledger",
+  "oracle",
+  "chorus",
+  "understudy",
+  "twin",
+  "settings",
+];
+
+/**
+ * Bring the window forward and show one screen.
+ *
+ * Creates the window if the last one was closed — on macOS the app outlives its
+ * windows, and a hotkey that silently does nothing because you closed the
+ * window is a hotkey people stop trusting.
+ */
+async function showView(view) {
+  if (!NAVIGABLE.includes(view)) return;
+  try {
+    await ensureServer();
+  } catch (error) {
+    fatal(error);
+    return;
+  }
+  let window = mainWindow;
+  if (!window || window.isDestroyed()) window = createWindow();
+  if (window.isMinimized()) window.restore();
+  window.show();
+  window.focus();
+  app.focus({ steal: true });
+  /* Sent on every call, including the one that just created the window: the
+     renderer buffers nothing, so a message sent before the page has attached
+     its listener is lost. `did-finish-load` is the only moment it is certainly
+     listening. */
+  if (window.webContents.isLoading()) {
+    window.webContents.once("did-finish-load", () => {
+      window.webContents.send(NAVIGATE_CHANNEL, view);
+    });
+  } else {
+    window.webContents.send(NAVIGATE_CHANNEL, view);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Global hotkeys
+// ---------------------------------------------------------------------------
+
+/**
+ * Two shortcuts, chosen to be reachable and unclaimed.
+ *
+ * Ghost and Understudy are the two features whose entire value is that they are
+ * available while you are inside another application — "what was that error"
+ * and "draft this the way I would" are both asked with something else in front.
+ * Everything else in Lore is a place you go.
+ *
+ * Registration is checked, not assumed: `register` returns false when another
+ * application already owns the combination, and a shortcut that silently failed
+ * to bind is indistinguishable from a broken feature.
+ */
+const SHORTCUTS = [
+  { accelerator: "CommandOrControl+Shift+G", view: "ghost", label: "Ask Ghost" },
+  { accelerator: "CommandOrControl+Shift+D", view: "understudy", label: "Draft in my voice" },
+];
+
+function registerShortcuts() {
+  for (const shortcut of SHORTCUTS) {
+    try {
+      const ok = globalShortcut.register(shortcut.accelerator, () => {
+        void showView(shortcut.view);
+      });
+      shortcut.registered = ok;
+      if (!ok) {
+        console.warn(`[lore] ${shortcut.accelerator} is already taken; ${shortcut.label} has no hotkey.`);
+      }
+    } catch {
+      shortcut.registered = false;
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Menu bar item
+// ---------------------------------------------------------------------------
+
+/**
+ * The pause switch, one click from anywhere.
+ *
+ * Six features can be watching this machine, and the moment you need them to
+ * stop — a screen share, a client's password on screen, a call you would rather
+ * not have described — is the moment you cannot spend finding a settings
+ * screen. So it lives in the menu bar, it stops everything at once, and the
+ * icon says which state it is in.
+ */
+function trayIcon(paused) {
+  /*
+   * Drawn here rather than shipped as an asset. A template image on macOS is
+   * pure alpha — the system recolours it for light and dark menu bars — so this
+   * is a 16×16 circle: filled when observing, hollow when paused. Two files
+   * saved, and no chance of the packaged build missing them.
+   */
+  const size = 16;
+  const buffer = Buffer.alloc(size * size * 4, 0);
+  const centre = (size - 1) / 2;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const distance = Math.hypot(x - centre, y - centre);
+      const inside = distance <= 6.2;
+      const onRing = inside && distance >= 4.4;
+      const lit = paused ? onRing : inside;
+      if (!lit) continue;
+      const offset = (y * size + x) * 4;
+      /* Electron's BGRA order. Fully opaque black; macOS inverts a template
+         image for dark menu bars, so the colour here is only its silhouette. */
+      buffer[offset + 3] = 255;
+    }
+  }
+  const image = nativeImage.createFromBuffer(buffer, { width: size, height: size });
+  image.setTemplateImage(true);
+  return image;
+}
+
+async function pauseObservers(minutes) {
+  await askServer("/api/observers", { action: "pause", minutes });
+  await refreshTray();
+}
+
+async function refreshTray() {
+  if (!tray) return;
+  const state = await askServer("/api/observers");
+  const observers = state && Array.isArray(state.observers) ? state.observers : [];
+  const on = observers.filter((observer) => observer.enabled);
+  const pausedUntil = state ? state.pausedUntil : null;
+  const paused = Boolean(pausedUntil && pausedUntil > Date.now());
+
+  tray.setImage(trayIcon(paused));
+  tray.setToolTip(
+    paused
+      ? "Lore — everything paused"
+      : on.length
+        ? `Lore — ${on.length} observer${on.length === 1 ? "" : "s"} running`
+        : "Lore",
+  );
+
+  const items = [
+    {
+      label: paused
+        ? `Paused until ${new Date(pausedUntil).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+        : on.length
+          ? `Watching: ${on.map((observer) => observer.label).join(", ")}`
+          : "Nothing is watching",
+      enabled: false,
+    },
+    { type: "separator" },
+  ];
+
+  if (paused) {
+    items.push({ label: "Resume everything", click: () => void pauseObservers(0) });
+  } else {
+    items.push(
+      { label: "Pause for 15 minutes", click: () => void pauseObservers(15) },
+      { label: "Pause for an hour", click: () => void pauseObservers(60) },
+      { label: "Pause until tomorrow", click: () => void pauseObservers(12 * 60) },
+    );
+  }
+
+  items.push(
+    { type: "separator" },
+    { label: "Ask Ghost", accelerator: "CommandOrControl+Shift+G", click: () => void showView("ghost") },
+    { label: "Draft in my voice", accelerator: "CommandOrControl+Shift+D", click: () => void showView("understudy") },
+    { label: "What Prophet has", click: () => void showView("prophet") },
+    { type: "separator" },
+    { label: "Open Lore", click: () => void showView("brief") },
+    { label: "Quit Lore", click: () => app.quit() },
+  );
+
+  tray.setContextMenu(Menu.buildFromTemplate(items));
+}
+
+function createTray() {
+  if (tray) return;
+  try {
+    tray = new Tray(trayIcon(false));
+    tray.on("click", () => void refreshTray());
+    void refreshTray();
+  } catch {
+    /* A platform with no tray. The app is fully usable without it. */
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Prophet notifications
+// ---------------------------------------------------------------------------
+
+/**
+ * Ask Prophet whether anything is worth interrupting for.
+ *
+ * The threshold lives on the server (Prophet's own `notifyAbove`), so this
+ * process makes no judgement about what is important — it posts what it is
+ * handed and immediately tells the server it was posted, so the same card can
+ * never be announced twice.
+ */
+async function checkProphet() {
+  if (!Notification.isSupported()) return;
+  const result = await askServer("/api/prophet?view=notifications");
+  const cards = result && Array.isArray(result.cards) ? result.cards : [];
+  if (!cards.length) return;
+
+  const announced = [];
+  for (const card of cards.slice(0, 2)) {
+    try {
+      const notification = new Notification({
+        title: card.title,
+        body: card.body || "",
+        silent: false,
+      });
+      notification.on("click", () => void showView("prophet"));
+      notification.show();
+      announced.push(card.id);
+    } catch {
+      /* A failed notification must not stop the others, or the polling. */
+    }
+  }
+  if (announced.length) {
+    await askServer("/api/prophet", { action: "notified", ids: announced });
+  }
+  await refreshTray();
+}
+
+function startProphetPolling() {
+  if (prophetTimer) return;
+  prophetTimer = setInterval(() => void checkProphet(), PROPHET_POLL_MS);
+  prophetTimer.unref?.();
+}
+
+function stopProphetPolling() {
+  if (prophetTimer) clearInterval(prophetTimer);
+  prophetTimer = null;
+}
+
+// ---------------------------------------------------------------------------
 // Menu
 // ---------------------------------------------------------------------------
 
@@ -326,6 +725,39 @@ function buildMenu() {
       ],
     },
     { role: "editMenu" },
+    {
+      label: "Go",
+      submenu: [
+        { label: "Brief", click: () => void showView("brief") },
+        { label: "Ask the wiki", click: () => void showView("ask") },
+        { type: "separator" },
+        {
+          label: "Ask Ghost",
+          accelerator: "CommandOrControl+Shift+G",
+          click: () => void showView("ghost"),
+        },
+        {
+          label: "Draft in my voice",
+          accelerator: "CommandOrControl+Shift+D",
+          click: () => void showView("understudy"),
+        },
+        { label: "Prophet", click: () => void showView("prophet") },
+        { label: "Ledger", click: () => void showView("ledger") },
+        { label: "Oracle", click: () => void showView("oracle") },
+        { label: "Chorus", click: () => void showView("chorus") },
+        { label: "Twin", click: () => void showView("twin") },
+      ],
+    },
+    {
+      label: "Privacy",
+      submenu: [
+        { label: "Pause everything for 15 minutes", click: () => void pauseObservers(15) },
+        { label: "Pause everything for an hour", click: () => void pauseObservers(60) },
+        { label: "Resume everything", click: () => void pauseObservers(0) },
+        { type: "separator" },
+        { label: "What is watching…", click: () => void showView("settings") },
+      ],
+    },
     { role: "viewMenu" },
     { role: "windowMenu" },
   ];
@@ -350,6 +782,10 @@ function main() {
   });
 
   app.whenReady().then(async () => {
+    /* Written before the server starts, because the server reads it during its
+       own boot — a warm-up that runs first would see no file and conclude this
+       is a browser session with no screen-recording permission. */
+    writeDesktopFacts();
     Menu.setApplicationMenu(buildMenu());
     try {
       await ensureServer();
@@ -358,14 +794,25 @@ function main() {
       return;
     }
     createWindow();
+    registerShortcuts();
+    createTray();
+    startProphetPolling();
   });
 
   app.on("window-all-closed", () => {
-    // Nothing is left to serve, so the child dies with the last window instead
-    // of sitting on the port. On macOS the app itself stays alive and 'activate'
-    // boots the server again before re-opening the window.
-    stopServer();
-    if (process.platform !== "darwin") app.quit();
+    /*
+     * On macOS the app stays alive with no windows, and that is what makes the
+     * hotkeys and the menu-bar pause switch worth having — closing the window
+     * should not stop Ghost mid-afternoon. So the server keeps running there.
+     *
+     * Everywhere else there is no equivalent affordance: the last window
+     * closing means the app is finished, so the child dies with it rather than
+     * sitting on the port with nothing able to reach it.
+     */
+    if (process.platform !== "darwin") {
+      stopServer();
+      app.quit();
+    }
   });
 
   app.on("activate", async () => {
@@ -381,16 +828,26 @@ function main() {
 
   app.on("before-quit", () => {
     quitting = true;
+    stopProphetPolling();
+    globalShortcut.unregisterAll();
+    /* The facts file says "a desktop shell is running and here is what it can
+       do". Leaving it behind would make a later browser session believe it has
+       global hotkeys it does not have. */
+    clearDesktopFacts();
     stopServer();
   });
 
   // Last resort. If the main process is killed or throws its way out, no
   // Electron event fires — but these do, and an orphan holding 4646 is the
   // failure the next launch would inherit.
-  process.on("exit", () => stopServer({ immediate: true }));
+  process.on("exit", () => {
+    clearDesktopFacts();
+    stopServer({ immediate: true });
+  });
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
     process.on(signal, () => {
       quitting = true;
+      clearDesktopFacts();
       stopServer({ immediate: true });
       process.exit(0);
     });

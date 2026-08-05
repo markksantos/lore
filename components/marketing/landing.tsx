@@ -13,6 +13,7 @@ import {
 import { SceneryImage } from "@/components/marketing/scenery-image";
 import { MarketingFooter, MarketingHeader } from "@/components/marketing/site-chrome";
 import { HeroSimulator } from "@/components/marketing/hero-simulator";
+import { MachineSection } from "@/components/marketing/machine-section";
 import {
   WriteFeedDemo,
   GapsDemo,
@@ -63,6 +64,11 @@ export function Landing({
       <WhyNotJustAsk />
       <Measured />
       <HowItWorks />
+      {/* The observers sit after "how it works" and before the compatibility
+          wall. They are the larger promise, so they come once the reader has
+          seen the smaller one delivered — and before the section that asks them
+          to install anything. */}
+      <MachineSection />
       <Stack logos={logos} />
       <Steps siteMode={siteMode} />
       <Faq />
