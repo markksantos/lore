@@ -86,6 +86,7 @@ type TwinState = {
   proposals: Proposal[];
   automations: Automation[];
   actions: Action[];
+  undoable: number;
   enabled: boolean;
   running: boolean;
   blockedBecause: string | null;
@@ -361,18 +362,12 @@ export function TwinView() {
           title="What Twin actually did"
           hint="Every real move, with the button that puts it back."
           right={
-            <Button
-              busy={busy === "undo"}
-              onClick={() =>
-                void act("undo", {
-                  ids: state.actions
-                    .filter((action) => action.dryRun === 0 && action.ok === 1 && action.undone === 0)
-                    .map((action) => action.id),
-                })
-              }
-            >
+            /* The server decides what "all" means. Building the list from the
+               rows on screen meant a run that moved fifty files could be undone
+               twenty at a time, silently. */
+            <Button busy={busy === "undo"} onClick={() => void act("undo", { all: true })}>
               <RotateCcw size={12} />
-              Undo all of it
+              Undo all {state.undoable} of them
             </Button>
           }
         >

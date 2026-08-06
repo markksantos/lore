@@ -88,15 +88,19 @@ pauses all of them at once.
 | **Understudy** | Measures how you actually write — median sentence length, contraction rate, the words you reach for — and drafts in that. Scores the draft against you afterwards. Never leaves the machine. |
 | **Twin** | Notices the filing you repeat and offers to take it over, as a rule you read before it runs, dry-run first, undoable after. |
 | **Chorus** | Several models answer, critique each other blind, then one writes the verdict — and names what the panel could not agree on. |
-| **Prophet** | Speaks first, and only when it has something. Your call is in twenty minutes; here is what was left open last time. Wave a card away twice and that kind stops appearing. |
+| **Prophet** | Speaks first, and only when it has something. Your call is in twenty minutes; here is what was left open last time. Waving a card away halves how loudly that kind can speak; do it a few times and it stops appearing. |
 
 **The promises, in code rather than in words.** Consent is one file
 (`lib/observers.ts`) that every observer asks before doing anything, checked per
 tick so pausing takes effect immediately. Password managers are skipped *before*
 the screenshot is taken, not filtered after. Extracted text runs through the
 same secret scrubber the rest of Lore uses. Every index is a file you can
-delete, and the delete button removes the write-ahead log too. Chorus is the
-only module in the project that opens a socket to the internet.
+delete, and the delete button removes the write-ahead log too. Chorus is the only
+part of Lore that sends anything you wrote to a company that is not you — and it
+sends the question you typed, to providers whose keys you supplied. (Two other
+places reach the network at all, both on your explicit instruction: enriching a
+link you pasted fetches that link, and an outgoing webhook posts where you told
+it to.)
 
 Ghost, Ledger, Oracle, Twin and Prophet need the app — a web page cannot
 photograph your screen or read your mail, which is the browser working

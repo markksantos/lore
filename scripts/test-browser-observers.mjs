@@ -81,10 +81,23 @@ try {
   const observers = await (await fetch("http://localhost/api/observers")).json();
   check("/api/observers answers rather than refusing", Array.isArray(observers.observers));
   check("it lists all six", observers.observers.length === 6);
-  check("all six are off", observers.observers.every((o) => o.enabled === false));
+  /*
+   * Five off, one on — and the one that is on is the one that really runs.
+   *
+   * The two halves of the browser build disagreed about this: /api/understudy
+   * returned a real profile measured from the open folder while this summary
+   * reported Understudy off and unable to run. This summary is what the privacy
+   * panel renders, so it is the one that has to be right.
+   */
+  const off = observers.observers.filter((o) => !o.enabled);
+  const on = observers.observers.filter((o) => o.enabled);
+  check("five cannot run in a tab", off.length === 5);
+  check("each of those says why", off.every((o) => /browser tab/i.test(o.blockedBecause ?? "")));
+  check("Understudy is the one that does run", on.length === 1 && on[0].id === "understudy");
+  check("and it is not marked as blocked", on[0].blockedBecause === null);
   check(
-    "each says why it cannot run here",
-    observers.observers.every((o) => /browser tab/i.test(o.blockedBecause ?? "")),
+    "its description is the browser one, not the desktop one",
+    /folder you opened/i.test(on[0].reads),
   );
   check("the daemon is reported as not started", observers.daemon.started === false);
 

@@ -61,8 +61,19 @@ export type VoiceProfile = {
  * length, which is the single most load-bearing number in the profile.
  */
 export function splitSentences(text: string): string[] {
+  /*
+   * Two lists, because three of these are also ordinary words.
+   *
+   * The guard ran case-insensitively over everything, so a sentence ending
+   * "…and the answer was no." had its full stop protected and was joined to the
+   * next one — verified: three sentences measured as two, which pulls the
+   * median sentence length up for anybody who writes short declaratives. "No",
+   * "Co" and "St" are only abbreviations when capitalised mid-sentence, so they
+   * are matched case-SENSITIVELY and the rest are not.
+   */
   const guarded = text
-    .replace(/\b(Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc|e\.g|i\.e|approx|Inc|Ltd|Co|No)\.\s/gi, "$1<DOT> ")
+    .replace(/\b(Mr|Mrs|Ms|Dr|Prof|Sr|Jr|vs|etc|e\.g|i\.e|approx|Inc|Ltd)\.\s/gi, "$1<DOT> ")
+    .replace(/\b(St|Co|No)\.\s/g, "$1<DOT> ")
     .replace(/\b([A-Z])\.\s?(?=[A-Z]\.)/g, "$1<DOT>")
     .replace(/(\d)\.(\d)/g, "$1<DOT>$2");
   return guarded

@@ -265,7 +265,22 @@ export function ConsentSwitch({
         type="button"
         role="switch"
         aria-checked={enabled}
-        aria-label={`${label}: ${enabled ? "on" : "off"}`}
+        /*
+         * The name is the thing, not the state. `aria-checked` already carries
+         * on/off and a screen reader announces both — putting the state in the
+         * name too means hearing it twice, and the second one goes stale the
+         * instant it is pressed.
+         *
+         * `aria-describedby` is what makes this switch informed consent rather
+         * than a labelled toggle: the sentence saying what it reads, the reason
+         * it cannot run, and the line about staying on the machine are all read
+         * out with it. That privacy paragraph already had an id and nothing
+         * referenced it.
+         */
+        aria-label={label}
+        aria-describedby={[`${id}-reads`, blockedBecause ? `${id}-blocked` : null, `${id}-privacy`]
+          .filter(Boolean)
+          .join(" ")}
         disabled={busy}
         onClick={async () => {
           setBusy(true);
@@ -298,9 +313,13 @@ export function ConsentSwitch({
               : "off"}
           </span>
         </div>
-        <p className="t-body mt-1 text-[var(--lore-text-secondary)]">{reads}</p>
+        <p id={`${id}-reads`} className="t-body mt-1 text-[var(--lore-text-secondary)]">
+          {reads}
+        </p>
         {blockedBecause ? (
-          <p className="t-meta mt-1.5 text-[var(--lore-text-tertiary)]">{blockedBecause}</p>
+          <p id={`${id}-blocked`} className="t-meta mt-1.5 text-[var(--lore-text-tertiary)]">
+            {blockedBecause}
+          </p>
         ) : null}
         <p className="t-meta mt-1.5 text-[var(--lore-text-tertiary)]" id={`${id}-privacy`}>
           Stays on this machine. Nothing is uploaded.

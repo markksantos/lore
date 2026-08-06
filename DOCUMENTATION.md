@@ -1215,8 +1215,15 @@ fields are paths, and `~/Documents/Client Work` would split into three.
 
 ### 17.10 Chorus (`lib/chorus.ts`, `lib/chorus-providers.ts`)
 
-The only part of Lore that talks to the internet, isolated in one module for
-exactly that reason.
+The only part of Lore that sends your words to a company that is not you,
+isolated in one module for exactly that reason.
+
+Precisely, because the stronger claim is the one that was written here first and
+it was wrong: `lib/enrich.ts` fetches a URL you pasted in order to title it, and
+`lib/collab.ts` posts to a webhook you configured. Both are network calls, both
+happen only on something you did, and neither carries the contents of your wiki.
+Chorus is different in kind — it is the one place where something you wrote is
+handed to a third-party model — and that is the claim worth making.
 
 Three rounds: independent answers in parallel, blind cross-critique, synthesis.
 

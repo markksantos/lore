@@ -219,6 +219,7 @@ export function OracleView() {
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
+              aria-label="Search your files, mail, messages and calendar"
               placeholder="When did I first talk to someone about that project?"
               className="w-full rounded-lg border border-[var(--lore-border)] bg-[var(--lore-background)] py-2.5 pl-9 pr-3 text-[16px] text-[var(--lore-text-primary)] outline-none placeholder:text-[var(--lore-text-tertiary)] focus:border-[var(--lore-accent)] md:text-[14px]"
             />

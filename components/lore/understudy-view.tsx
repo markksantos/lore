@@ -231,6 +231,7 @@ export function UnderstudyView() {
           profile?.byAudience.length ? (
             <select
               value={audience ?? ""}
+              aria-label="Which voice to write in"
               onChange={(event) => setAudience(event.target.value || null)}
               className="rounded-lg border border-[var(--lore-border)] bg-[var(--lore-background)] px-2 py-1.5 text-[12.5px] text-[var(--lore-text-primary)] outline-none focus:border-[var(--lore-accent)]"
             >
@@ -251,6 +252,7 @@ export function UnderstudyView() {
             if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) void write();
           }}
           rows={3}
+          aria-label="What to write"
           placeholder="Tell the client the revision is done and ask if they want the alternate cut."
           disabled={!hasVoice}
           className="w-full resize-y rounded-lg border border-[var(--lore-border)] bg-[var(--lore-background)] px-3 py-2.5 text-[16px] leading-relaxed text-[var(--lore-text-primary)] outline-none placeholder:text-[var(--lore-text-tertiary)] focus:border-[var(--lore-accent)] disabled:opacity-50 md:text-[14px]"
@@ -298,6 +300,24 @@ export function UnderstudyView() {
               </Button>
               {result.match != null ? <VoiceMatch match={result.match} /> : null}
             </div>
+
+            {result.exemplars?.length ? (
+              <details className="mt-2">
+                <summary className="t-meta cursor-pointer text-[var(--lore-text-tertiary)]">
+                  The {result.exemplars.length} things of yours it was shown
+                </summary>
+                <div className="mt-1.5 space-y-1.5">
+                  {result.exemplars.map((sample, i) => (
+                    <p
+                      key={i}
+                      className="line-clamp-3 rounded-lg border border-[var(--lore-border)] px-2.5 py-1.5 text-[12px] leading-snug text-[var(--lore-text-tertiary)]"
+                    >
+                      {sample.text}
+                    </p>
+                  ))}
+                </div>
+              </details>
+            ) : null}
 
             {result.deviations.length ? (
               <div className="mt-2 rounded-lg border border-[var(--lore-border)] px-3 py-2">
@@ -372,7 +392,11 @@ export function UnderstudyView() {
           {showProfile && state.brief ? (
             <div className="mt-3 rounded-lg border border-[var(--lore-border)] bg-[var(--lore-surface-raised)] p-3">
               <p className="t-meta text-[var(--lore-text-tertiary)]">
-                Exactly what the model is told about you — no more, no less.
+                {/* "No more, no less" was false: the prompt also carries four
+                    of your own samples verbatim, which is a bigger disclosure
+                    than the numbers and was the part not being disclosed. */}
+                The measurements the model is given. It is also shown four things you actually
+                wrote, chosen for similarity to what you are asking for.
               </p>
               <pre className="mt-1.5 whitespace-pre-wrap font-sans text-[12.5px] leading-relaxed text-[var(--lore-text-secondary)]">
                 {state.brief}

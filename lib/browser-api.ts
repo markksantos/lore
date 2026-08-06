@@ -460,15 +460,29 @@ async function handle(url: URL, init?: RequestInit): Promise<Response | null> {
     ];
     return json({
       browser: true,
-      observers: OBSERVERS.map(([id, label, reads]) => ({
-        id,
-        label,
-        reads,
-        enabled: false,
-        enabledAt: null,
-        blockedBecause: "A browser tab cannot observe this machine. The Lore app can.",
-        jobs: [],
-      })),
+      observers: OBSERVERS.map(([id, label, reads]) => {
+        /*
+         * Understudy really does run here, so this list must not say it does
+         * not. The two halves disagreed: /api/understudy returned a real
+         * profile measured from the open folder while this summary reported it
+         * off and unable to run — and this summary is what the privacy panel
+         * shows, which makes it the one that has to be right.
+         */
+        const worksHere = id === "understudy";
+        return {
+          id,
+          label,
+          reads: worksHere
+            ? "Measures how you write, from the pages in the folder you opened. Nothing is uploaded and nothing is stored."
+            : reads,
+          enabled: worksHere,
+          enabledAt: null,
+          blockedBecause: worksHere
+            ? null
+            : "A browser tab cannot observe this machine. The Lore app can.",
+          jobs: [],
+        };
+      }),
       pausedUntil: null,
       quietHours: null,
       daemon: { started: false, jobs: 0 },

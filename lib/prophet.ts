@@ -34,10 +34,16 @@ import { getIndex } from "@/lib/wiki";
  *   NOTHING REPEATS. Every card has a dedupe key, so the same meeting does not
  *   produce a new card every ten minutes.
  *
- *   IT ONLY KNOWS WHAT IT WAS SHOWN. Prophet has no sources of its own. Every
- *   card is derived from an observer the user already switched on, so turning
- *   Oracle off silently removes half of what Prophet can say — which is right,
- *   and is stated in the UI rather than left to be discovered.
+ *   IT ALMOST ONLY KNOWS WHAT IT WAS SHOWN. Nearly every card is derived from
+ *   an observer the user already switched on, so turning Oracle off removes
+ *   half of what Prophet can say — which is right, and is stated in the UI
+ *   rather than left to be discovered.
+ *
+ *   The exception is the calendar, which `upcomingEvents` reads directly. That
+ *   is deliberate: a meeting reminder that only works once you have also set up
+ *   a full-text index of your mail is a reminder nobody gets. It is an
+ *   exception rather than a rule, and the UI names it rather than repeating the
+ *   cleaner claim that was here first.
  */
 
 export type CardKind =
@@ -90,20 +96,34 @@ export const DEFAULT_PROPHET: ProphetConfig = {
 const DIR = path.join(os.homedir(), ".lore", "prophet");
 const CONFIG_FILE = path.join(DIR, "config.json");
 
+/** A 0-1 setting, where a missing value must fall back and a deliberate 0 must not. */
+function clampRatio(value: unknown, fallback: number): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(1, Math.max(0, n));
+}
+
 export async function readProphetConfig(): Promise<ProphetConfig> {
   const raw = await fs.readFile(CONFIG_FILE, "utf8").catch(() => "");
   if (!raw) return DEFAULT_PROPHET;
   try {
     const parsed = JSON.parse(raw) as Partial<ProphetConfig>;
     return {
-      bar: Math.min(0.95, Math.max(0, Number(parsed.bar) ?? DEFAULT_PROPHET.bar)),
+      /*
+       * `Number(undefined)` is NaN, not undefined, so `??` never fired and a
+       * config without `bar` produced a threshold of NaN — against which every
+       * comparison is false, so the board silently emptied. Same shape on
+       * `notifyAbove` below. `Number.isFinite` is the check that actually
+       * catches it; `||` would too, but it would also swallow a deliberate 0.
+       */
+      bar: clampRatio(parsed.bar, DEFAULT_PROPHET.bar),
       maxCards: Math.min(30, Math.max(1, Number(parsed.maxCards) || DEFAULT_PROPHET.maxCards)),
       meetingHorizonMinutes: Math.min(
         720,
         Math.max(5, Number(parsed.meetingHorizonMinutes) || DEFAULT_PROPHET.meetingHorizonMinutes),
       ),
       kinds: { ...DEFAULT_PROPHET.kinds, ...(parsed.kinds ?? {}) },
-      notifyAbove: Math.min(1, Math.max(0, Number(parsed.notifyAbove) ?? DEFAULT_PROPHET.notifyAbove)),
+      notifyAbove: clampRatio(parsed.notifyAbove, DEFAULT_PROPHET.notifyAbove),
     };
   } catch {
     return DEFAULT_PROPHET;
@@ -687,8 +707,16 @@ export async function currentCards(): Promise<Card[]> {
   const db = prophetDb();
   return db
     .all(
+      /*
+       * State 2 is IN this list, and that is the fix.
+       *
+       * "Later" sets state 2 and a snooze deadline. The filter was `state IN
+       * (0,1)`, and nothing anywhere resets a snoozed card — so "later" meant
+       * "never", silently. The deadline predicate on the next line is what
+       * snoozing was always supposed to mean, and it is sufficient on its own.
+       */
       `SELECT * FROM cards
-        WHERE state IN (0,1)
+        WHERE state IN (0,1,2)
           AND (snoozeUntil IS NULL OR snoozeUntil < ?)
           AND weight >= ?
         ORDER BY weight DESC, at DESC

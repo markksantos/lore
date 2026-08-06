@@ -342,6 +342,15 @@ async function runSource(
       if (item.at && (oldest === 0 || item.at < oldest)) oldest = item.at;
     };
 
+    /*
+     * Consent is re-asked inside the loop, not only before it.
+     *
+     * A pass over eighty thousand emails takes minutes. Checking once at the
+     * route means somebody who hits pause watches the indexer keep reading
+     * their mail for the rest of it — which is exactly the moment a pause
+     * button is for. Ghost and Twin already do this; the batch sources did not.
+     */
+    const { mayObserve } = await import("@/lib/observers");
     for await (const item of adapter.collect({
       since,
       before: 0,
@@ -349,6 +358,7 @@ async function runSource(
       roots: config.roots,
       maxFileBytes: config.maxFileMb * 1_048_576,
     })) {
+      if (!mayObserve("oracle")) break;
       seen++;
       store(item);
     }
@@ -370,6 +380,7 @@ async function runSource(
         roots: config.roots,
         maxFileBytes: config.maxFileMb * 1_048_576,
       })) {
+        if (!mayObserve("oracle")) break;
         backfilled++;
         store(item);
       }

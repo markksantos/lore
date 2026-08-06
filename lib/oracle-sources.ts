@@ -661,6 +661,7 @@ const CALENDAR_DB = path.join(
 
 export const calendarAdapter: Adapter = {
   id: "calendar",
+  fingerprint: () => foreignFingerprint(CALENDAR_DB),
   async probe() {
     if (await exists(CALENDAR_DB)) {
       if (!(await readable(CALENDAR_DB))) {
@@ -1122,6 +1123,14 @@ async function browserProfiles(): Promise<BrowserProfile[]> {
 
 export const browserAdapter: Adapter = {
   id: "browser",
+  /* Every profile's History file at once — any of them changing means there is
+     something new to read, and none changing means copying all of them would
+     find nothing. */
+  async fingerprint() {
+    const profiles = await browserProfiles();
+    const parts = await Promise.all(profiles.map((profile) => foreignFingerprint(profile.file)));
+    return parts.filter(Boolean).join("~") || null;
+  },
   async probe() {
     const profiles = await browserProfiles();
     if (!profiles.length) return { available: false, reason: "No browser history found on this Mac." };
@@ -1207,6 +1216,10 @@ export const browserAdapter: Adapter = {
 
 export const photosAdapter: Adapter = {
   id: "photos",
+  async fingerprint() {
+    const file = await photosStorePath();
+    return file ? foreignFingerprint(file) : null;
+  },
   async probe() {
     const file = await photosStorePath();
     if (!file) return { available: false, reason: "No Photos library found in ~/Pictures." };

@@ -144,8 +144,12 @@ export function wireObservers(): void {
     everyMs: 1_800_000,
     delayMs: 240_000,
     run: async () => {
-      const { minePatterns, readTwinConfig } = await import("@/lib/twin");
+      const { minePatterns, readTwinConfig, summarisePatterns } = await import("@/lib/twin");
       minePatterns(await readTwinConfig());
+      /* The model call lives here rather than in the request path: nobody is
+         waiting on this job, and a screen that waits on a model is a screen
+         that times out. */
+      await summarisePatterns(6);
     },
   });
 

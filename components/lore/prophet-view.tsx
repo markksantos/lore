@@ -178,8 +178,12 @@ export function ProphetView({ onNavigate }: { onNavigate?: (view: string) => voi
       {blind ? (
         <Panel title="Prophet cannot see anything yet">
           <p className="t-body text-[var(--lore-text-secondary)]">
-            It has no sources of its own — every card comes from something else you switched on.
-            Right now none of them have anything.
+            {/* "No sources of its own" was not quite true — it reads the
+                calendar directly rather than through Oracle. Nearly-true is the
+                worst kind of privacy claim, so it says which one it reads. */}
+            Almost everything it says comes from an observer you switched on. The one exception is
+            your calendar, which it reads directly so a meeting reminder does not depend on Oracle
+            being set up. Right now none of them have anything.
           </p>
           <ul className="mt-2 space-y-1">
             <SourceLine

@@ -272,6 +272,7 @@ export function LedgerView() {
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
+              aria-label="Search past AI conversations"
               placeholder="What was that regex I figured out three weeks ago?"
               spellCheck={false}
               className="w-full rounded-lg border border-[var(--lore-border)] bg-[var(--lore-background)] py-2.5 pl-9 pr-3 text-[16px] text-[var(--lore-text-primary)] outline-none placeholder:text-[var(--lore-text-tertiary)] focus:border-[var(--lore-accent)] md:text-[14px]"

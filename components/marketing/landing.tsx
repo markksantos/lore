@@ -377,7 +377,7 @@ function Stack({ logos }: { logos: string[] }) {
             Anything that speaks MCP.
           </h2>
           <p className="t-lede mx-auto mt-4 max-w-2xl text-[var(--lore-text-secondary)]">
-            Seven tools over MCP, or a plain <code>AGENTS.md</code> for agents that only
+            Twelve tools over MCP, or a plain <code>AGENTS.md</code> for agents that only
             open files. Both point at the same folder, and the watcher covers whatever else
             you run.
           </p>
@@ -424,7 +424,7 @@ function Steps({ siteMode }: { siteMode: boolean }) {
       n: "3",
       slot: 2,
       title: "Connect over MCP",
-      body: "Copy the config — the path is already filled in — restart your client, and all eight tools are live.",
+      body: "Copy the config — the path is already filled in — restart your client, and the wiki tools are live. The three that read this machine stay off until you say otherwise.",
     },
     {
       n: "4",
@@ -486,7 +486,16 @@ const FAQ = [
   },
 {
     q: "Will Lore change or delete anything in my wiki?",
-    a: "Not unless you switch off the lock, and it is on when you install it. Read-only mode refuses every route that could write to a page, at the boundary, before the code runs — it is not a setting Lore promises to honour. Turn it off and Lore can edit, but even then it only writes when you do something: save a page, create one, capture a link. There is no background job, no cleanup pass, and nothing that runs while you are not looking.",
+    /*
+     * This used to end with an absolute: no background job, no cleanup pass,
+     * nothing running unobserved. True when written, false the moment Twin
+     * shipped — it runs on a two-minute timer and moves files. Twin now refuses
+     * to touch anything inside the vault while the lock is on, so the claim and
+     * the code were corrected together, which is the only honest way to resolve
+     * one of these. (The old wording is quoted nowhere on purpose: a test
+     * greps this file for it.)
+     */
+    a: "Not unless you switch off the lock, and it is on when you install it. Read-only mode refuses every route that could write to a page, at the boundary, before the code runs — it is not a setting Lore promises to honour. Turn it off and Lore can edit, but even then it only writes when you do something: save a page, create one, capture a link. One feature does act on a timer — Twin, which files things for you — and it is off until you switch it on, starts in a mode where it moves nothing and only reports, undoes everything it did with one button, and will not touch a file inside your wiki at all while the lock is on.",
   },
 {
     q: "My agent already edits my wiki and I approve its changes. Why would I want another app for that?",
@@ -501,8 +510,8 @@ const FAQ = [
     a: "Your AI can read your wiki. You cannot — not 1,400 files in a folder. It also has no memory of what it changed last week, no way to show you which pages nothing links to, and no reason to distinguish a page you confirmed from one it guessed at. Lore is the reader for a folder that only had writers.",
   },
 {
-    q: "What are the eight MCP tools?",
-    a: "wiki_index (the map of every page), wiki_search, wiki_read, wiki_context (the best passages on a subject, assembled to a token budget, each citing its page), wiki_brief (what the wiki learned recently, one sentence per page — so a new session can catch up without re-reading), wiki_changes (what moved since a timestamp), wiki_health (dead links, orphans, stale pages) and wiki_write. Seven read, one writes — and the write tool is blocked entirely by read-only mode.",
+    q: "What does Lore give my agents over MCP?",
+    a: "Nine tools for the wiki: wiki_index (the map of every page), wiki_search, wiki_read, wiki_context (the best passages on a subject, assembled to a token budget, each citing its page), wiki_brief (what the wiki learned recently, one sentence per page, so a new session can catch up without re-reading), wiki_changes (what moved since a timestamp), wiki_recall (what the wiki said on a past day), wiki_health (dead links, orphans, stale pages) and wiki_write. Eight read, one writes, and the write tool is blocked entirely by read-only mode. Three more reach past the wiki into what Lore observed on this machine — machine_recall for what was on screen, machine_conversations for past AI sessions, machine_find for your files and mail — and those are behind a second switch that is off by default, because handing your mail to an agent is a bigger decision than letting a local model look at your screen.",
   },
 {
     q: "Does Lore move or reformat my files?",
@@ -519,12 +528,12 @@ const FAQ = [
 {
     q: "Is anything uploaded?",
     /*
-     * This used to end "no upload code in it at all", which stopped being true
-     * the moment Chorus shipped: it POSTs your question to Anthropic, OpenAI or
-     * Google when you convene a panel. The sentence was written before that
-     * existed and nobody went back to it — which is how a privacy claim becomes
-     * a false one without anybody lying. A reviewer caught it on the landing
-     * page, which is the worst place to be wrong about this.
+     * This used to end with an absolute denial of any uploading code in the
+     * downloaded build. That stopped being true the moment Chorus shipped: it
+     * POSTs your question to Anthropic, OpenAI or Google when you convene a
+     * panel. The sentence predates the feature and nobody went back to it,
+     * which is how a privacy claim becomes a false one without anybody lying.
+     * A reviewer caught it here, which is the worst place to be wrong about it.
      */
     a: "Your wiki, no. There is no account, no server behind the free build, and nothing that reads your folder ever sends it anywhere. One feature is a deliberate exception and says so on its own screen: Chorus sends the question you type to the model providers you have given keys for, because the whole point of it is asking models built by different companies. Everything else — the brief, Ask, Ghost, Ledger, Oracle, Understudy, Twin — runs against a model on your own machine.",
   },

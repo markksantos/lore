@@ -568,23 +568,49 @@ function templateFor(pattern: Pattern): string {
 }
 
 /** Patterns that have crossed the threshold and not been answered yet. */
-export async function pendingProposals(limit = 8): Promise<(Pattern & { proposal: unknown })[]> {
+export function pendingProposals(limit = 8): (Pattern & { proposal: unknown })[] {
   const db = twinDb();
   const rows = db.all<Pattern>(
     "SELECT * FROM patterns WHERE state IN (0,1) ORDER BY count DESC LIMIT ?",
     limit,
   );
-  const out: (Pattern & { proposal: unknown })[] = [];
+  /*
+   * Never generates. Reads what has already been written.
+   *
+   * This used to call the local model for any pattern without a summary — up to
+   * eight of them, serially, inside a GET the view gives up on after thirty
+   * seconds. Two patterns were enough to time the screen out, and the user saw
+   * "Twin could not be reached" while Twin was working perfectly.
+   *
+   * Writing the sentence is now the mining job's business (it runs every half
+   * hour and nobody is waiting on it). Until it has, the template is used: it
+   * carries every number the model's version would, and is never wrong.
+   */
+  return rows.map((pattern) => ({
+    ...pattern,
+    summary: pattern.summary ?? templateFor(pattern),
+    proposal: proposalFor(pattern),
+  }));
+}
+
+/**
+ * Give the patterns that lack one a written summary.
+ *
+ * Called from the mining job, where a slow model costs nobody a screen.
+ */
+export async function summarisePatterns(limit = 6): Promise<number> {
+  const db = twinDb();
+  const rows = db.all<Pattern>(
+    "SELECT * FROM patterns WHERE summary IS NULL AND state IN (0,1) ORDER BY count DESC LIMIT ?",
+    limit,
+  );
+  let written = 0;
   for (const pattern of rows) {
-    const spec = proposalFor(pattern);
-    let summary = pattern.summary;
-    if (!summary) {
-      summary = await describePattern(pattern);
-      db.run("UPDATE patterns SET summary = ?, state = 1 WHERE id = ?", summary, pattern.id);
-    }
-    out.push({ ...pattern, summary, proposal: spec });
+    const summary = await describePattern(pattern);
+    db.run("UPDATE patterns SET summary = ?, state = 1 WHERE id = ?", summary, pattern.id);
+    written++;
   }
-  return out;
+  return written;
 }
 
 export function dismissPattern(id: string): boolean {
@@ -766,6 +792,39 @@ export async function runAutomation(
   }
 
   const dir = automation.trigger.dir;
+
+  /*
+   * Read-only mode covers the vault, and Twin moves files.
+   *
+   * proxy.ts refuses every HTTP route that can write the wiki while the lock is
+   * on, but Twin runs on a timer inside the server — no request, no proxy, no
+   * gate. A rule whose source or destination sits inside the linked vault could
+   * therefore reorganise somebody's notes while the app was promising in
+   * writing that it would not change them. The lock is checked here because
+   * this is the only place that knows.
+   */
+  if (!dryRun) {
+    const { readSafetySync } = await import("@/lib/safety");
+    if (readSafetySync().readOnly) {
+      const { getActiveVault } = await import("@/lib/config");
+      const vault = await getActiveVault();
+      const inside = (target: string) =>
+        Boolean(vault) && (target === vault!.root || target.startsWith(vault!.root + path.sep));
+      const touchesVault =
+        inside(dir) ||
+        automation.actions.some((action) => "to" in action && inside(action.to));
+      if (touchesVault) {
+        db.run(
+          "UPDATE automations SET lastRunAt = ?, lastError = ? WHERE id = ?",
+          Date.now(),
+          "Lore is read-only, so this rule did not touch your wiki. Turn read-only off in Settings if you want it to.",
+          id,
+        );
+        return { automation: readAutomation(id)!, outcomes: [] };
+      }
+    }
+  }
+
   const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
   let acted = 0;
 
@@ -816,17 +875,30 @@ export async function runAutomation(
       }
 
       outcomes.push({ kind: action.kind, src, dst, ok, dryRun, error });
-      db.run(
-        "INSERT INTO actions_log (automationId, at, kind, src, dst, ok, dryRun, error) VALUES (?,?,?,?,?,?,?,?)",
-        id,
-        Date.now(),
-        action.kind,
-        src,
-        dst,
-        ok ? 1 : 0,
-        dryRun ? 1 : 0,
-        error,
-      );
+      /*
+       * A dry run is not an action, and logging it as one buried the ones that
+       * were.
+       *
+       * An enabled rule in dry-run re-evaluates every 120 seconds and writes a
+       * row per matching file each time — so a folder of thirty downloads
+       * produced nine hundred rows an hour, all of them dry. `recentActions(20)`
+       * then returned nothing but dry rows, the "what Twin actually did" panel
+       * disappeared entirely, and with it the undo button for the real moves
+       * underneath. The preview is returned to the caller either way; only the
+       * permanent log is for things that happened.
+       */
+      if (!dryRun) {
+        db.run(
+          "INSERT INTO actions_log (automationId, at, kind, src, dst, ok, dryRun, error) VALUES (?,?,?,?,?,?,0,?)",
+          id,
+          Date.now(),
+          action.kind,
+          src,
+          dst,
+          ok ? 1 : 0,
+          error,
+        );
+      }
       /* A move consumed the source; a second action on the same file would
          fail against a path that no longer exists. */
       if (ok && !dryRun && action.kind !== "copy") break;
@@ -889,6 +961,24 @@ export function recentActions(limit = 50): LoggedAction[] {
   return twinDb().all<LoggedAction>(
     "SELECT * FROM actions_log ORDER BY at DESC LIMIT ?",
     Math.min(500, Math.max(1, limit)),
+  );
+}
+
+/**
+ * Everything that was really moved and has not been put back.
+ *
+ * "Undo all of it" built its list from the twenty rows the screen happened to
+ * be showing, and a single run moves up to fifty files — so thirty real moves
+ * had no path back through the UI at all. An undo button that reaches less than
+ * the action it undoes is worse than no button, because it looks like it
+ * worked.
+ *
+ * Bounded at a thousand: past that the honest answer is that this is not what
+ * the button is for.
+ */
+export function undoableActions(): LoggedAction[] {
+  return twinDb().all<LoggedAction>(
+    "SELECT * FROM actions_log WHERE dryRun = 0 AND ok = 1 AND undone = 0 ORDER BY at DESC LIMIT 1000",
   );
 }
 

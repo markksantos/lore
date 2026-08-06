@@ -499,12 +499,23 @@ export async function captureFrame(config?: GhostConfig): Promise<CaptureOutcome
   );
   const changed = !previous || hammingDistance(previous.phash, phash) > SAME_SCENE_BITS;
 
+  /*
+   * The window title is text off the screen like any other.
+   *
+   * `config.redact` reached the model's summary and body and stopped there, so
+   * a terminal titled with a command carrying a token, or a browser tab whose
+   * title is a signed URL, went into the row and into the full-text index
+   * unredacted — and the title is the one field shown in every list.
+   */
+  const safeApp = settings.redact && app ? scrub(app) : app;
+  const safeTitle = settings.redact && title ? scrub(title) : title;
+
   const { lastInsertRowid } = db.run(
     `INSERT INTO frames (at, app, title, display, file, bytes, phash, state)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     now,
-    app,
-    title,
+    safeApp,
+    safeTitle,
     1,
     rel,
     shrunk.size,
@@ -520,8 +531,8 @@ export async function captureFrame(config?: GhostConfig): Promise<CaptureOutcome
   db.run(
     "INSERT INTO frames_fts (rowid, summary, body, app, title) VALUES (?, '', '', ?, ?)",
     lastInsertRowid,
-    app ?? "",
-    title ?? "",
+    safeApp ?? "",
+    safeTitle ?? "",
   );
 
   /*
@@ -537,8 +548,8 @@ export async function captureFrame(config?: GhostConfig): Promise<CaptureOutcome
       `INSERT INTO frames (at, app, title, display, file, bytes, phash, state)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       now,
-      app,
-      title,
+      safeApp,
+      safeTitle,
       extra.display,
       extra.rel,
       extraStat?.size ?? 0,
@@ -548,8 +559,8 @@ export async function captureFrame(config?: GhostConfig): Promise<CaptureOutcome
     db.run(
       "INSERT INTO frames_fts (rowid, summary, body, app, title) VALUES (?, '', '', ?, ?)",
       extraId,
-      app ?? "",
-      title ?? "",
+      safeApp ?? "",
+      safeTitle ?? "",
     );
   }
 
@@ -729,12 +740,17 @@ export async function forgetEverything(): Promise<void> {
 /** Delete a single frame — the "not that one" escape hatch. */
 export async function forgetFrame(id: number): Promise<boolean> {
   const db = ghostDb();
-  const frame = db.get<{ file: string }>("SELECT file FROM frames WHERE id = ?", id);
+  const frame = db.get<{ file: string; at: number }>(
+    "SELECT file, at FROM frames WHERE id = ?",
+    id,
+  );
   if (!frame) return false;
   await fs.rm(path.join(FRAMES_DIR, frame.file), { force: true }).catch(() => {});
   db.tx(() => {
     db.run("DELETE FROM frames_fts WHERE rowid = ?", id);
     db.run("DELETE FROM frames WHERE id = ?", id);
+    /* The day's account was written from this frame among others. */
+    db.run("DELETE FROM digests WHERE day = ?", dayKey(frame.at));
   });
   return true;
 }
@@ -742,8 +758,8 @@ export async function forgetFrame(id: number): Promise<boolean> {
 /** Delete everything captured in a window — "forget the last hour". */
 export async function forgetRange(from: number, to: number): Promise<number> {
   const db = ghostDb();
-  const doomed = db.all<{ id: number; file: string }>(
-    "SELECT id, file FROM frames WHERE at >= ? AND at <= ?",
+  const doomed = db.all<{ id: number; file: string; at: number }>(
+    "SELECT id, file, at FROM frames WHERE at >= ? AND at <= ?",
     from,
     to,
   );
@@ -757,6 +773,14 @@ export async function forgetRange(from: number, to: number): Promise<number> {
       to,
     );
     db.run("DELETE FROM frames WHERE at >= ? AND at <= ?", from, to);
+    /*
+     * The digest is model-written text derived from exactly these frames.
+     * Deleting the pictures and keeping the paragraph about them is not
+     * forgetting; it is forgetting the evidence and keeping the account.
+     */
+    for (const day of new Set(doomed.map((frame) => dayKey(frame.at)))) {
+      db.run("DELETE FROM digests WHERE day = ?", day);
+    }
   });
   return doomed.length;
 }

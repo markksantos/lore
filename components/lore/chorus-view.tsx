@@ -283,6 +283,7 @@ export function ChorusView() {
               if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) void convene();
             }}
             rows={3}
+            aria-label="Question for the panel"
             placeholder="Should this service own its own database, or share one with the API?"
             className="w-full resize-y rounded-lg border border-[var(--lore-border)] bg-[var(--lore-background)] px-3 py-2.5 text-[16px] leading-relaxed text-[var(--lore-text-primary)] outline-none placeholder:text-[var(--lore-text-tertiary)] focus:border-[var(--lore-accent)] md:text-[14px]"
           />
@@ -530,6 +531,7 @@ function PanelSetup({ state, onChanged }: { state: ChorusState; onChanged: () =>
             </span>
             <input
               value={panelist.model}
+              aria-label={`Model for ${panelist.label}`}
               onChange={(event) => {
                 const next = [...panel];
                 next[index] = { ...panelist, model: event.target.value };
@@ -539,8 +541,14 @@ function PanelSetup({ state, onChanged }: { state: ChorusState; onChanged: () =>
               className="w-56 rounded-lg border border-[var(--lore-border)] bg-[var(--lore-background)] px-2 py-1.5 text-[12.5px] text-[var(--lore-text-primary)] outline-none focus:border-[var(--lore-accent)]"
               style={{ fontFamily: "var(--font-mono), monospace" }}
             />
-            <Button onClick={() => void setPanel(panel.filter((p) => p.id !== panelist.id))}>
+            {/* An icon is not a name. Without this the control announces as
+                "button" and there are three of them in a column. */}
+            <Button
+              title={`Remove ${panelist.label} from the panel`}
+              onClick={() => void setPanel(panel.filter((p) => p.id !== panelist.id))}
+            >
               <X size={12} />
+              <span className="sr-only">Remove {panelist.label} from the panel</span>
             </Button>
           </div>
         ))}
@@ -560,7 +568,7 @@ function PanelSetup({ state, onChanged }: { state: ChorusState; onChanged: () =>
         <p className="t-body mt-1 text-[var(--lore-text-secondary)]">
           Stored in <span style={{ fontFamily: "var(--font-mono), monospace" }}>~/.lore</span> with
           owner-only permissions, and never shown again — not even partially. Chorus is the only
-          part of Lore that talks to a server you do not own.
+          part of Lore that sends what you wrote to a model somebody else runs.
         </p>
         <div className="mt-2 space-y-2">
           {state.providers

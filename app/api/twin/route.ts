@@ -11,6 +11,8 @@ import {
   readTwinConfig,
   recentActions,
   runAutomation,
+  summarisePatterns,
+  undoableActions,
   setAutomation,
   startTwinWatcher,
   stopTwinWatcher,
@@ -35,11 +37,8 @@ export async function GET(request: Request) {
       return Response.json({ actions: recentActions(Number(url.searchParams.get("limit")) || 60) });
     }
 
-    const [config, observers, proposals] = await Promise.all([
-      readTwinConfig(),
-      readObservers(),
-      pendingProposals(8),
-    ]);
+    const [config, observers] = await Promise.all([readTwinConfig(), readObservers()]);
+    const proposals = pendingProposals(8);
 
     return Response.json({
       config,
@@ -47,6 +46,9 @@ export async function GET(request: Request) {
       proposals,
       automations: listAutomations(),
       actions: recentActions(20),
+      /* What "undo all" would actually reach, which is not the same as what
+         the list happens to be showing. */
+      undoable: undoableActions().length,
       enabled: observers.observers.twin.enabled,
       running: mayObserve("twin", observers),
       blockedBecause: whyNot("twin", observers),
@@ -79,6 +81,7 @@ export async function POST(request: Request) {
       id?: string;
       path?: string;
       ids?: number[];
+      all?: boolean;
       enabled?: boolean;
       dryRun?: boolean;
       name?: string;
@@ -113,18 +116,22 @@ export async function POST(request: Request) {
           return fail(new Error(whyNot("twin", await readObservers()) ?? "Twin is off."), 403);
         }
         const mined = minePatterns(await readTwinConfig());
-        return Response.json({ ...mined, proposals: await pendingProposals(8), status: twinStatus() });
+        /* Summaries are written here too, so pressing "Look for patterns" by
+           hand produces the sentence rather than the template — the job would
+           otherwise get to it up to half an hour later. */
+        await summarisePatterns(6);
+        return Response.json({ ...mined, proposals: pendingProposals(8), status: twinStatus() });
       }
       case "accept": {
         if (typeof body.id !== "string") return fail(new Error("`id` is required."));
         const automation = await acceptPattern(body.id);
         if (!automation) return fail(new Error("That pattern cannot become an automation."));
-        return Response.json({ automation, automations: listAutomations(), proposals: await pendingProposals(8) });
+        return Response.json({ automation, automations: listAutomations(), proposals: pendingProposals(8) });
       }
       case "dismiss": {
         if (typeof body.id !== "string") return fail(new Error("`id` is required."));
         dismissPattern(body.id);
-        return Response.json({ proposals: await pendingProposals(8) });
+        return Response.json({ proposals: pendingProposals(8) });
       }
       case "set": {
         if (typeof body.id !== "string") return fail(new Error("`id` is required."));
@@ -152,10 +159,21 @@ export async function POST(request: Request) {
         return Response.json({ removed: deleteAutomation(body.id), automations: listAutomations() });
       }
       case "undo": {
-        if (!Array.isArray(body.ids) || !body.ids.length) return fail(new Error("`ids` is required."));
-        const ids = body.ids.filter((id): id is number => Number.isInteger(id)).slice(0, 500);
+        /* `all` is resolved here rather than in the browser, so "undo
+           everything" means everything Twin actually did — not the subset the
+           screen was showing when the button was pressed. */
+        const ids = body.all
+          ? undoableActions().map((action) => action.id)
+          : Array.isArray(body.ids)
+            ? body.ids.filter((id): id is number => Number.isInteger(id)).slice(0, 1_000)
+            : [];
+        if (!ids.length) return fail(new Error("There is nothing to undo."));
         const result = await undoActions(ids);
-        return Response.json({ ...result, actions: recentActions(40) });
+        return Response.json({
+          ...result,
+          actions: recentActions(40),
+          undoable: undoableActions().length,
+        });
       }
       case "forget":
         await forgetTwin();

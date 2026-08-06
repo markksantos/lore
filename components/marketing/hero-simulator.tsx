@@ -1026,9 +1026,14 @@ function ConnectionsPane() {
             </h4>
           </div>
           <p className="mt-2 text-[13.5px] leading-relaxed text-[var(--lore-text-secondary)]">
-            Four tools, all of them reads: <code>wiki_index</code>, <code>wiki_search</code>,{" "}
-            <code>wiki_read</code>, <code>wiki_health</code>. Your agents keep writing with
-            their own file tools — Lore watches the folder for that.
+            {/* The number is checked against mcp/server.mjs rather than
+                remembered: this said "four" while the server served twelve,
+                which is the sort of stale figure a product shot keeps for
+                years because nobody owns it. */}
+            Nine tools for the wiki — <code>wiki_index</code>, <code>wiki_search</code>,{" "}
+            <code>wiki_read</code>, <code>wiki_health</code> and five more — and three that reach
+            what Lore observed on this machine, behind their own switch. Your agents keep writing
+            with their own file tools; Lore watches the folder for that.
           </p>
           <div className="mt-3 overflow-hidden rounded-lg border border-[var(--lore-border)]">
             <div className="flex items-center justify-between border-b border-[var(--lore-border)] bg-[var(--lore-surface-raised)] px-3 py-1.5">

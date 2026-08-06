@@ -9,9 +9,15 @@ import { OLLAMA_HOST } from "@/lib/ollama";
  * Chorus is the one feature in Lore that deliberately leaves the laptop. That
  * is the point of it — the value is in the disagreement between models built by
  * different companies on different data, and you cannot get that from one
- * machine's Ollama. So this module exists, it is the only module in the project
- * that opens a socket to the internet, and it is written to be auditable in one
- * sitting for exactly that reason.
+ * machine's Ollama. So this module exists, it is the only place where something
+ * the user wrote is handed to a company that is not them, and it is written to
+ * be auditable in one sitting for exactly that reason.
+ *
+ * Not "the only module that opens a socket", which is what this comment said
+ * until a reviewer checked: lib/enrich.ts fetches a URL you pasted so it can
+ * title it, and lib/collab.ts posts to a webhook you configured. Both are
+ * network calls. Neither sends your writing anywhere. The distinction is the
+ * whole point of the claim, so the claim has to make it.
  *
  * Four APIs, four wire formats, one function. Each provider streams
  * line-delimited JSON over SSE and each spells the same three concepts

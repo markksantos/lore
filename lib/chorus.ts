@@ -37,8 +37,8 @@ import { openDb, type Db } from "@/lib/signal-store";
  *   are the most valuable part, and a synthesis that reports no dissent when
  *   there was one is a failure, not a tidy result.
  *
- * This is the one part of Lore that talks to the internet, and it does so only
- * for panelists the user explicitly chose. A local-only panel — several Ollama
+ * This is the one part of Lore that sends what the user wrote to somebody
+ * else's model, and it does so only for panelists the user explicitly chose. A local-only panel — several Ollama
  * models arguing — is a legitimate configuration and needs no key at all.
  */
 
@@ -137,6 +137,16 @@ export async function readChorusConfig(): Promise<ChorusConfig> {
       parsed = {};
     }
   }
+  /*
+   * An empty panel is a decision, not an absence.
+   *
+   * `panelists.length ? panelists : suggestPanel()` meant removing the last
+   * panelist silently re-added every configured cloud provider on the next
+   * read — so somebody who deliberately emptied the panel to stop paying for it
+   * would press Convene and bill three frontier models. The suggestion is only
+   * for a config that has never had a panel at all.
+   */
+  const configured = Array.isArray(parsed.panelists);
   const panelists = Array.isArray(parsed.panelists)
     ? parsed.panelists.filter(
         (p): p is Panelist =>
@@ -148,7 +158,7 @@ export async function readChorusConfig(): Promise<ChorusConfig> {
       )
     : [];
   return {
-    panelists: panelists.length ? panelists : await suggestPanel(),
+    panelists: configured ? panelists : await suggestPanel(),
     chair: typeof parsed.chair === "string" ? parsed.chair : null,
     skipCritique: parsed.skipCritique === true,
     maxTokens: Math.min(8_000, Math.max(200, Number(parsed.maxTokens) || DEFAULT_CHORUS.maxTokens)),
@@ -291,7 +301,13 @@ export async function runChorus(
         text: result.text,
         ms: result.ms,
         costUsd: cost,
-        error: null,
+        /*
+         * A provider that returns 200 and no text has failed, and recording it
+         * as a success is worse than an error: the panelist appears in the
+         * transcript with an empty column, its answer is fed to the critique
+         * round as if it said nothing on purpose, and it can be chosen as chair.
+         */
+        error: result.text.trim() ? null : "Answered with nothing at all.",
       };
       emit({ type: "answer", ...record });
       return record;

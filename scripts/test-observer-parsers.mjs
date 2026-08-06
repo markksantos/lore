@@ -443,5 +443,47 @@ check(
 );
 check("a Sent Items mailbox is recognised", sentPattern.test("/m/Sent Items.mbox/Data/1/x.emlx"));
 
+// ------------------------------------------------------- published claims
+
+section("Claims the marketing makes about the code");
+
+/*
+ * Numbers on a landing page rot silently.
+ *
+ * The hero shot said "four tools" while the MCP server served twelve, and the
+ * FAQ said "eight". Nobody owns a figure like that, so it stays wrong for
+ * years. These assertions give it an owner.
+ */
+const fsp = await import("node:fs/promises");
+const read = (f) => fsp.readFile(new URL(`../${f}`, import.meta.url), "utf8");
+
+const server = await read("mcp/server.mjs");
+const toolNames = [...server.matchAll(/^ {4}name: "([a-z_]+)",/gm)].map((m) => m[1]);
+const wikiTools = toolNames.filter((n) => n.startsWith("wiki_"));
+const machineTools = toolNames.filter((n) => n.startsWith("machine_"));
+check("the MCP server serves the tools the docs describe", toolNames.length === 12, String(toolNames.length));
+check("nine of them are wiki tools", wikiTools.length === 9, String(wikiTools.length));
+check("three reach this machine", machineTools.length === 3, String(machineTools.length));
+
+const landing = await read("components/marketing/landing.tsx");
+check(
+  "the landing page no longer claims a build with no upload code",
+  !/no upload code in it at all/.test(landing),
+);
+check(
+  "and no longer claims nothing runs while you are not looking",
+  !/nothing that runs while you are not looking/.test(landing),
+);
+check(`the landing page names ${wikiTools.length} wiki tools`, landing.includes("Nine tools for the wiki"));
+
+const hero = await read("components/marketing/hero-simulator.tsx");
+check("the product shot agrees with it", hero.includes("Nine tools for the wiki"));
+
+const readme = await read("README.md");
+check(
+  "the README no longer claims Chorus is the only socket",
+  !/only module in the project that opens a socket/.test(readme),
+);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
