@@ -595,6 +595,7 @@ function AddApp({ onAdd, existing }: { onAdd: (name: string) => void; existing: 
           onAdd(name);
           setValue("");
         }}
+        aria-label="Application to never capture"
         placeholder="Application name, exactly as macOS shows it"
         className="min-w-0 flex-1 rounded-lg border border-[var(--lore-border)] bg-[var(--lore-background)] px-2.5 py-2 text-[16px] text-[var(--lore-text-primary)] outline-none placeholder:text-[var(--lore-text-tertiary)] focus:border-[var(--lore-accent)] md:text-[13px]"
       />

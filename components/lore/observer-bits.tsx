@@ -534,6 +534,7 @@ export function PathInput({
         onKeyDown={(event) => {
           if (event.key === "Enter") void submit();
         }}
+        aria-label={`Folder path — ${placeholder}`}
         placeholder={placeholder}
         spellCheck={false}
         className="min-w-0 flex-1 rounded-lg border border-[var(--lore-border)] bg-[var(--lore-background)] px-2.5 py-2 text-[16px] text-[var(--lore-text-primary)] outline-none placeholder:text-[var(--lore-text-tertiary)] focus:border-[var(--lore-accent)] md:text-[13px]"

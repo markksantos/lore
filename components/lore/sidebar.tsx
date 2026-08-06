@@ -419,6 +419,7 @@ export function Sidebar({
             id="lore-search"
             value={query}
             onChange={(event) => onQuery(event.target.value)}
+            aria-label="Search this wiki"
             placeholder="Search"
             spellCheck={false}
             /* 16px below md is not a style choice: iOS Safari zooms the whole
@@ -456,6 +457,7 @@ export function Sidebar({
               <input
                 value={filter}
                 onChange={(event) => setFilter(event.target.value)}
+                aria-label="Filter folders by name"
                 placeholder="Filter folders"
                 spellCheck={false}
                 className="mb-1.5 w-full rounded-lg border border-[var(--lore-border)] bg-[var(--lore-background)] px-2.5 py-2.5 text-[16px] text-[var(--lore-text-primary)] outline-none placeholder:text-[var(--lore-text-tertiary)] focus:border-[var(--lore-accent)] md:py-1.5 md:text-[12px]"
@@ -567,6 +569,7 @@ export function Sidebar({
                   setError(null);
                 }
               }}
+              aria-label="Path for the new page"
               placeholder={folder ? `${folder}/new-page.md` : "new-page.md"}
               autoFocus
               spellCheck={false}
