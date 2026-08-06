@@ -25,10 +25,19 @@ import { detectOllama, generate, recommendModel } from "@/lib/ollama";
  * plausible one. The local model is available on top, to answer a question
  * across what was found, and it is never between you and the text.
  *
- * INCREMENTAL, always. A transcript file is fingerprinted by size and mtime; an
- * unchanged file is not re-read. Growing files are read from the byte where
- * indexing stopped, so an active Claude Code session costs kilobytes per pass
- * rather than the whole day again.
+ * INCREMENTAL AT THE FILE, not at the byte. A transcript is fingerprinted by
+ * size and mtime and an unchanged one is not opened at all — measured, 2,084 of
+ * 2,090 sessions skipped in one second. A CHANGED file is re-read whole, and
+ * that is deliberate rather than unfinished: a session is stored by deleting
+ * its turns and re-inserting them, because every source can rewrite history
+ * (Cursor edits bubbles in place, an export can be re-dropped), and a partial
+ * append on top of that produces silent duplicates. The cost is bounded by the
+ * one file you are actively working in.
+ *
+ * An earlier version of this comment claimed byte-offset resumption. The
+ * `cursors.bytes` column is where that would live; nothing reads it, and a
+ * comment describing an optimisation the code does not perform is worse than no
+ * comment, because the next person budgets around it.
  *
  * NOTHING LEAVES. Same rule as everywhere else in Lore: the index is a file in
  * ~/.lore, the model is the Ollama on this machine, and there is no network

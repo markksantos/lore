@@ -210,9 +210,21 @@ export function Empty({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * A failure, announced.
+ *
+ * `role="alert"` is not decoration here. Every one of these screens does its
+ * work asynchronously — indexing, drafting, convening a panel — and reports
+ * failure by swapping in a paragraph somewhere below the button that was
+ * pressed. Without a live region a screen-reader user presses "Index now",
+ * hears nothing, and has no way to discover that it failed.
+ */
 export function ErrorNote({ children }: { children: ReactNode }) {
   return (
-    <p className="t-meta mt-2 flex items-start gap-1.5 text-[var(--lore-danger)]">
+    <p
+      role="alert"
+      className="t-meta mt-2 flex items-start gap-1.5 text-[var(--lore-danger)]"
+    >
       <AlertTriangle size={13} className="mt-px shrink-0" />
       <span className="min-w-0">{children}</span>
     </p>

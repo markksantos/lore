@@ -126,7 +126,21 @@ export function measureVoice(texts: string[]): VoiceStats {
   let totalLines = 0;
   let firstPerson = 0;
 
-  const CONTRACTED = /\b(?:i'm|i've|i'd|i'll|it's|that's|don't|doesn't|didn't|can't|won't|isn't|aren't|wasn't|weren't|you're|we're|they're|there's|here's|let's|couldn't|shouldn't|wouldn't|haven't|hasn't|hadn't|what's|who's|he's|she's|we've|they've|you've|we'll|they'll|you'll|i'd)\b/gi;
+  /*
+   * The apostrophe is not always an apostrophe.
+   *
+   * macOS substitutes a right single quotation mark (U+2019) as you type, and
+   * so does every mail client and note-taking app on it — so a corpus of real
+   * writing contains "don’t", not "don't". Matching only the ASCII form meant
+   * CONTRACTED found nothing while EXPANDED still matched, and the profile
+   * reported a contraction rate of zero for somebody who uses them constantly.
+   *
+   * That is not a rounding error: contraction rate is one of the strongest
+   * signals in the profile and it goes straight into the prompt as a number, so
+   * Understudy was being told to write formally on behalf of people who do not.
+   * `[’']` everywhere, and the test corpus uses the smart form.
+   */
+  const CONTRACTED = /\b(?:i[’']m|i[’']ve|i[’']d|i[’']ll|it[’']s|that[’']s|don[’']t|doesn[’']t|didn[’']t|can[’']t|won[’']t|isn[’']t|aren[’']t|wasn[’']t|weren[’']t|you[’']re|we[’']re|they[’']re|there[’']s|here[’']s|let[’']s|couldn[’']t|shouldn[’']t|wouldn[’']t|haven[’']t|hasn[’']t|hadn[’']t|what[’']s|who[’']s|he[’']s|she[’']s|we[’']ve|they[’']ve|you[’']ve|we[’']ll|they[’']ll|you[’']ll)\b/gi;
   const EXPANDED = /\b(?:i am|i have|i would|i will|it is|that is|do not|does not|did not|cannot|can not|will not|is not|are not|was not|were not|you are|we are|they are|there is|here is|let us|could not|should not|would not|have not|has not|had not|what is|who is|he is|she is|we have|they have|you have|we will|they will|you will)\b/gi;
   const EMOJI = /\p{Extended_Pictographic}/gu;
 

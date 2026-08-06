@@ -973,7 +973,13 @@ Rules:
 export async function dayDigest(
   day: string,
   force = false,
-): Promise<{ day: string; summary: string | null; frames: number; needsModel: boolean }> {
+): Promise<{
+  day: string;
+  summary: string | null;
+  frames: number;
+  needsModel: boolean;
+  error?: string | null;
+}> {
   const db = ghostDb();
   const existing = db.get<{ summary: string; frames: number }>(
     "SELECT summary, frames FROM digests WHERE day = ?",
@@ -1034,11 +1040,23 @@ export async function dayDigest(
     .join("\n\n")
     .slice(0, 24_000);
 
+  /*
+   * A model that failed is not an empty day.
+   *
+   * `.catch(() => "")` returned `summary: null, needsModel: false`, which the
+   * UI renders as "Nothing was captured today" — on a day with two thousand
+   * frames in it. The failure is carried out instead, so the screen can say
+   * which of the two actually happened.
+   */
+  let failure: string | null = null;
   const summary = await generate(model, `Notes from ${day}:\n\n${timeline}\n\nThe day:`, {
     system: DIGEST_SYSTEM,
     timeoutMs: 180_000,
     maxTokens: 800,
-  }).catch(() => "");
+  }).catch((error: unknown) => {
+    failure = error instanceof Error ? error.message : "The local model did not answer.";
+    return "";
+  });
 
   if (summary.trim()) {
     db.run(
@@ -1053,7 +1071,13 @@ export async function dayDigest(
     );
   }
 
-  return { day, summary: summary.trim() || null, frames: frames.length, needsModel: false };
+  return {
+    day,
+    summary: summary.trim() || null,
+    frames: frames.length,
+    needsModel: false,
+    error: failure,
+  };
 }
 
 // -------------------------------------------------------------------- status

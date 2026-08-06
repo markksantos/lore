@@ -118,17 +118,24 @@ export function proxy(request: NextRequest) {
    * ran, so a visited page could revert a day of your wiki.
    *
    * The discriminator is `Sec-Fetch-Site`, which every modern browser sets on
-   * every request and no page can forge (it is a forbidden header). A
-   * cross-site value is a request one origin made against another, which for a
-   * local API is precisely the attack. Same-origin and same-site (the Lore app
-   * itself) pass; requests with no such header at all pass too, because those
-   * are the trusted non-browser clients — the CLI, the MCP server, curl — that
-   * this product is built around. So the rule costs the legitimate app and
-   * tooling nothing and closes the tab-driven write.
+   * every request and no page can forge (it is a forbidden header).
+   *
+   * `same-site` USED TO BE ACCEPTED HERE AND IS NOT ANY MORE. On the public
+   * internet same-site is a meaningful narrowing — it means a sibling of your
+   * own registrable domain. On loopback it means almost nothing: every port on
+   * localhost is the same site as every other, so a dev server on :3000, a
+   * documentation preview on :8080 and anything else the user happens to be
+   * running could POST to Lore and be waved through. That is precisely the
+   * class of attack this gate exists to stop, and the exception swallowed it.
+   * A reviewer found it; the fix is one word.
+   *
+   * What passes now: `same-origin` (the Lore app itself), and requests with no
+   * such header at all — the trusted non-browser clients this product is built
+   * around, the CLI, the MCP server, curl. Nothing a page can send.
    */
   if (!siteMode && touchesDisk && request.method !== "GET" && request.method !== "HEAD") {
     const site = request.headers.get("sec-fetch-site");
-    if (site && site !== "same-origin" && site !== "same-site" && site !== "none") {
+    if (site && site !== "same-origin" && site !== "none") {
       return NextResponse.json(
         { error: "Cross-site requests cannot change Lore. This request was blocked." },
         { status: 403 },

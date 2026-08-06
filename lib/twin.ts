@@ -450,6 +450,20 @@ export function minePatterns(config: TwinConfig): { found: number; updated: numb
 // ----------------------------------------------------------------- proposals
 
 export type TriggerSpec =
+  /**
+   * `ext` has three meanings and they must stay distinct.
+   *
+   *   ".pdf"  — files with that extension
+   *   null    — any file, whatever its name
+   *   ""      — files with NO extension
+   *
+   * The empty string is not pedantry. Mining groups moves by extension and
+   * labels the extensionless group "(no extension)"; a first version turned
+   * that into `ext: null`, so a rule derived from four extensionless downloads
+   * became a rule that moved EVERY file in the folder. An automation that files
+   * things is the one place in this product where over-matching costs the user
+   * something they cannot get back by pressing undo twice.
+   */
   | { kind: "file-added"; dir: string; ext: string | null; namePattern: string | null }
   | { kind: "manual" };
 
@@ -480,7 +494,13 @@ export function proposalFor(pattern: Pattern): { trigger: TriggerSpec; actions: 
     const [from, to, ext] = pattern.signature.split(SEP);
     if (!from || !to) return null;
     return {
-      trigger: { kind: "file-added", dir: from, ext: ext.startsWith(".") ? ext : null, namePattern: null },
+      trigger: {
+        kind: "file-added",
+        dir: from,
+        /* "" means extensionless, not "anything" — see TriggerSpec. */
+        ext: ext.startsWith(".") ? ext : "",
+        namePattern: null,
+      },
       actions: [{ kind: "move", to }],
     };
   }
@@ -644,7 +664,7 @@ export function describeRule(trigger: TriggerSpec, actions: ActionSpec[]): strin
   const short = (dir: string) => dir.replace(os.homedir(), "~");
   const when =
     trigger.kind === "file-added"
-      ? `When a${trigger.ext ? ` ${trigger.ext}` : ""} file appears in ${short(trigger.dir)}`
+      ? `When a${trigger.ext === "" ? "n extensionless" : trigger.ext ? ` ${trigger.ext}` : ""} file appears in ${short(trigger.dir)}`
       : "When you run it by hand";
   const then = actions
     .map((action) => {
@@ -752,7 +772,12 @@ export async function runAutomation(
   for (const entry of entries) {
     if (outcomes.length >= limit) break;
     if (!entry.isFile() || entry.name.startsWith(".")) continue;
-    if (automation.trigger.ext && path.extname(entry.name).toLowerCase() !== automation.trigger.ext) {
+    /* `null` matches anything; "" matches only files without an extension;
+       anything else must match exactly. */
+    if (
+      automation.trigger.ext !== null &&
+      path.extname(entry.name).toLowerCase() !== automation.trigger.ext
+    ) {
       continue;
     }
     if (automation.trigger.namePattern) {

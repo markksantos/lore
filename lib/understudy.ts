@@ -381,7 +381,17 @@ async function collectFolders(db: Db, config: UnderstudyConfig): Promise<Collect
         await walk(full, depth - 1);
         continue;
       }
-      if (!/\.(md|markdown|txt|rtf)$/i.test(entry.name)) continue;
+      /*
+       * `.rtf` was in this list and is not readable as text.
+       *
+       * An RTF file opens as `{\\rtf1\\ansi\\ansicpg1252\\cocoartf2761…` — control
+       * words, font tables and colour tables — and reading it raw meant those
+       * were measured as this person's prose and then quoted back to the model
+       * as an example of how they write. Extracting real text from RTF needs a
+       * parser this does not have, so the format is skipped rather than
+       * misread. TextEdit can save as .txt.
+       */
+      if (!/\.(md|markdown|txt)$/i.test(entry.name)) continue;
       const stat = await fs.stat(full).catch(() => null);
       if (!stat || stat.size > 2_000_000) continue;
       const text = await fs.readFile(full, "utf8").catch(() => "");

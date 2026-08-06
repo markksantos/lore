@@ -518,7 +518,15 @@ const FAQ = [
   },
 {
     q: "Is anything uploaded?",
-    a: "Nothing. Lore is a local app talking to your own filesystem. There is no account and no server behind the free build. Hosted plans exist for sync across machines, and they are opt-in — the version you download has no upload code in it at all.",
+    /*
+     * This used to end "no upload code in it at all", which stopped being true
+     * the moment Chorus shipped: it POSTs your question to Anthropic, OpenAI or
+     * Google when you convene a panel. The sentence was written before that
+     * existed and nobody went back to it — which is how a privacy claim becomes
+     * a false one without anybody lying. A reviewer caught it on the landing
+     * page, which is the worst place to be wrong about this.
+     */
+    a: "Your wiki, no. There is no account, no server behind the free build, and nothing that reads your folder ever sends it anywhere. One feature is a deliberate exception and says so on its own screen: Chorus sends the question you type to the model providers you have given keys for, because the whole point of it is asking models built by different companies. Everything else — the brief, Ask, Ghost, Ledger, Oracle, Understudy, Twin — runs against a model on your own machine.",
   },
 ];
 

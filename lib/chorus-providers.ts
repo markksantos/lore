@@ -254,7 +254,28 @@ export async function streamChat(
     if (error instanceof Error && error.name === "AbortError") {
       throw new Error(`${PROVIDER_LABEL[provider]} did not answer in time.`);
     }
-    throw error instanceof Error ? new Error(safeError(error.message)) : new Error("Request failed.");
+    /*
+     * "fetch failed" is not a diagnosis.
+     *
+     * undici throws exactly that string for every network-layer failure and
+     * puts the actual reason — ENOTFOUND, ECONNREFUSED, a TLS error, an
+     * unreachable proxy — in `error.cause`. Surfacing only the outer message
+     * meant a user behind a corporate proxy and a user with no internet saw the
+     * same two words, on a screen whose entire job is to explain why a panelist
+     * did not answer.
+     */
+    if (error instanceof Error) {
+      const cause = error.cause as { code?: string; message?: string } | undefined;
+      const detail = cause?.code ?? cause?.message;
+      return Promise.reject(
+        new Error(
+          safeError(
+            detail ? `${PROVIDER_LABEL[provider]}: ${error.message} (${detail})` : error.message,
+          ),
+        ),
+      );
+    }
+    throw new Error("Request failed.");
   } finally {
     clearTimeout(timer);
   }

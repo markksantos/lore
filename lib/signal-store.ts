@@ -154,21 +154,34 @@ export function openDb(name: string, migrations: string[]): Db {
   const file = path.join(DIR, `${name}.db`);
   const raw = new mod.DatabaseSync(file);
 
-  /* WAL so a long index write does not block a read from the UI, and NORMAL
-     sync because everything in here is derived data: the worst case of a power
-     cut mid-write is re-indexing, not lost user content. */
-  raw.exec("PRAGMA journal_mode = WAL");
-  raw.exec("PRAGMA synchronous = NORMAL");
-  raw.exec("PRAGMA foreign_keys = ON");
-  /* 5s rather than the 0s default: two writers is normal here (the daemon
-     indexing while a request reads), and the default turns that into an
-     immediate SQLITE_BUSY instead of a wait nobody notices. */
-  raw.exec("PRAGMA busy_timeout = 5000");
+  /*
+   * Everything from here to `open.set` is inside a try, because a throw in
+   * between leaks the handle — and a leaked SQLite handle on a WAL database is
+   * not a tidy little resource leak: it holds a lock, so the NEXT open fails
+   * too, and the feature is dead until the process restarts. The migration
+   * block below has its own close for the same reason.
+   */
+  let version: number;
+  try {
+    /* WAL so a long index write does not block a read from the UI, and NORMAL
+       sync because everything in here is derived data: the worst case of a
+       power cut mid-write is re-indexing, not lost user content. */
+    raw.exec("PRAGMA journal_mode = WAL");
+    raw.exec("PRAGMA synchronous = NORMAL");
+    raw.exec("PRAGMA foreign_keys = ON");
+    /* 5s rather than the 0s default: two writers is normal here (the daemon
+       indexing while a request reads), and the default turns that into an
+       immediate SQLITE_BUSY instead of a wait nobody notices. */
+    raw.exec("PRAGMA busy_timeout = 5000");
 
-  const version = Number(
-    (raw.prepare("PRAGMA user_version").get() as { user_version?: number } | undefined)
-      ?.user_version ?? 0,
-  );
+    version = Number(
+      (raw.prepare("PRAGMA user_version").get() as { user_version?: number } | undefined)
+        ?.user_version ?? 0,
+    );
+  } catch (error) {
+    raw.close();
+    throw error;
+  }
   for (let i = version; i < migrations.length; i++) {
     raw.exec("BEGIN");
     try {
@@ -337,9 +350,19 @@ export async function openForeignCopy(
   const stat = await fs.stat(source).catch(() => null);
   if (!stat?.isFile()) return null;
 
+  /*
+   * A directory per OPEN, not per source file.
+   *
+   * The name was a hash of the source path alone, so two concurrent readers of
+   * chat.db — Oracle indexing while Prophet looks for a contact, which the
+   * scheduler makes routine — shared one scratch directory. Whichever finished
+   * first deleted the copy the other was still reading from, and the second
+   * failed with a corrupt database on a file neither of them owned. The random
+   * suffix costs nothing and makes the collision impossible.
+   */
   const scratch = path.join(
     os.tmpdir(),
-    `lore-${crypto.createHash("sha1").update(source).digest("hex").slice(0, 12)}`,
+    `lore-${crypto.createHash("sha1").update(source).digest("hex").slice(0, 12)}-${crypto.randomBytes(4).toString("hex")}`,
   );
   await fs.mkdir(scratch, { recursive: true, mode: 0o700 });
   const target = path.join(scratch, path.basename(source));

@@ -55,6 +55,7 @@ type GhostState = {
     allDisplays: boolean;
     excludedApps: string[];
     redact: boolean;
+    captureWhenAppUnknown: boolean;
     maxDiskMb: number;
   };
   status: {
@@ -98,7 +99,12 @@ export function GhostView() {
   const [asking, setAsking] = useState(false);
   const [recall, setRecall] = useState<Recall | null>(null);
   const [askError, setAskError] = useState<string | null>(null);
-  const [digest, setDigest] = useState<{ summary: string | null; frames: number; needsModel: boolean } | null>(null);
+  const [digest, setDigest] = useState<{
+    summary: string | null;
+    frames: number;
+    needsModel: boolean;
+    error?: string | null;
+  } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -169,10 +175,12 @@ export function GhostView() {
 
   const loadDigest = async () => {
     setBusy("digest");
-    const data = await getJson<{ summary: string | null; frames: number; needsModel: boolean }>(
-      "/api/ghost?view=digest&force=1",
-      120_000,
-    );
+    const data = await getJson<{
+      summary: string | null;
+      frames: number;
+      needsModel: boolean;
+      error?: string | null;
+    }>("/api/ghost?view=digest&force=1", 300_000);
     setBusy(null);
     setDigest(data ?? { summary: null, frames: 0, needsModel: false });
   };
@@ -315,6 +323,14 @@ export function GhostView() {
           </div>
         ) : digest?.needsModel ? (
           <ErrorNote>No local model is running, so there is nothing to write the account with.</ErrorNote>
+        ) : digest?.error ? (
+          /* A model that failed is not an empty day, and saying "nothing was
+             captured" about a day with two thousand frames in it is the kind of
+             wrong answer that makes people stop believing the rest. */
+          <ErrorNote>
+            {digest.frames} frame{digest.frames === 1 ? "" : "s"} were captured today, but the model
+            could not read them back: {digest.error}
+          </ErrorNote>
         ) : digest ? (
           <Empty>Nothing was captured today.</Empty>
         ) : (
@@ -429,17 +445,28 @@ export function GhostView() {
           />
           <Toggle
             label="Capture every display"
-            hint="Off captures the main screen only."
+            hint="Off captures the main screen only. Each screen is stored as its own frame."
             checked={config.allDisplays}
             onChange={(next) => void patch({ allDisplays: next })}
           />
+          {/* Only shown when it can actually bite. Offering to weaken a guard
+              on a machine where the guard is working is an invitation with no
+              upside. */}
+          {capabilities.windowTitles.state !== "ready" ? (
+            <Toggle
+              label="Capture even when the app is unknown"
+              hint="macOS will not say what is in front, so the never-capture list cannot be honoured. Off means Ghost waits rather than risking it."
+              checked={config.captureWhenAppUnknown}
+              onChange={(next) => void patch({ captureWhenAppUnknown: next })}
+            />
+          ) : null}
         </div>
 
         <div className="mt-4">
           <p className="text-[13px] font-medium text-[var(--lore-text-primary)]">Never capture</p>
           <p className="t-meta mt-0.5 text-[var(--lore-text-tertiary)]">
             While one of these is in front, no picture is taken at all — not taken and filtered,
-            not taken.
+            not taken. If macOS will not say which app is in front, nothing is taken either.
           </p>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {config.excludedApps.map((app) => (
