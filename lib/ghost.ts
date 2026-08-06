@@ -367,7 +367,7 @@ export function hammingDistance(a: string, b: string): number {
 const SAME_SCENE_BITS = 5;
 
 export type CaptureOutcome =
-  | { kind: "captured"; frame: Frame; changed: boolean }
+  | { kind: "captured"; frame: Frame; changed: boolean; displays: number }
   | { kind: "skipped"; reason: string };
 
 /**
@@ -427,28 +427,39 @@ export async function captureFrame(config?: GhostConfig): Promise<CaptureOutcome
   const full = path.join(FRAMES_DIR, rel);
 
   /*
+   * One display per invocation, always.
+   *
    * `-x` silences the shutter, `-o` drops window shadows (pure pixels, smaller
    * files), `-t jpg` because a PNG of a screen is four times the size for
-   * detail a model cannot use. `-D 1` is the main display; without it macOS
-   * writes one file per screen and appends a suffix to the name we chose,
-   * which is how a three-monitor setup produced zero readable frames.
+   * detail a model cannot use.
+   *
+   * `-D n` is not optional. Without it, macOS given one output path and three
+   * screens writes three files — `frame.jpg`, `frame (2).jpg`, `frame
+   * (3).jpg` — and only the first is ever recorded in the database. The others
+   * are pictures of somebody's screen that no retention pass and no "forget
+   * everything" will ever delete, because nothing knows they exist. So
+   * capturing every display means calling this once per display and recording
+   * each as its own frame.
    */
-  const args = ["-x", "-o", "-t", "jpg"];
-  if (!settings.allDisplays) args.push("-D", "1");
-  args.push(full);
+  const captureOne = async (display: number, target: string): Promise<boolean> => {
+    try {
+      await exec(
+        "/usr/sbin/screencapture",
+        ["-x", "-o", "-t", "jpg", "-D", String(display), target],
+        { timeout: 20_000 },
+      );
+    } catch {
+      return false;
+    }
+    const written = await fs.stat(target).catch(() => null);
+    if (written && written.size > 0) return true;
+    /* A display that does not exist leaves an empty file behind, which would
+       otherwise become a zero-byte frame nobody can read. */
+    await fs.rm(target, { force: true }).catch(() => {});
+    return false;
+  };
 
-  try {
-    await exec("/usr/sbin/screencapture", args, { timeout: 20_000 });
-  } catch (error) {
-    return {
-      kind: "skipped",
-      reason: error instanceof Error ? error.message : "screencapture failed.",
-    };
-  }
-
-  const stat = await fs.stat(full).catch(() => null);
-  if (!stat || stat.size === 0) {
-    await fs.rm(full, { force: true }).catch(() => {});
+  if (!(await captureOne(1, full))) {
     return {
       kind: "skipped",
       reason:
@@ -456,10 +467,30 @@ export async function captureFrame(config?: GhostConfig): Promise<CaptureOutcome
     };
   }
 
+  /*
+   * The extra displays, recorded as their own rows.
+   *
+   * Bounded at four because `screencapture` gives no way to enumerate them and
+   * the loop has to stop somewhere; a fifth monitor is rarer than the bug this
+   * bound prevents.
+   */
+  const extras: { display: number; rel: string; full: string }[] = [];
+  if (settings.allDisplays) {
+    for (let display = 2; display <= 4; display++) {
+      const extraRel = path.join(day, `${now}-d${display}.jpg`);
+      const extraFull = path.join(FRAMES_DIR, extraRel);
+      if (!(await captureOne(display, extraFull))) break;
+      extras.push({ display, rel: extraRel, full: extraFull });
+    }
+  }
+
   /* Shrunk in place. 1440px is comfortably more than any vision model reads
      and roughly a tenth of a Retina screenshot on disk. */
-  await exec("/usr/bin/sips", ["-Z", "1440", full], { timeout: 20_000 }).catch(() => {});
-  const shrunk = await fs.stat(full).catch(() => stat);
+  for (const target of [full, ...extras.map((extra) => extra.full)]) {
+    await exec("/usr/bin/sips", ["-Z", "1440", target], { timeout: 20_000 }).catch(() => {});
+  }
+  const shrunk = await fs.stat(full).catch(() => null);
+  if (!shrunk) return { kind: "skipped", reason: "The captured frame vanished before it could be read." };
 
   const phash = await perceptualHash(full);
   const db = ghostDb();
@@ -493,8 +524,37 @@ export async function captureFrame(config?: GhostConfig): Promise<CaptureOutcome
     title ?? "",
   );
 
+  /*
+   * Every extra display gets its own row, so retention, "forget everything" and
+   * the frame viewer all reach it. They inherit the primary display's
+   * changed/unchanged state: the perceptual hash describes screen one, and
+   * describing a second monitor separately would double the model's work for a
+   * picture of the same moment.
+   */
+  for (const extra of extras) {
+    const extraStat = await fs.stat(extra.full).catch(() => null);
+    const { lastInsertRowid: extraId } = db.run(
+      `INSERT INTO frames (at, app, title, display, file, bytes, phash, state)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      now,
+      app,
+      title,
+      extra.display,
+      extra.rel,
+      extraStat?.size ?? 0,
+      "",
+      changed ? 0 : 2,
+    );
+    db.run(
+      "INSERT INTO frames_fts (rowid, summary, body, app, title) VALUES (?, '', '', ?, ?)",
+      extraId,
+      app ?? "",
+      title ?? "",
+    );
+  }
+
   const frame = db.get<Frame>("SELECT * FROM frames WHERE id = ?", lastInsertRowid)!;
-  return { kind: "captured", frame, changed };
+  return { kind: "captured", frame, changed, displays: 1 + extras.length };
 }
 
 async function dirSize(dir: string): Promise<number> {

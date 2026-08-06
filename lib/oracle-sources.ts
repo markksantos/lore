@@ -533,7 +533,21 @@ export const mailAdapter: Adapter = {
           who: [parsed.from, parsed.to].filter(Boolean).join(" → ") || null,
           at: parsed.date ?? Math.round(stat.mtimeMs),
           uri: full,
-          meta: { mailbox: path.basename(path.dirname(path.dirname(full))) },
+          meta: {
+            mailbox: path.basename(path.dirname(path.dirname(full))),
+            /*
+             * Which way the message went, recorded because `who` cannot carry
+             * it: mail stores "sender → recipient" and Messages stores the
+             * counterparty in the same field for both directions, so anything
+             * downstream that needs to know who spoke last has nothing to read.
+             * Prophet's "waiting on a reply" card could never fire without it.
+             *
+             * The mailbox path is the signal — a message inside a Sent mailbox
+             * is one this person sent — which is more reliable than matching
+             * the From: header against a set of addresses Lore does not know.
+             */
+            fromMe: /(?:^|\/)Sent[^/]*\.mbox(?:\/|$)/i.test(full),
+          },
         };
       }
     };

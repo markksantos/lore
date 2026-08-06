@@ -419,5 +419,29 @@ check(
   proposalFor({ ...movePattern, kind: "routine", signature: ["Mail", "Slack"].join(SEP) }) === null,
 );
 
+// -------------------------------------------------------------- direction
+
+section("Message direction");
+
+/*
+ * `who` cannot carry direction and two features needed it.
+ *
+ * Messages writes the counterparty into `who` for BOTH directions; Mail writes
+ * "sender → recipient" and never "You". Any downstream code deriving "did I
+ * speak last" from that string is wrong in a way that produces no error — it
+ * simply never fires. Prophet's awaiting-reply card was dead for exactly this
+ * reason. The adapters record it in `meta.fromMe` instead, and these pin that.
+ */
+const SENT = "/Users/x/Library/Mail/V10/ACC/Sent Messages.mbox/Data/1/Messages/9.emlx";
+const INBOX = "/Users/x/Library/Mail/V10/ACC/INBOX.mbox/Data/1/Messages/9.emlx";
+const sentPattern = /(?:^|\/)Sent[^/]*\.mbox(?:\/|$)/i;
+check("a Sent mailbox path is recognised as outgoing", sentPattern.test(SENT));
+check("an INBOX path is not", !sentPattern.test(INBOX));
+check(
+  "a mailbox merely containing the word is not enough",
+  !sentPattern.test("/Users/x/Library/Mail/V10/ACC/Presentation.mbox/Data/1/Messages/9.emlx"),
+);
+check("a Sent Items mailbox is recognised", sentPattern.test("/m/Sent Items.mbox/Data/1/x.emlx"));
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

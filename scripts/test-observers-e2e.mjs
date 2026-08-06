@@ -71,7 +71,22 @@ try {
   const first = await oracle.reindexOracle(["files"]);
   const filesPass = first.passes.find((p) => p.source === "files");
   check("the file source indexes", (filesPass?.added ?? 0) === 3, JSON.stringify(filesPass));
-  check("a bounded pass reports completion", filesPass?.complete === true);
+  /*
+   * Completion takes two passes now, and that is the point.
+   *
+   * The first pass has no backward cursor to walk from, so it cannot yet know
+   * whether there is history behind it. Claiming completion there is exactly
+   * the bug that left every newest-first source indexed one batch deep: pass
+   * one took the newest N and pass two reported "complete" with a decade
+   * unread. So: not complete on the first pass, complete on the second once the
+   * backward walk has run and come back with nothing new.
+   */
+  check("the first pass does not yet claim completion", filesPass?.complete === false);
+  const settle = await oracle.reindexOracle(["files"]);
+  check(
+    "the second pass reports completion once history is exhausted",
+    settle.passes.find((p) => p.source === "files")?.complete === true,
+  );
 
   const hits = oracle.searchOracle("colour grading");
   check("full-text search finds the page", hits.hits.length >= 1);
@@ -97,6 +112,7 @@ try {
   const second = await oracle.reindexOracle(["files"]);
   const secondPass = second.passes.find((p) => p.source === "files");
   check("re-indexing unchanged files adds nothing", (secondPass?.added ?? 0) === 0);
+  check("and it stays complete", secondPass?.complete === true);
 
   /* mtime moves forward, so the file is seen again and UPDATED rather than
      duplicated — the unique index on (source, nativeId) is what guarantees it. */

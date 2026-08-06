@@ -408,13 +408,11 @@ function silentContactCards(): Draft[] {
  * take. "Nobody replied to the newsletter I sent" is not a thing worth saying.
  */
 function awaitingReplyCards(): Draft[] {
-  let rows: { who: string; at: number; fromMe: number; title: string | null }[];
+  let rows: { who: string | null; at: number; title: string | null; meta: string | null; source: string }[];
   try {
-    rows = oracleDb().all<{ who: string; at: number; fromMe: number; title: string | null }>(
-      `SELECT who, at, title,
-              CASE WHEN who = 'You' OR who LIKE 'You →%' THEN 1 ELSE 0 END AS fromMe
-         FROM items
-        WHERE source IN ('mail','messages') AND at > ? AND who IS NOT NULL
+    rows = oracleDb().all<{ who: string | null; at: number; title: string | null; meta: string | null; source: string }>(
+      `SELECT who, at, title, meta, source FROM items
+        WHERE source IN ('mail','messages') AND at > ?
         ORDER BY at ASC`,
       Date.now() - 120 * 86_400_000,
     );
@@ -423,17 +421,42 @@ function awaitingReplyCards(): Draft[] {
   }
 
   /*
-   * Messages record the counterparty in `who` even for outgoing ones ("You"),
-   * so the correspondent has to come from the chat rather than the sender.
-   * Mail records "you → them". Both collapse to: strip the arrow, take what is
-   * left, and remember which direction it went.
+   * Direction comes from `meta`, not from `who`.
+   *
+   * An earlier version derived it by matching `who` against "You" — which is
+   * exactly what Messages writes for an outgoing message, and never what Mail
+   * writes for anything. So every outgoing Message was discarded as "not a
+   * counterparty" and no mail was ever recognised as outgoing, which meant the
+   * final `if (!last.fromMe) continue` was unreachable and this card could not
+   * fire at all. A reviewer found it before a user did.
    */
   const threads = new Map<string, { at: number; fromMe: boolean; title: string | null }[]>();
   for (const row of rows) {
-    const counterparty = row.who.replace(/^You\s*→\s*/, "").split(/[,;]/)[0].trim().toLowerCase();
-    if (!counterparty || counterparty === "you") continue;
+    let meta: { fromMe?: boolean; chat?: string | null; handle?: string | null } = {};
+    if (row.meta) {
+      try {
+        meta = JSON.parse(row.meta) as typeof meta;
+      } catch {
+        /* An unparseable meta blob costs one row. */
+      }
+    }
+
+    /* Messages: the conversation, which is the same for both directions.
+       Mail: the other end of the arrow, whichever end that is. */
+    const counterparty = (
+      row.source === "messages"
+        ? (meta.chat ?? meta.handle ?? "")
+        : meta.fromMe
+          ? ((row.who ?? "").split("→")[1] ?? "")
+          : ((row.who ?? "").split("→")[0] ?? "")
+    )
+      .split(/[,;]/)[0]
+      .trim()
+      .toLowerCase();
+    if (!counterparty || counterparty === "you" || counterparty === "unknown") continue;
+
     const list = threads.get(counterparty) ?? [];
-    list.push({ at: row.at, fromMe: row.fromMe === 1, title: row.title });
+    list.push({ at: row.at, fromMe: meta.fromMe === true, title: row.title });
     threads.set(counterparty, list);
   }
 
