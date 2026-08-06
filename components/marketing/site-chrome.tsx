@@ -49,8 +49,18 @@ export function MarketingHeader({ overHero = false }: { overHero?: boolean }) {
         </Link>
 
         <nav className="flex items-center gap-1">
+          {/*
+            * Demo, not a second "Open your wiki".
+            *
+            * The header used to carry a text link and a button that both landed
+            * on the browser wiki — two controls, one destination, and the
+            * cheaper of the two labelled less clearly. Meanwhile /demo, which is
+            * the whole application on sample data, was reachable only from the
+            * footer. The link that had no unique job now points at the page that
+            * had no way in.
+            */}
           <Link
-            href="/web"
+            href="/demo"
             className={cn(
               "hidden rounded-md px-2.5 py-1.5 text-[13.5px] font-medium transition-colors sm:block",
               scrolled
@@ -58,7 +68,7 @@ export function MarketingHeader({ overHero = false }: { overHero?: boolean }) {
                 : "text-white/85 hover:text-white",
             )}
           >
-            Open your wiki
+            Demo
           </Link>
           <Link
             href="/pricing"
@@ -117,7 +127,10 @@ export function MarketingHeader({ overHero = false }: { overHero?: boolean }) {
                 : "bg-white text-[#12356f] hover:bg-[#eef2fb]",
             )}
           >
-            Open Lore
+            {/* True in both modes: locally this opens the app, and on the
+                public site /vault redirects to /web, which opens the reader's
+                own folder in their own browser. */}
+            Open your wiki
           </Link>
         </nav>
       </div>

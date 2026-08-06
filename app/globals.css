@@ -712,3 +712,24 @@
   border-left: 2px solid var(--lore-border-strong);
   color: var(--lore-text-secondary);
 }
+
+/*
+ * Top-level sections must not be sized by their own content.
+ *
+ * <body> is a flex column, and most of these sections centre themselves with
+ * `mx-auto`. On a flex item, auto margins switch off the default stretch and
+ * size the box to fit-content — which resolves to min-content when that is
+ * wider than the container. The comparison table carries `min-w-[40rem]`, so
+ * its section came out 690px wide on a 390px phone and scrolled the entire page
+ * sideways, headline included, while the table itself was still sitting inside
+ * two nested overflow containers doing exactly what it was told.
+ *
+ * `width: 100%` puts the sizing back where it belongs — the container — and
+ * `max-width` with the auto margins still centres it. Fixed here rather than
+ * per section because the trap belongs to the body's display mode: the next
+ * wide table anybody adds would otherwise bring it straight back.
+ */
+body > * {
+  width: 100%;
+  min-width: 0;
+}

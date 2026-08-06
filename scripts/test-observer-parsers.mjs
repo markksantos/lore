@@ -465,19 +465,44 @@ check("the MCP server serves the tools the docs describe", toolNames.length === 
 check("nine of them are wiki tools", wikiTools.length === 9, String(wikiTools.length));
 check("three reach this machine", machineTools.length === 3, String(machineTools.length));
 
-const landing = await read("components/marketing/landing.tsx");
+/*
+ * Read the copy wherever it lives, not from one named file.
+ *
+ * The first version of these three checks pointed at landing.tsx and
+ * hero-simulator.tsx, and both went red the day the FAQ moved to lib/faq.ts and
+ * the Connections pane moved to demo-panes.tsx — with every claim still correct
+ * and still on the page. A guard that fails when the copy is *moved* rather
+ * than when it is *wrong* trains you to delete the guard.
+ */
+const SURFACES = [
+  "components/marketing/landing.tsx",
+  "components/marketing/demo-panes.tsx",
+  "components/marketing/feature-cards.tsx",
+  "components/marketing/hero-simulator.tsx",
+  "components/marketing/machine-section.tsx",
+  "lib/faq.ts",
+];
+const published = (await Promise.all(SURFACES.map(read))).join("\n");
+
 check(
   "the landing page no longer claims a build with no upload code",
-  !/no upload code in it at all/.test(landing),
+  !/no upload code in it at all/.test(published),
 );
 check(
   "and no longer claims nothing runs while you are not looking",
-  !/nothing that runs while you are not looking/.test(landing),
+  !/nothing that runs while you are not looking/.test(published),
 );
-check(`the landing page names ${wikiTools.length} wiki tools`, landing.includes("Nine tools for the wiki"));
-
-const hero = await read("components/marketing/hero-simulator.tsx");
-check("the product shot agrees with it", hero.includes("Nine tools for the wiki"));
+check(
+  `the published copy names ${wikiTools.length} wiki tools`,
+  published.includes("Nine tools for the wiki"),
+);
+/* Twice: once where an agent is told how to connect, once in the FAQ. A single
+   mention means one of the two surfaces quietly lost it. */
+check(
+  "it says so in both places that promise it",
+  (published.match(/Nine tools for the wiki/g) ?? []).length >= 2,
+  String((published.match(/Nine tools for the wiki/g) ?? []).length),
+);
 
 const readme = await read("README.md");
 check(

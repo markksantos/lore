@@ -34,12 +34,15 @@ export function DemoView() {
               Try it
             </p>
             <h1 className="t-section mt-2 text-[var(--lore-text-primary)]">
-              A sample wiki, in your browser.
+              The whole application, in your browser.
             </h1>
+            {/* This described "twelve made-up pages — the folders, the search,
+                the reading view and the change list", which was the shot as it
+                stood before the seven observers were added to it. Seventeen
+                screens, and the six it used to name are now the least of them. */}
             <p className="t-body mt-2 max-w-2xl text-[var(--lore-text-secondary)]">
-              Click around. This is the real interface running on twelve made-up pages — the
-              folders, the search, the reading view and the change list all behave as they do
-              on your own wiki.
+              Click anything. All seventeen screens are here on invented data — the brief, Ask,
+              the wiki, and every one of the seven observers that read this machine.
             </p>
           </div>
 
@@ -81,11 +84,11 @@ export function DemoView() {
         <section className="mt-14 grid gap-4 md:grid-cols-3">
           <Note
             title="This is a mock — the real thing is one click away"
-            body="These twelve pages are made up. If you want the real interface on your own notes without installing anything, /web opens a folder you choose and reads it in this browser. Nothing is uploaded there either; it is the same refusal to hold your data, done a different way."
+            body="Every page and every answer here is invented. If you want the real interface on your own notes without installing anything, /web opens a folder you choose and reads it in this browser. Nothing is uploaded there either; it is the same refusal to hold your data, done a different way."
           />
           <Note
             title="What the real one adds"
-            body="Your own pages — plus the brief, which tells you in one sentence each what your agents wrote, and Ask, which answers questions from your wiki and cites the passages. Neither can be faked on sample data, which is why they are not in this demo."
+            body="Your own pages, and answers built from them rather than written in advance. The seven observers need the download for a plainer reason: a browser tab cannot photograph your screen, open your Messages database or move a file."
           />
           <Note
             title="It is free"

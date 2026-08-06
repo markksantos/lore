@@ -1,13 +1,32 @@
 export const BRAND = "Lore";
 export const BRAND_FILE = "lore.md";
 
-export const TAGLINE = "The wiki for all your agents.";
-export const META_TITLE = "Lore — The wiki for all your agents.";
+/*
+ * The three strings the whole site is titled and shared by.
+ *
+ * They used to describe one screen — "the wiki for all your agents" — which was
+ * accurate when the product was a reader for a markdown folder and stopped
+ * being the whole truth the moment seven observers shipped that never touch the
+ * wiki at all. A tagline that undersells by two thirds costs the same to fix as
+ * one that oversells, and is read by search engines, the app manifest, the
+ * footer and every link anybody pastes into a chat.
+ */
+export const TAGLINE = "Ask your own machine anything. Locally, and free.";
+export const META_TITLE = "Lore — Ask your own machine anything";
 export const DESCRIPTION =
-  "Point Lore at the markdown wiki you already have. It maps every page, resolves every link, and hands your agents a readable index of everything you know — without moving a single file.";
+  "Lore indexes the markdown your AI agents write, the files, mail and messages on your disk, and every Claude Code, Codex and Cursor session you have had — then answers from all of it. Runs on your machine. Free, open source, and nothing is uploaded.";
 
 export const APP_PORT = 4646;
 export const GITHUB_URL = "https://github.com/markksantos/lore";
+
+/**
+ * Where the public site lives.
+ *
+ * Only used to make share-card URLs absolute, which every social scraper
+ * requires. The deployed origin overrides it, so a self-hosted copy pointing at
+ * the canonical site is the right default rather than a bug.
+ */
+export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://lore.md";
 
 export const VERSION = "0.1.0";
 

@@ -1,1057 +1,651 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BarChart3,
   Bell,
   BookText,
   Camera,
-  Check,
-  Clock,
+  ChevronRight,
   Compass,
-  Copy,
   Eye,
-  FileDown,
-  Flame,
-  HelpCircle,
   History,
   MessageCircleQuestion,
   Newspaper,
+  Pause,
   PenLine,
-  Pencil,
+  PanelLeft,
+  Play,
   Plug,
-  Radio,
-  RotateCcw,
+  Plus,
   Scale,
   Search,
   Settings,
-  Shield,
   ShieldCheck,
   Telescope,
   Wand2,
 } from "lucide-react";
 import { BrandMark } from "@/components/marketing/brand-mark";
 import { BrowserChrome } from "@/components/marketing/browser-chrome";
+import {
+  AskPane,
+  BriefPane,
+  ChangesPane,
+  ChorusPane,
+  ConnectionsPane,
+  ExplorePane,
+  GhostPane,
+  InsightsPane,
+  LedgerPane,
+  OraclePane,
+  ProphetPane,
+  SettingsPane,
+  TimelinePane,
+  TwinPane,
+  UnderstudyPane,
+  WatchPane,
+  WikiPane,
+  type WikiPage,
+} from "@/components/marketing/demo-panes";
 import { paletteVars } from "@/lib/palette";
-import { EASE } from "@/lib/anim";
 import { cn } from "@/lib/utils";
 
 /**
  * The hero product shot — a working replica of the app, not a picture of one.
  *
- * It demonstrates the loop the product actually runs: nothing is blocked,
- * everything lands unverified, a human signs off on what they checked, and a
- * later agent rewrite drops that sign-off. The rewrite is on a button because
- * this is a demo page with no filesystem behind it; in the app the watcher
- * fires it.
+ * Two rules keep it honest.
  *
- * Type is sized at roughly the app's real scale rather than shrunk to fit. A
- * miniaturised UI reads as a diagram of a product; a full-size one reads as the
- * product.
+ * The chrome is copied, not approximated. The sidebar below has the same two
+ * groups in the same order as components/lore/sidebar.tsx, the same "This
+ * machine" rule between them, the same search field, the same folder tree with
+ * its disclosure arrows and counts, and the same footer. The panes are built
+ * out of the application's own Panel/Stats/Button/ConsentSwitch. The previous
+ * version drew its own flat list of seventeen items with no grouping and no
+ * tree, which is why it read as a menu rather than as software.
  *
- * Sample content is deliberately generic — this is a public page, and a
- * realistic screenshot is worth nothing if it leaks a real client or rate.
+ * Every screen resolves to something. Thirteen of the seventeen tabs used to
+ * land on a card saying the screen exists in the download — which is the
+ * landing page equivalent of a locked door, on the one element whose entire job
+ * is to let someone in.
+ *
+ * Sample content is invented on purpose. This is a public page, and a realistic
+ * screenshot is worth nothing if it leaks a real client or a real rate.
  */
 
-type Trust = "verified" | "aging" | "lapsed" | "unverified";
-
-type WriteEvent = {
-  agent: string;
-  kind: "created" | "appended" | "rewritten";
-  added: number;
-  removed: number;
-  when: string;
-  why: string;
-  /** Ranking weight. A lapsed sign-off outranks everything else. */
-  weight: number;
-};
-
-type DemoPage = {
-  id: string;
-  title: string;
-  path: string;
-  folder: string;
-  slot: number;
-  inbound: number;
-  lines: string[];
-  trust: Trust;
-  event?: WriteEvent;
-  /** What a simulated agent rewrite would put in place of the first line. */
-  rewrite?: string;
-};
-
-const FOLDERS = ["stack", "operating", "clients", "projects"] as const;
-
-const INITIAL: DemoPage[] = [
-  {
-    id: "deploy",
-    title: "Deploy pipeline",
-    path: "stack/deploy-pipeline.md",
-    folder: "stack",
-    slot: 0,
-    inbound: 14,
-    trust: "unverified",
-    lines: [
-      "Push to main deploys to production. There is no staging step.",
-      "A red build blocks the deploy — never override it.",
-    ],
-    rewrite: "Push to main deploys to production behind a five-minute canary.",
-    event: {
-      agent: "Claude Code",
-      kind: "rewritten",
-      added: 12,
-      removed: 31,
-      when: "2h ago",
-      why: "Rewritten in place. Thirty-one lines of prose are gone and fourteen pages link here.",
-      weight: 96,
-    },
-  },
-  {
-    id: "postgres",
-    title: "Postgres notes",
-    path: "stack/postgres-notes.md",
-    folder: "stack",
-    slot: 0,
-    inbound: 6,
-    trust: "unverified",
-    lines: [
-      "Running Postgres 17. Connection pooling handled at the edge.",
-      "Migrations are forward-only. There is no down migration.",
-    ],
-    rewrite: "Running Postgres 18. Pooling moved into the application layer.",
-    event: {
-      agent: "Codex",
-      kind: "rewritten",
-      added: 4,
-      removed: 18,
-      when: "5h ago",
-      why: "The version line moved. No other page in the vault agrees with it yet.",
-      weight: 71,
-    },
-  },
-  {
-    id: "auth",
-    title: "Auth decisions",
-    path: "stack/auth-decisions.md",
-    folder: "stack",
-    slot: 0,
-    inbound: 9,
-    trust: "aging",
-    lines: [
-      "Session cookies over JWTs. Revocation was the deciding factor.",
-      "Sessions live 30 days and refresh on use.",
-    ],
-  },
-  {
-    id: "glossary",
-    title: "Glossary",
-    path: "stack/glossary.md",
-    folder: "stack",
-    slot: 0,
-    inbound: 11,
-    trust: "unverified",
-    lines: ["Shared vocabulary for everything under stack."],
-  },
-  {
-    id: "rhythm",
-    title: "Weekly rhythm",
-    path: "operating/weekly-rhythm.md",
-    folder: "operating",
-    slot: 1,
-    inbound: 3,
-    trust: "unverified",
-    lines: [
-      "Deep work 7–11am, no meetings before noon.",
-      "Ship Monday through Thursday only.",
-    ],
-  },
-  {
-    id: "checklist",
-    title: "Today's brief",
-    path: "operating/review-checklist.md",
-    folder: "operating",
-    slot: 1,
-    inbound: 5,
-    trust: "unverified",
-    lines: ["Read the diff before the description."],
-    rewrite: "Read the description first, then skim the diff.",
-    event: {
-      agent: "Cursor",
-      kind: "appended",
-      added: 6,
-      removed: 0,
-      when: "yesterday",
-      why: "Appended, nothing removed. Cheap to read and hard to get wrong.",
-      weight: 34,
-    },
-  },
-  {
-    id: "postmortems",
-    title: "Postmortems",
-    path: "operating/postmortems.md",
-    folder: "operating",
-    slot: 1,
-    inbound: 2,
-    trust: "unverified",
-    lines: ["One page per incident. No blame, no summary paragraph."],
-  },
-  {
-    id: "pricing",
-    title: "Pricing policy",
-    path: "clients/pricing.md",
-    folder: "clients",
-    slot: 2,
-    inbound: 21,
-    trust: "verified",
-    lines: [
-      "Retainers bill on the first. Project work bills half up front.",
-      "A discount attaches to the subscription, never to a single job.",
-    ],
-    rewrite: "Retainers bill on the fifteenth. Project work bills on delivery.",
-  },
-  {
-    id: "onboarding",
-    title: "Client onboarding",
-    path: "clients/onboarding.md",
-    folder: "clients",
-    slot: 2,
-    inbound: 4,
-    trust: "unverified",
-    lines: ["Kickoff call, then a written scope before any work starts."],
-    rewrite: "Written scope first, kickoff call once it is signed.",
-    event: {
-      agent: "sync script",
-      kind: "created",
-      added: 22,
-      removed: 0,
-      when: "3d ago",
-      why: "A new page. Nothing links to it yet, so nothing depends on it being right.",
-      weight: 18,
-    },
-  },
-  {
-    id: "vendors",
-    title: "Vendors",
-    path: "clients/vendors.md",
-    folder: "clients",
-    slot: 2,
-    inbound: 3,
-    trust: "unverified",
-    lines: ["Who we buy from, on what terms, and who owns the relationship."],
-  },
-  {
-    id: "atlas",
-    title: "Atlas",
-    path: "projects/atlas.md",
-    folder: "projects",
-    slot: 3,
-    inbound: 2,
-    trust: "unverified",
-    lines: ["Internal mapping tool. Paused pending a decision on auth."],
-  },
-  {
-    id: "beacon",
-    title: "Beacon",
-    path: "projects/beacon.md",
-    folder: "projects",
-    slot: 3,
-    inbound: 1,
-    trust: "unverified",
-    lines: ["Status page. Ships behind a flag until the incident feed is real."],
-  },
-];
-
-const INITIAL_WRITES = 41;
-
-const TRUST_LABEL: Record<Trust, string> = {
-  verified: "Verified",
-  lapsed: "Lapsed",
-  aging: "Aging",
-  unverified: "Unverified",
-};
-
-/**
- * Aging borrows the amber plate ink rather than a one-off hex, so the badge
- * survives the light/dark flip with the rest of the palette.
- */
-const TRUST_TONE: Record<Trust, string> = {
-  verified: "text-[var(--lore-success)] border-[var(--lore-success)]/45",
-  lapsed: "text-[var(--lore-danger)] border-[var(--lore-danger)]/50",
-  aging: "text-[var(--pal-7-ink)] border-[var(--pal-7-ink)]/45",
-  unverified: "text-[var(--lore-text-tertiary)] border-[var(--lore-border-strong)]",
-};
-
-const SEGMENT_FILL: Record<Trust, string> = {
-  verified: "var(--lore-success)",
-  aging: "var(--pal-7)",
-  lapsed: "var(--lore-danger)",
-  unverified: "var(--lore-border-strong)",
-};
-
-const ORDER: Trust[] = ["verified", "aging", "lapsed", "unverified"];
-
-/*
- * The real nav, not a curated subset.
- *
- * This showed four items with invented labels — `review` captioned "Brief",
- * `insights` captioned "Ask" — so the shot advertised an app that does not
- * exist and mislabelled the screens it did show. The list below is copied from
- * the app's own VIEW_LABEL, in the app's own order.
- */
 type Tab =
   | "brief"
   | "ask"
   | "wiki"
+  | "review"
+  | "watch"
+  | "timeline"
+  | "insights"
+  | "explore"
+  | "connections"
+  | "settings"
   | "prophet"
   | "ghost"
   | "ledger"
   | "oracle"
   | "understudy"
   | "twin"
-  | "chorus"
-  | "changes"
-  | "watch"
-  | "timeline"
-  | "insights"
-  | "explore"
-  | "connections"
-  | "settings";
+  | "chorus";
 
-/** The four with a working pane here; the rest describe themselves. */
-const LIVE_TABS = new Set<Tab>(["brief", "wiki", "ask", "connections"]);
+/** Copied from the app's VIEW_LABEL, in the app's own order. */
+const LABEL: Record<Tab, string> = {
+  brief: "Brief",
+  ask: "Ask",
+  wiki: "Wiki",
+  review: "Changes",
+  watch: "Watch",
+  timeline: "Timeline",
+  insights: "Insights",
+  explore: "Explore",
+  connections: "Connections",
+  settings: "Settings",
+  prophet: "Prophet",
+  ghost: "Ghost",
+  ledger: "Ledger",
+  oracle: "Oracle",
+  understudy: "Understudy",
+  twin: "Twin",
+  chorus: "Chorus",
+};
 
-const TABS: { id: Tab; label: string; icon: typeof BookText; blurb?: string }[] = [
-  { id: "brief", label: "Brief", icon: Newspaper },
-  { id: "ask", label: "Ask", icon: MessageCircleQuestion },
-  { id: "wiki", label: "Wiki", icon: BookText },
-  /* The observers, in the app's own order. Each is off until switched on, and
-     each blurb says what it reads — the same sentence that sits beside its
-     switch, so the shot cannot promise something the settings screen then
-     hedges. */
-  {
-    id: "prophet",
-    label: "Prophet",
-    icon: Bell,
-    blurb: "Speaks first: your call is in twenty minutes, and here is what was left open last time.",
-  },
-  {
-    id: "ghost",
-    label: "Ghost",
-    icon: Telescope,
-    blurb: "A picture of your screen every few seconds, read by a model on this machine. Ask it what you were doing.",
-  },
-  {
-    id: "ledger",
-    label: "Ledger",
-    icon: History,
-    blurb: "Every Claude Code session, Codex run and Cursor chat on this Mac, in one search box.",
-  },
-  {
-    id: "oracle",
-    label: "Oracle",
-    icon: Search,
-    blurb: "Files, mail, messages, calendar, notes and browsing — one index, one question.",
-  },
-  {
-    id: "understudy",
-    label: "Understudy",
-    icon: PenLine,
-    blurb: "Measures how you actually write, then drafts in it. Never leaves the machine.",
-  },
-  {
-    id: "twin",
-    label: "Twin",
-    icon: Wand2,
-    blurb: "Notices the filing you repeat and offers to take it over, as a rule you can read first.",
-  },
-  {
-    id: "chorus",
-    label: "Chorus",
-    icon: Scale,
-    blurb: "Several models answer, critique each other, then name what they could not agree on.",
-  },
-  {
-    id: "changes",
-    label: "Changes",
-    icon: ShieldCheck,
-    blurb: "Every page an agent rewrote, with what it removed and who did it.",
-  },
-  {
-    id: "watch",
-    label: "Watch",
-    icon: Eye,
-    blurb: "A live feed of writes as they land, straight from the folder.",
-  },
-  {
-    id: "timeline",
-    label: "Timeline",
-    icon: Camera,
-    blurb: "What the wiki said on any past day, reconstructed from its history.",
-  },
-  {
-    id: "insights",
-    label: "Insights",
-    icon: BarChart3,
-    blurb: "Which pages carry the wiki, and which searches came back empty.",
-  },
-  {
-    id: "explore",
-    label: "Explore",
-    icon: Compass,
-    blurb: "The link graph, duplicate pages, and coverage across the corpus.",
-  },
-  { id: "connections", label: "Connections", icon: Plug },
-  {
-    id: "settings",
-    label: "Settings",
-    icon: Settings,
-    blurb: "The linked folder, the read-only lock, and the local model.",
-  },
+const NAV: { id: Tab; icon: typeof BookText }[] = [
+  { id: "brief", icon: Newspaper },
+  { id: "ask", icon: MessageCircleQuestion },
+  { id: "wiki", icon: BookText },
+  { id: "review", icon: ShieldCheck },
+  { id: "watch", icon: Eye },
+  { id: "timeline", icon: Camera },
+  { id: "insights", icon: BarChart3 },
+  { id: "explore", icon: Compass },
+  { id: "connections", icon: Plug },
+  { id: "settings", icon: Settings },
 ];
 
+const OBSERVER_NAV: { id: Tab; icon: typeof BookText }[] = [
+  { id: "prophet", icon: Bell },
+  { id: "ghost", icon: Telescope },
+  { id: "ledger", icon: History },
+  { id: "oracle", icon: Search },
+  { id: "understudy", icon: PenLine },
+  { id: "twin", icon: Wand2 },
+  { id: "chorus", icon: Scale },
+];
+
+/** The observers with a green dot in this shot — the ones the panes show as on. */
+const RUNNING: Tab[] = ["prophet", "ghost", "ledger", "oracle", "understudy", "twin"];
+
+// ------------------------------------------------------------------- folders
+
+type FolderNode = { path: string; name: string; depth: number; count: number; children: string[] };
+
+/*
+ * The counts have to add up.
+ *
+ * They briefly did not: five folders totalling fourteen pages under a footer
+ * that said "1,412 pages". Anybody who bothered to add them up found the shot
+ * lying about the only thing it was measuring, which is a bad trade for a
+ * bigger-sounding number. These sum to TOTAL_PAGES below, and the wiki pane
+ * says it is showing a slice rather than the whole folder.
+ */
+const TREE: FolderNode[] = [
+  { path: "stack", name: "stack", depth: 0, count: 118, children: ["stack/runtime"] },
+  { path: "stack/runtime", name: "runtime", depth: 1, count: 26, children: [] },
+  { path: "operating", name: "operating", depth: 0, count: 74, children: [] },
+  { path: "clients", name: "clients", depth: 0, count: 209, children: [] },
+  { path: "projects", name: "projects", depth: 0, count: 61, children: [] },
+];
+
+/** Sum of the top-level folders, so the footer agrees with the tree. */
+const TOTAL_PAGES = TREE.filter((node) => node.depth === 0).reduce((n, node) => n + node.count, 0);
+
+const PAGES: Record<string, WikiPage[]> = {
+  stack: [
+    {
+      id: "deploy",
+      title: "Deploy pipeline",
+      path: "stack/deploy-pipeline.md",
+      inbound: 14,
+      lines: [
+        "Push to main deploys to production behind a five-minute canary.",
+        "Rollback is one command and does not need a build.",
+      ],
+    },
+    {
+      id: "postgres",
+      title: "Postgres notes",
+      path: "stack/postgres-notes.md",
+      inbound: 6,
+      lines: [
+        "Running Postgres 18. Pooling lives in the application layer.",
+        "Migrations are forward-only. There is no down migration.",
+      ],
+    },
+    {
+      id: "auth",
+      title: "Auth decisions",
+      path: "stack/auth-decisions.md",
+      inbound: 9,
+      lines: [
+        "Session cookies over JWTs. Revocation was the deciding factor.",
+        "Sessions live 30 days and refresh on use.",
+      ],
+    },
+    {
+      id: "glossary",
+      title: "Glossary",
+      path: "stack/glossary.md",
+      inbound: 11,
+      lines: ["Shared vocabulary for everything under stack."],
+    },
+  ],
+  "stack/runtime": [
+    {
+      id: "node",
+      title: "Node version",
+      path: "stack/runtime/node.md",
+      inbound: 3,
+      lines: ["Node 22 everywhere. The desktop build pins the same major."],
+    },
+    {
+      id: "queues",
+      title: "Queues",
+      path: "stack/runtime/queues.md",
+      inbound: 2,
+      lines: ["One queue, at-least-once, idempotent handlers or it does not ship."],
+    },
+  ],
+  operating: [
+    {
+      id: "rhythm",
+      title: "Weekly rhythm",
+      path: "operating/weekly-rhythm.md",
+      inbound: 3,
+      lines: ["Deep work 7–11am, no meetings before noon.", "Ship Monday through Wednesday."],
+    },
+    {
+      id: "checklist",
+      title: "Review checklist",
+      path: "operating/review-checklist.md",
+      inbound: 5,
+      lines: ["Read the description first, then skim the diff."],
+    },
+    {
+      id: "postmortems",
+      title: "Postmortems",
+      path: "operating/postmortems.md",
+      inbound: 2,
+      lines: ["One page per incident. No blame, no summary paragraph."],
+    },
+  ],
+  clients: [
+    {
+      id: "pricing",
+      title: "Pricing policy",
+      path: "clients/pricing.md",
+      inbound: 21,
+      lines: [
+        "Retainers bill on the fifteenth. Project work bills half up front.",
+        "A discount attaches to the subscription, never to a single job.",
+      ],
+    },
+    {
+      id: "onboarding",
+      title: "Client onboarding",
+      path: "clients/onboarding.md",
+      inbound: 4,
+      lines: ["Written scope first, kickoff call once it is signed."],
+    },
+    {
+      id: "vendors",
+      title: "Vendors",
+      path: "clients/vendors.md",
+      inbound: 3,
+      lines: ["Who we buy from, on what terms, and who owns the relationship."],
+    },
+  ],
+  projects: [
+    {
+      id: "atlas",
+      title: "Atlas",
+      path: "projects/atlas.md",
+      inbound: 2,
+      lines: ["Internal mapping tool. Paused pending a decision on auth."],
+    },
+    {
+      id: "beacon",
+      title: "Beacon",
+      path: "projects/beacon.md",
+      inbound: 1,
+      lines: ["Status page. Ships behind a flag until the incident feed is real."],
+    },
+  ],
+};
+
+// ---------------------------------------------------------------------- tour
+
+/**
+ * The screens the shot plays through on its own.
+ *
+ * Most people never click a product demo. They look at it for two seconds and
+ * scroll, and a static screenshot is what they take away. The tour makes those
+ * two seconds show the thing that is hardest to explain in a headline — that
+ * this is seven different screens over the same folder — and stops the moment
+ * anybody touches it, because an auto-advancing UI that fights the person using
+ * it is worse than no motion at all.
+ */
+const TOUR: Tab[] = ["brief", "ghost", "oracle", "ledger", "ask", "twin", "chorus", "wiki"];
+const TOUR_MS = 4600;
+
 export function HeroSimulator({ fullHeight = false }: { fullHeight?: boolean } = {}) {
-  const [pages, setPages] = useState(INITIAL);
-  const [writes, setWrites] = useState(INITIAL_WRITES);
-  /*
-   * Opens on the wiki, not on Review.
-   *
-   * The headline says "this is where you read them", and the first thing the
-   * product shot used to show was a checklist with Sign off buttons on it. Two
-   * readers took that to mean Lore is an app for approving your agent's edits —
-   * the exact thing it is not, and the exact thing one of them said he did not
-   * want another of. Reading is the first screen; Review is a tab away.
-   */
-  const [tab, setTab] = useState<Tab>("wiki");
-  const [folder, setFolder] = useState<string>("stack");
-  /** The page a simulated rewrite just landed on, so the row flashes. */
-  const [struck, setStruck] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>("brief");
+  const [folder, setFolder] = useState("stack");
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(["stack"]));
+  /* null once the visitor takes over — the tour never restarts itself. */
+  const [tourStep, setTourStep] = useState<number | null>(0);
+  const [paused, setPaused] = useState(false);
+  const scroller = useRef<HTMLDivElement | null>(null);
 
-  const counts = useMemo(() => {
-    const tally: Record<Trust, number> = { verified: 0, aging: 0, lapsed: 0, unverified: 0 };
-    for (const page of pages) tally[page.trust] += 1;
-    return tally;
-  }, [pages]);
+  const take = useCallback((next: Tab) => {
+    setTourStep(null);
+    setTab(next);
+  }, []);
 
-  const triage = useMemo(
-    () =>
-      pages
-        .filter((page): page is DemoPage & { event: WriteEvent } => page.event !== undefined)
-        .sort((a, b) => b.event.weight - a.event.weight),
-    [pages],
+  /* Reduced motion means no tour at all. Someone who has asked the operating
+     system to stop moving things has not asked for an exception for adverts. */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+    if (query.matches) setTourStep(null);
+  }, []);
+
+  useEffect(() => {
+    if (tourStep === null || paused) return;
+    const timer = window.setTimeout(() => {
+      const next = (tourStep + 1) % TOUR.length;
+      setTourStep(next);
+      setTab(TOUR[next]);
+    }, TOUR_MS);
+    return () => window.clearTimeout(timer);
+  }, [tourStep, paused]);
+
+  /* A new screen starts at its own top. Landing halfway down Ghost because the
+     previous pane was long is the single most disorienting thing this can do. */
+  useEffect(() => {
+    scroller.current?.scrollTo({ top: 0 });
+  }, [tab]);
+
+  const rows = useMemo(
+    () => TREE.filter((node) => node.depth === 0 || expanded.has(node.path.split("/")[0])),
+    [expanded],
   );
 
-  const toggleSignOff = useCallback((pageId: string) => {
-    setPages((current) =>
-      current.map((page) =>
-        page.id === pageId
-          ? { ...page, trust: page.trust === "verified" ? "unverified" : "verified" }
-          : page,
-      ),
+  const pane = useMemo(() => {
+    switch (tab) {
+      case "brief":
+        return <BriefPane />;
+      case "ask":
+        return <AskPane />;
+      case "wiki":
+        return (
+          <WikiPane
+            folder={folder}
+            pages={PAGES[folder] ?? []}
+            total={TREE.find((node) => node.path === folder)?.count ?? 0}
+          />
+        );
+      case "review":
+        return <ChangesPane />;
+      case "watch":
+        return <WatchPane />;
+      case "timeline":
+        return <TimelinePane />;
+      case "insights":
+        return <InsightsPane />;
+      case "explore":
+        return <ExplorePane />;
+      case "connections":
+        return <ConnectionsPane />;
+      case "settings":
+        return <SettingsPane />;
+      case "prophet":
+        return <ProphetPane />;
+      case "ghost":
+        return <GhostPane />;
+      case "ledger":
+        return <LedgerPane />;
+      case "oracle":
+        return <OraclePane />;
+      case "understudy":
+        return <UnderstudyPane />;
+      case "twin":
+        return <TwinPane />;
+      case "chorus":
+        return <ChorusPane />;
+    }
+  }, [tab, folder]);
+
+  const navButton = (item: { id: Tab; icon: typeof BookText }, live?: boolean) => {
+    const Icon = item.icon;
+    return (
+      <button
+        key={item.id}
+        type="button"
+        onClick={() => take(item.id)}
+        aria-current={tab === item.id ? "page" : undefined}
+        className={cn(
+          "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[13.5px] transition-colors",
+          tab === item.id
+            ? "bg-[var(--lore-surface-raised)] font-medium text-[var(--lore-text-primary)]"
+            : "text-[var(--lore-text-secondary)] hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)]",
+        )}
+      >
+        <Icon size={15} className="opacity-80" />
+        <span className="min-w-0 flex-1 truncate text-left">{LABEL[item.id]}</span>
+        {live ? (
+          <span
+            title="Running"
+            aria-label="running"
+            className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--lore-success)]"
+          />
+        ) : null}
+      </button>
     );
-  }, []);
-
-  /**
-   * A rewrite goes after something you signed off on, because that is the case
-   * worth showing. With nothing signed off it hits the highest-ranked page
-   * instead, which is what a real agent would be editing anyway.
-   */
-  const simulateRewrite = useCallback(() => {
-    const target =
-      pages.find((page) => page.trust === "verified" && page.rewrite) ??
-      pages.find((page) => page.rewrite);
-    if (!target) return;
-
-    const lapsing = target.trust === "verified";
-    setPages((current) =>
-      current.map((page) =>
-        page.id !== target.id
-          ? page
-          : {
-              ...page,
-              trust: lapsing ? "lapsed" : page.trust,
-              lines: page.rewrite ? [page.rewrite, ...page.lines.slice(1)] : page.lines,
-              rewrite: undefined,
-              event: {
-                agent: "Claude Code",
-                kind: "rewritten",
-                added: 9,
-                removed: 27,
-                when: "just now",
-                why: lapsing
-                  ? "You signed this off. It has been rewritten since, so the sign-off came off."
-                  : "Rewritten in place while you were reading this page.",
-                weight: 999,
-              },
-            },
-      ),
-    );
-    setWrites((n) => n + 1);
-    setStruck(target.id);
-    window.setTimeout(() => setStruck(null), 1800);
-  }, [pages]);
-
-  const reset = useCallback(() => {
-    setPages(INITIAL);
-    setWrites(INITIAL_WRITES);
-    setStruck(null);
-  }, []);
-
-  const dirty = pages !== INITIAL;
-  const folderPages = pages.filter((page) => page.folder === folder);
+  };
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-[var(--lore-border)] bg-[var(--lore-surface)] shadow-[0_40px_100px_-45px_rgba(15,23,42,0.55)]">
+    <div
+      className="overflow-hidden rounded-2xl border border-[var(--lore-border)] bg-[var(--lore-surface)] shadow-[0_40px_100px_-45px_rgba(15,23,42,0.55)]"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+    >
       <BrowserChrome url="lore.md" />
 
-      <div className={fullHeight ? "flex h-[calc(100svh-11rem)] min-h-[520px]" : "flex h-[540px] sm:h-[580px] lg:h-[620px]"}>
+      <div
+        className={
+          fullHeight
+            ? "flex h-[calc(100svh-9rem)] min-h-[560px]"
+            : "flex h-[620px] sm:h-[760px] lg:h-[860px]"
+        }
+      >
         {/* -------------------------------------------------------- sidebar */}
-        <div className="hidden w-[212px] shrink-0 flex-col overflow-hidden border-r border-[var(--lore-border)] px-5 py-5 sm:flex">
-          <div className="flex items-center gap-2.5 text-[var(--lore-text-primary)]">
-            <BrandMark size={20} />
-            <span className="text-[16px] font-semibold tracking-[-0.025em]">Lore</span>
+        <div className="hidden w-[224px] shrink-0 flex-col overflow-hidden border-r border-[var(--lore-border)] bg-[var(--lore-surface)] sm:flex">
+          <div className="flex shrink-0 items-center gap-1 px-4 pb-3 pt-4">
+            <div className="flex min-w-0 flex-1 items-center gap-2 pl-1 text-[var(--lore-text-primary)]">
+              <BrandMark size={18} />
+              <span className="truncate text-[14px] font-semibold tracking-[-0.02em]">wiki</span>
+            </div>
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--lore-text-tertiary)]">
+              <PanelLeft size={15} />
+            </span>
           </div>
 
-          <div className="mt-4 space-y-0.5">
-            {TABS.map((item) => {
-              const Icon = item.icon;
+          {/*
+            * Everything between the brand and the footer scrolls as one column.
+            *
+            * Seventeen screens, a search field and a folder tree do not fit in
+            * a sidebar at any laptop height, and the version that let each
+            * region keep its own height simply sliced the last one in half at
+            * the card's edge. The app has the same constraint and solves it the
+            * same way.
+            */}
+          <div className="lore-scrollbar min-h-0 flex-1 overflow-y-auto">
+          <nav className="space-y-0.5 px-3" aria-label="Wiki">
+            {NAV.map((item) => navButton(item))}
+          </nav>
+
+          {/* The rule and the label are the most important two elements in this
+              sidebar: everything below them reads this machine rather than the
+              wiki, and every one is off until switched on. */}
+          <div className="mt-3 border-t border-[var(--lore-border)] px-3 pt-3">
+            <p className="mb-1 px-2.5 text-[10px] font-semibold uppercase tracking-[0.09em] text-[var(--lore-text-tertiary)]">
+              This machine
+            </p>
+            <nav className="space-y-0.5" aria-label="This machine">
+              {OBSERVER_NAV.map((item) => navButton(item, RUNNING.includes(item.id)))}
+            </nav>
+          </div>
+
+          <div className="px-3 pb-2 pt-4">
+            <div className="relative">
+              <Search
+                size={14}
+                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--lore-text-tertiary)]"
+              />
+              <div className="w-full rounded-lg border border-[var(--lore-border)] bg-[var(--lore-background)] py-2 pl-8 pr-10 text-[13px] text-[var(--lore-text-tertiary)]">
+                Search
+              </div>
+              <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded border border-[var(--lore-border)] bg-[var(--lore-surface-raised)] px-1.5 py-0.5 text-[10px] text-[var(--lore-text-tertiary)]">
+                /
+              </kbd>
+            </div>
+          </div>
+
+          <div className="px-3 pb-3">
+            <div className="mb-1.5 mt-1 flex items-center gap-2 px-2">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.09em] text-[var(--lore-text-tertiary)]">
+                Folders
+              </p>
+              <span className="text-[10px] text-[var(--lore-text-tertiary)]">{TREE.length}</span>
+            </div>
+
+            {rows.map((node, i) => {
+              const hasChildren = node.children.length > 0;
+              const isOpen = expanded.has(node.path);
               return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => setTab(item.id)}
-                  className={cn(
-                    "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[13.5px] transition-colors",
-                    tab === item.id
-                      ? "bg-[var(--lore-surface-raised)] font-medium text-[var(--lore-text-primary)]"
-                      : "text-[var(--lore-text-secondary)] hover:bg-[var(--lore-surface-raised)]",
-                  )}
-                >
-                  <Icon size={15} className="opacity-80" />
-                  {item.label}
-                  {item.id === "changes" && counts.lapsed > 0 ? (
-                    // Accent, not danger: this is the app's own badge colour, and
-                    // white on the dark-mode danger red is unreadable.
-                    <motion.span
-                      layout
-                      className="ml-auto flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--lore-accent)] px-1 text-[11px] font-semibold text-white"
-                    >
-                      {counts.lapsed}
-                    </motion.span>
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="my-4 border-t border-[var(--lore-border)]" />
-
-          <div className="flex items-center gap-2 rounded-lg border border-[var(--lore-border)] bg-[var(--lore-background)] px-2.5 py-1.5">
-            <Search size={13} className="text-[var(--lore-text-tertiary)]" />
-            <span className="text-[13px] text-[var(--lore-text-tertiary)]">Search</span>
-            <kbd className="ml-auto rounded border border-[var(--lore-border)] px-1 py-px text-[10px] text-[var(--lore-text-tertiary)]">
-              {/* The product shows "/" here — ⌘K opens the command palette.
-                  A mockup that contradicts the app teaches the wrong shortcut. */}
-              /
-            </kbd>
-          </div>
-
-          <p className="mb-1.5 mt-4 shrink-0 text-[11px] font-semibold uppercase tracking-[0.09em] text-[var(--lore-text-tertiary)]">
-            Folders
-          </p>
-          {/* Ten nav items above this leave the folder list short of room, and
-              without a scroll boundary the last row was sliced through the
-              middle at the card's edge. */}
-          <div className="lore-scrollbar min-h-0 flex-1 space-y-0.5 overflow-y-auto">
-            {FOLDERS.map((name, i) => {
-              const pageCount = pages.filter((page) => page.folder === name).length;
-              return (
-                <button
-                  key={name}
-                  type="button"
-                  onClick={() => {
-                    setFolder(name);
-                    setTab("wiki");
-                  }}
+                <div
+                  key={node.path}
                   style={paletteVars(i)}
                   className={cn(
-                    "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[14px] transition-colors",
-                    folder === name && tab === "wiki"
-                      ? "bg-[var(--lore-surface-selected)] font-medium text-[var(--lore-text-primary)]"
+                    "flex items-center rounded-lg transition-colors",
+                    folder === node.path && tab === "wiki"
+                      ? "bg-[var(--lore-surface-selected)] text-[var(--lore-text-primary)]"
                       : "text-[var(--lore-text-secondary)] hover:bg-[var(--lore-surface-raised)]",
                   )}
                 >
-                  <span className="pal-dot" />
-                  <span className="truncate">{name}</span>
-                  <span className="ml-auto text-[12px] text-[var(--lore-text-tertiary)]">
-                    {pageCount}
-                  </span>
-                </button>
+                  {hasChildren ? (
+                    <button
+                      type="button"
+                      aria-label={`${isOpen ? "Collapse" : "Expand"} ${node.name}`}
+                      aria-expanded={isOpen}
+                      onClick={() =>
+                        setExpanded((current) => {
+                          const next = new Set(current);
+                          if (next.has(node.path)) next.delete(node.path);
+                          else next.add(node.path);
+                          return next;
+                        })
+                      }
+                      className="flex h-7 w-5 shrink-0 items-center justify-center"
+                      style={{ marginLeft: `${node.depth * 10}px` }}
+                    >
+                      <ChevronRight
+                        size={12}
+                        className={cn(
+                          "text-[var(--lore-text-tertiary)] transition-transform",
+                          isOpen && "rotate-90",
+                        )}
+                      />
+                    </button>
+                  ) : (
+                    <span
+                      aria-hidden
+                      className="flex h-7 w-5 shrink-0 items-center justify-center"
+                      style={{ marginLeft: `${node.depth * 10}px` }}
+                    >
+                      <span className="pal-dot" />
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFolder(node.path);
+                      take("wiki");
+                    }}
+                    className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pr-2.5 text-left text-[13px]"
+                  >
+                    <span className={cn("truncate", folder === node.path && "font-medium")}>
+                      {node.name}
+                    </span>
+                    <span className="ml-auto shrink-0 text-[11px] text-[var(--lore-text-tertiary)]">
+                      {node.count}
+                    </span>
+                  </button>
+                </div>
               );
             })}
           </div>
+          </div>
 
-          <div className="mt-auto">
-            {dirty ? (
-              <button
-                type="button"
-                onClick={reset}
-                className="mb-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-[var(--lore-border)] py-2 text-[12.5px] font-medium text-[var(--lore-text-secondary)] transition-colors hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)]"
-              >
-                <RotateCcw size={12} />
-                Reset demo
-              </button>
-            ) : null}
-            {/* The app's real sidebar foot. No avatar, no name — Lore has no
-                accounts, so a profile chip here would be inventing one. */}
-            <div className="border-t border-[var(--lore-border)] pt-3">
-              <p className="text-[12px] text-[var(--lore-text-tertiary)]">
-                {pages.length} pages · scanned just now
-              </p>
-            </div>
+          <div className="shrink-0 border-t border-[var(--lore-border)] p-3">
+            <span className="flex items-center gap-2 rounded-lg px-2 py-2 text-[13px] font-medium text-[var(--lore-text-secondary)]">
+              <Plus size={14} />
+              New page
+            </span>
+            <p className="t-meta mt-2 px-2 text-[var(--lore-text-tertiary)]">
+              {TOTAL_PAGES.toLocaleString()} pages · scanned just now
+            </p>
           </div>
         </div>
 
         {/* ----------------------------------------------------------- main */}
-        <div className="lore-scrollbar flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-[700px] px-4 pb-10 pt-6 md:px-7">
-            {tab === "brief" ? (
-              <ReviewPane
-                counts={counts}
-                triage={triage}
-                writes={writes}
-                struck={struck}
-                onSignOff={toggleSignOff}
-                onRewrite={simulateRewrite}
-              />
-            ) : null}
-            {tab === "wiki" ? <WikiPane folder={folder} pages={folderPages} /> : null}
-            {tab === "ask" ? <InsightsPane /> : null}
-            {tab === "connections" ? <ConnectionsPane /> : null}
-            {LIVE_TABS.has(tab) ? null : (
-              <OtherScreen tab={TABS.find((t) => t.id === tab)!} />
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ------------------------------------------------------------------- review
-
-function ReviewPane({
-  counts,
-  triage,
-  writes,
-  struck,
-  onSignOff,
-  onRewrite,
-}: {
-  counts: Record<Trust, number>;
-  triage: (DemoPage & { event: WriteEvent })[];
-  writes: number;
-  struck: string | null;
-  onSignOff: (pageId: string) => void;
-  onRewrite: () => void;
-}) {
-  const total = ORDER.reduce((sum, state) => sum + counts[state], 0);
-  const checked = counts.verified + counts.aging;
-
-  return (
-    <>
-      <div className="flex flex-wrap items-center gap-2">
-        <h3 className="text-[26px] font-semibold tracking-[-0.035em] text-[var(--lore-text-primary)]">
-          Review
-        </h3>
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--lore-border)] px-2 py-0.5 text-[11px] font-medium text-[var(--lore-text-tertiary)]">
-          <Radio size={10} className="text-[var(--lore-success)]" />
-          watching
-        </span>
-      </div>
-
-      <p className="mt-1.5 text-[15px] leading-[1.6] text-[var(--lore-text-secondary)]">
-        Nothing is blocked. This ranks what your agents changed, and records what you
-        actually checked.
-      </p>
-
-      <section className="mt-5 rounded-xl border border-[var(--lore-border)] bg-[var(--lore-surface)] px-5 py-4">
-        <div className="flex items-baseline gap-2">
-          <motion.span
-            key={checked}
-            initial={{ opacity: 0.4 }}
-            animate={{ opacity: 1 }}
-            className="text-[30px] font-bold leading-none tabular-nums text-[var(--lore-text-primary)]"
-          >
-            {Math.round((checked / total) * 100)}%
-          </motion.span>
-          <span className="text-[15px] leading-[1.6] text-[var(--lore-text-secondary)]">
-            of what your agents wrote this week is worth thirty seconds
-          </span>
-        </div>
-
-        <div className="mt-3.5 flex h-2 overflow-hidden rounded-full bg-[var(--lore-surface-raised)]">
-          {/* Width is a plain CSS transition rather than a motion value: a
-              percentage target has no pixel basis to animate from on mount,
-              which leaves the bar sitting at zero. */}
-          {ORDER.map((state) => (
-            <div
-              key={state}
-              className="transition-[width] duration-500 ease-out"
-              style={{
-                width: `${(counts[state] / total) * 100}%`,
-                background: SEGMENT_FILL[state],
-              }}
-              title={`${TRUST_LABEL[state]}: ${counts[state]}`}
-            />
-          ))}
-        </div>
-
-        <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1">
-          {ORDER.map((state) => (
-            <span key={state} className="text-[13px] text-[var(--lore-text-tertiary)]">
-              {TRUST_LABEL[state]} {counts[state]}
-            </span>
-          ))}
-        </div>
-      </section>
-
-      <div style={paletteVars(0)} className="mt-8 flex items-center gap-2.5">
-        <span className="pal-bar" />
-        <h4 className="text-[18px] font-semibold tracking-[-0.02em] text-[var(--lore-text-primary)]">
-          Worth your attention
-        </h4>
-      </div>
-      <p className="mt-1 text-[13px] text-[var(--lore-text-tertiary)]">
-        {writes} writes in the last 7 days. Ranked by lines deleted, how many pages link
-        here, and whether you had signed it off.
-      </p>
-
-      <div className="mt-4 space-y-2.5">
-        <AnimatePresence initial={false}>
-          {triage.map((page, i) => (
-            <motion.article
-              key={page.id}
-              layout
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.35, ease: EASE }}
-              style={paletteVars(i)}
-              className={cn(
-                "rounded-xl border bg-[var(--lore-surface)] px-4 py-3.5 transition-colors duration-700",
-                struck === page.id
-                  ? "border-[var(--lore-danger)]/50"
-                  : "border-[var(--lore-border)]",
-              )}
-            >
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[15px] font-semibold text-[var(--lore-text-primary)]">
-                  {page.title}
-                </span>
-                <span
-                  className={cn(
-                    "rounded-full border px-1.5 py-px text-[10px] font-bold uppercase tracking-[0.05em]",
-                    TRUST_TONE[page.trust],
-                  )}
-                >
-                  {TRUST_LABEL[page.trust]}
-                </span>
-                <span className="text-[13px] text-[var(--lore-text-tertiary)]">
-                  {page.event.kind} · {page.event.when}
-                </span>
-                <span className="flex-1" />
-                <span
-                  className="text-[12.5px] tabular-nums"
-                  style={{ fontFamily: "var(--font-mono), monospace" }}
-                >
-                  <span className="text-[var(--lore-success)]">+{page.event.added}</span>{" "}
-                  <span className="text-[var(--lore-danger)]">−{page.event.removed}</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => onSignOff(page.id)}
-                  className={cn(
-                    "inline-flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[12.5px] font-semibold transition-colors",
-                    page.trust === "verified"
-                      ? "border border-[var(--lore-border)] text-[var(--lore-text-secondary)] hover:bg-[var(--lore-surface-raised)]"
-                      : "bg-[var(--lore-accent)] text-white hover:bg-[var(--lore-accent-hover)]",
-                  )}
-                >
-                  {page.trust === "verified" ? <Check size={12} /> : <Shield size={12} />}
-                  {page.trust === "verified" ? "Read" : "Open"}
-                </button>
-              </div>
-              <p className="mt-1.5 text-[13px] leading-[1.55] text-[var(--lore-text-secondary)]">
-                {page.event.why}
-              </p>
-            </motion.article>
-          ))}
-        </AnimatePresence>
-      </div>
-
-      <button
-        type="button"
-        onClick={onRewrite}
-        className="mt-5 inline-flex items-center gap-2 rounded-lg border border-[var(--lore-border)] px-3 py-2 text-[13px] font-medium text-[var(--lore-text-secondary)] transition-colors hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)]"
-      >
-        <PenLine size={13} />
-        Simulate an agent rewrite
-      </button>
-      <p className="mt-2 text-[13px] leading-[1.55] text-[var(--lore-text-tertiary)]">
-        Sign a page off, then run a rewrite over it. The sign-off is pinned to the content
-        hash, so the page lapses and comes straight back to the top.
-      </p>
-    </>
-  );
-}
-
-// --------------------------------------------------------------------- wiki
-
-function WikiPane({ folder, pages }: { folder: string; pages: DemoPage[] }) {
-  return (
-    <div className="lore-fade-up">
-      <div className="flex flex-wrap items-center gap-2">
-        <h3 className="text-[26px] font-semibold tracking-[-0.035em] text-[var(--lore-text-primary)]">
-          {folder}
-        </h3>
-      </div>
-
-      <p className="mt-1.5 flex items-center gap-1.5 text-[13px] text-[var(--lore-text-tertiary)]">
-        <Clock size={12} />
-        {pages.length} pages · read straight off disk
-      </p>
-
-      {pages.map((page, i) => (
-        <div key={page.id} style={paletteVars(i)} className="group mt-9">
-          <div className="flex items-center gap-2.5">
-            <span className="pal-bar" />
-            <h4 className="pal-title text-[18px] font-semibold tracking-[-0.02em]">
-              {page.title}
-            </h4>
-            <span
-              className={cn(
-                "rounded-full border px-1.5 py-px text-[10px] font-bold uppercase tracking-[0.05em]",
-                TRUST_TONE[page.trust],
-              )}
-            >
-              {TRUST_LABEL[page.trust]}
-            </span>
-            <span className="flex-1" />
-            {/* The one control the real page section carries on hover. */}
-            <span className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-[var(--lore-border)] px-2.5 text-[12.5px] font-medium text-[var(--lore-text-secondary)] opacity-0 transition-opacity group-hover:opacity-100">
-              <Pencil size={12} />
-              Edit
-            </span>
-          </div>
-          <p
-            className="mt-1 text-[12px] text-[var(--lore-text-tertiary)]"
-            style={{ fontFamily: "var(--font-mono), monospace" }}
-          >
-            {page.path} · {page.inbound} inbound
-          </p>
-
-          <ul className="pal-bullets mt-3 space-y-2">
-            {page.lines.map((line) => (
-              <motion.li
-                key={line}
-                initial={{ opacity: 0, x: -6 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.35, ease: EASE }}
-                className="text-[15px] leading-[1.7] text-[var(--lore-text-primary)]"
+        <div className="relative flex min-w-0 flex-1 flex-col">
+          {/* On a phone the sidebar is gone, so the screens need their own way
+              of being reachable — the same reason the app has a top bar there. */}
+          <div className="lore-scrollbar flex gap-1 overflow-x-auto border-b border-[var(--lore-border)] px-3 py-2 sm:hidden">
+            {[...NAV, ...OBSERVER_NAV].map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => take(item.id)}
+                className={cn(
+                  "shrink-0 rounded-full px-2.5 py-1 text-[12.5px] transition-colors",
+                  tab === item.id
+                    ? "bg-[var(--lore-surface-raised)] font-medium text-[var(--lore-text-primary)]"
+                    : "text-[var(--lore-text-secondary)]",
+                )}
               >
-                {line}
-              </motion.li>
+                {LABEL[item.id]}
+              </button>
             ))}
-          </ul>
+          </div>
+
+          <div ref={scroller} className="lore-scrollbar min-h-0 flex-1 overflow-y-auto">
+            {pane}
+          </div>
+
+          {tourStep !== null ? <TourBar step={tourStep} paused={paused} onStop={() => setTourStep(null)} /> : null}
         </div>
-      ))}
+      </div>
     </div>
   );
 }
-
-// ----------------------------------------------------------------- insights
-
-const HOT = [
-  { path: "stack/deploy-pipeline.md", reads: 148, slot: 0 },
-  { path: "clients/pricing.md", reads: 96, slot: 2 },
-  { path: "operating/weekly-rhythm.md", reads: 61, slot: 1 },
-];
-
-const GAPS = [
-  { query: "reseller discount", asks: 4 },
-  { query: "refund window", asks: 3 },
-  { query: "vendor payment terms", asks: 2 },
-];
-
-function InsightsPane() {
-  return (
-    <div className="lore-fade-up">
-      <h3 className="text-[26px] font-semibold tracking-[-0.035em] text-[var(--lore-text-primary)]">
-        Insights
-      </h3>
-      <p className="mt-1.5 text-[15px] leading-[1.6] text-[var(--lore-text-secondary)]">
-        Your agents read the wiki through Lore, so Lore can answer two questions nothing
-        else can.
-      </p>
-
-      <div style={paletteVars(3)} className="mt-7 flex items-center gap-2.5">
-        <span className="pal-bar" />
-        <h4 className="flex items-center gap-2 text-[18px] font-semibold tracking-[-0.02em] text-[var(--lore-text-primary)]">
-          <Flame size={15} className="text-[var(--lore-text-tertiary)]" />
-          Pages your agents actually open
-        </h4>
-      </div>
-      <div className="mt-3 divide-y divide-[var(--lore-border)] overflow-hidden rounded-xl border border-[var(--lore-border)]">
-        {HOT.map((page) => (
-          <div key={page.path} style={paletteVars(page.slot)} className="flex items-center gap-2.5 px-4 py-2.5">
-            <span className="pal-dot" />
-            <span
-              className="min-w-0 flex-1 truncate text-[13.5px] text-[var(--lore-text-primary)]"
-              style={{ fontFamily: "var(--font-mono), monospace" }}
-            >
-              {page.path}
-            </span>
-            <span className="shrink-0 text-[13px] tabular-nums text-[var(--lore-text-tertiary)]">
-              {page.reads} reads
-            </span>
-          </div>
-        ))}
-      </div>
-      <p className="mt-2 text-[13px] text-[var(--lore-text-tertiary)]">
-        Nine of these twelve pages were not opened once this month.
-      </p>
-
-      <div style={paletteVars(6)} className="mt-8 flex items-center gap-2.5">
-        <span className="pal-bar" />
-        <h4 className="flex items-center gap-2 text-[18px] font-semibold tracking-[-0.02em] text-[var(--lore-text-primary)]">
-          <HelpCircle size={15} className="text-[var(--lore-text-tertiary)]" />
-          Searches that returned nothing
-        </h4>
-      </div>
-      <div className="mt-3 space-y-2">
-        {GAPS.map((gap) => (
-          <div
-            key={gap.query}
-            className="flex items-center gap-2.5 rounded-xl border border-[var(--lore-border)] px-4 py-2.5"
-          >
-            <Search size={13} className="shrink-0 text-[var(--lore-text-tertiary)]" />
-            <span
-              className="min-w-0 flex-1 truncate text-[13.5px] text-[var(--lore-text-primary)]"
-              style={{ fontFamily: "var(--font-mono), monospace" }}
-            >
-              {gap.query}
-            </span>
-            <span className="shrink-0 text-[13px] tabular-nums text-[var(--lore-text-tertiary)]">
-              asked {gap.asks}×
-            </span>
-          </div>
-        ))}
-      </div>
-      <p className="mt-2 text-[13px] leading-[1.55] text-[var(--lore-text-tertiary)]">
-        Every line here is a page your wiki was asked for and did not have.
-      </p>
-    </div>
-  );
-}
-
-// -------------------------------------------------------------- connections
 
 /**
- * A screen the app has that this shot does not demonstrate.
+ * The tour's own controls.
  *
- * The alternative was showing four tabs and calling that the app, which is
- * what this did — and a product shot that omits six of ten screens is a
- * different promise from the one the download makes. Naming them costs a
- * sentence each and makes the nav true.
+ * Anything that moves on its own needs a stop button within reach of the thing
+ * that is moving — WCAG asks for it, and a demo that cannot be held still is a
+ * demo nobody can read.
  */
-function OtherScreen({
-  tab,
+function TourBar({
+  step,
+  paused,
+  onStop,
 }: {
-  tab: { label: string; icon: typeof BookText; blurb?: string };
+  step: number;
+  paused: boolean;
+  onStop: () => void;
 }) {
-  const Icon = tab.icon;
   return (
-    <div className="lore-fade-up flex h-full flex-col items-center justify-center px-8 py-16 text-center">
-      <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--lore-surface-raised)] text-[var(--lore-text-secondary)]">
-        <Icon size={19} />
-      </span>
-      <h3 className="mt-4 text-[19px] font-semibold tracking-[-0.03em] text-[var(--lore-text-primary)]">
-        {tab.label}
-      </h3>
-      <p className="t-body mt-2 max-w-sm text-[var(--lore-text-secondary)]">{tab.blurb}</p>
-      <p className="t-meta mt-4 text-[var(--lore-text-tertiary)]">
-        Live in the app — this shot demonstrates Brief, Wiki, Ask and Connections.
-      </p>
-    </div>
-  );
-}
-
-function ConnectionsPane() {
-  return (
-    <div className="lore-fade-up">
-      <h3 className="text-[26px] font-semibold tracking-[-0.035em] text-[var(--lore-text-primary)]">
-        Connections
-      </h3>
-      <p className="mt-1.5 text-[13px] text-[var(--lore-text-tertiary)]">
-        Two ways in. Wire either one.
-      </p>
-
-      <div className="mt-5 space-y-3.5">
-        <div className="rounded-xl border border-[var(--lore-border)] px-5 py-4">
-          <div className="flex items-center gap-2.5">
-            <span className="flex h-6 w-6 items-center justify-center rounded-md bg-[var(--lore-accent-tint)] text-[12px] font-semibold text-[var(--lore-accent)]">
-              1
-            </span>
-            <h4 className="text-[15px] font-semibold text-[var(--lore-text-primary)]">
-              Drop an index into the vault
-            </h4>
-          </div>
-          <p className="mt-2 text-[13.5px] leading-relaxed text-[var(--lore-text-secondary)]">
-            One page listing every note, its folder and its tags. Any agent that reads files
-            finds it without being told.
-          </p>
-          <span className="mt-3.5 inline-flex items-center gap-2 rounded-lg bg-[var(--lore-accent)] px-3 py-1.5 text-[13px] font-semibold text-white">
-            <FileDown size={13} />
-            Write AGENTS.md
-          </span>
-        </div>
-
-        <div className="rounded-xl border border-[var(--lore-border)] px-5 py-4">
-          <div className="flex items-center gap-2.5">
-            <span className="flex h-6 w-6 items-center justify-center rounded-md bg-[var(--lore-accent-tint)] text-[12px] font-semibold text-[var(--lore-accent)]">
-              2
-            </span>
-            <h4 className="text-[15px] font-semibold text-[var(--lore-text-primary)]">
-              Connect over MCP
-            </h4>
-          </div>
-          <p className="mt-2 text-[13.5px] leading-relaxed text-[var(--lore-text-secondary)]">
-            {/* The number is checked against mcp/server.mjs rather than
-                remembered: this said "four" while the server served twelve,
-                which is the sort of stale figure a product shot keeps for
-                years because nobody owns it. */}
-            Nine tools for the wiki — <code>wiki_index</code>, <code>wiki_search</code>,{" "}
-            <code>wiki_read</code>, <code>wiki_health</code> and five more — and three that reach
-            what Lore observed on this machine, behind their own switch. Your agents keep writing
-            with their own file tools; Lore watches the folder for that.
-          </p>
-          <div className="mt-3 overflow-hidden rounded-lg border border-[var(--lore-border)]">
-            <div className="flex items-center justify-between border-b border-[var(--lore-border)] bg-[var(--lore-surface-raised)] px-3 py-1.5">
-              <span className="text-[11.5px] text-[var(--lore-text-tertiary)]">.mcp.json</span>
-              <span className="inline-flex items-center gap-1.5 text-[11.5px] text-[var(--lore-text-secondary)]">
-                <Copy size={11} />
-                Copy
-              </span>
-            </div>
-            <pre
-              className="overflow-x-auto bg-[var(--lore-background)] px-3 py-2.5 text-[12px] leading-[1.7] text-[var(--lore-text-primary)]"
-              style={{ fontFamily: "var(--font-mono), monospace" }}
-            >{`{ "mcpServers": { "lore": {
-    "command": "node",
-    "args": ["…/lore/mcp/server.mjs"]
-} } }`}</pre>
-          </div>
-        </div>
+    <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center pb-3">
+      <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-[var(--lore-border)] bg-[var(--lore-surface)]/95 py-1.5 pl-3 pr-1.5 shadow-[0_8px_28px_-12px_rgba(15,23,42,0.45)] backdrop-blur">
+        <span className="t-meta whitespace-nowrap text-[var(--lore-text-tertiary)]">
+          {paused ? "Paused — click any screen" : "Touring the app"}
+        </span>
+        <span className="flex items-center gap-1">
+          {TOUR.map((id, i) => (
+            <span
+              key={id}
+              className={cn(
+                "h-1.5 rounded-full transition-all duration-300",
+                i === step ? "w-4 bg-[var(--lore-accent)]" : "w-1.5 bg-[var(--lore-border-strong)]",
+              )}
+            />
+          ))}
+        </span>
+        <button
+          type="button"
+          onClick={onStop}
+          aria-label="Stop the tour"
+          title="Stop the tour"
+          className="flex h-7 w-7 items-center justify-center rounded-full text-[var(--lore-text-secondary)] transition-colors hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)]"
+        >
+          {paused ? <Play size={13} /> : <Pause size={13} />}
+        </button>
       </div>
     </div>
   );
