@@ -37,6 +37,7 @@ type State = {
   observers: Observer[];
   pausedUntil: number | null;
   quietHours: { from: number; to: number } | null;
+  shareWithAgents?: boolean;
   daemon: { started: boolean; jobs: number };
   log: { at: number; kind: string; observer?: string }[];
   browser?: boolean;
@@ -272,6 +273,52 @@ export function WatchingPanel({ onOpen }: { onOpen?: (view: string) => void }) {
               clear
             </button>
           ) : null}
+        </div>
+      ) : null}
+
+      {!state.browser ? (
+        <div className="mt-3 border-t border-[var(--lore-border)] pt-3">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={state.shareWithAgents === true}
+            disabled={busy}
+            onClick={() => void act({ action: "share", enabled: !state.shareWithAgents })}
+            className="flex w-full items-start gap-2.5 text-left disabled:opacity-60"
+          >
+            <span
+              className={cn(
+                "relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors",
+                state.shareWithAgents ? "bg-[var(--lore-accent)]" : "bg-[var(--lore-border-strong)]",
+              )}
+            >
+              <span
+                className={cn(
+                  "absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform",
+                  state.shareWithAgents ? "translate-x-[1.125rem]" : "translate-x-0.5",
+                )}
+              />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-[13px] font-medium text-[var(--lore-text-primary)]">
+                Let your agents ask about this over MCP
+              </span>
+              {/*
+                * Said as bluntly as it deserves.
+                *
+                * Switching an observer on means a model ON THIS MACHINE looks at
+                * something. This means what it saw can be handed to whatever
+                * agent is connected, which is usually a frontier model on
+                * hardware the reader does not own. Softening that would make
+                * the switch easier to flip and the consent worthless.
+                */}
+              <span className="t-meta block text-[var(--lore-text-tertiary)]">
+                Adds three tools to Lore&rsquo;s MCP server, so Claude Code and the rest can search
+                what Ghost, Ledger and Oracle found. Unlike everything else here, that sends your
+                screen, mail and messages to whichever model your agent runs on.
+              </span>
+            </span>
+          </button>
         </div>
       ) : null}
 

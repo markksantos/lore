@@ -1224,7 +1224,36 @@ late), awaiting reply (only for people who normally *do* reply, and only past
 the time they normally take), monthly habit, a Twin pattern, and questions the
 wiki could not answer.
 
-### 17.12 Platforms
+### 17.12 Letting agents ask (`app/api/machine/route.ts`)
+
+Lore already sits between your agents and your wiki over MCP. The observers add
+three tools to that server:
+
+| Tool | Reads |
+| --- | --- |
+| `machine_recall` | Ghost's screen observations, with a time window parsed from the question |
+| `machine_conversations` | Ledger's index of past AI conversations |
+| `machine_find` | Oracle's index of files, mail, calendar, messages and notes |
+
+**This is its own consent, and off by default.** Switching Ghost on means a
+model *on this machine* describes your screen. Answering an MCP call means what
+it saw can be handed to whatever agent is connected — frequently a frontier
+model on hardware you do not own. Those are different decisions, they are stored
+in different fields (`shareWithAgents`), and the switch for the second one says
+so in as many words.
+
+The tools are listed to the agent even when sharing is off, and refuse with a
+sentence the agent can relay: *"the person using this computer can turn it on
+under Settings → What is watching"*. Hiding them would leave the agent saying
+"I cannot do that", which is both less useful and less true.
+
+Availability is computed from whether a feature has ROWS, not from whether its
+consent timestamp is set. The first version keyed on the timestamp and reported
+Ledger unavailable while it was answering with two thousand indexed
+conversations, because that index had been built by a script rather than through
+the switch.
+
+### 17.13 Platforms
 
 | | Local server | Desktop app | Browser (`/web`) | Deployed site |
 | --- | --- | --- | --- | --- |
@@ -1257,7 +1286,7 @@ owns fails silently. A menu-bar item carries the pause switch, and Prophet's
 notifications are polled from the server so the threshold decision stays in one
 place.
 
-### 17.13 What is deliberately not built
+### 17.14 What is deliberately not built
 
 - **Keyboard and mouse capture.** Twin's pitch mentioned them. Building it means
   an accessibility hook that reads every password typed on the machine.

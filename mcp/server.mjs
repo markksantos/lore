@@ -227,6 +227,64 @@ const TOOLS = [
       "Report what is wrong with the wiki: orphaned pages, links pointing at pages that don't exist, and pages past their review window. Use when asked to tidy, audit, or find gaps.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
   },
+
+  /*
+   * The three that reach past the wiki, into what Lore observed on this
+   * machine.
+   *
+   * They are listed unconditionally even when sharing is off, so that an agent
+   * asked "what did I do yesterday" can call one, be refused in words, and tell
+   * the person which switch turns it on. Hiding them would leave the agent to
+   * say "I cannot do that", which is both less useful and less true.
+   *
+   * Every description says out loud what the tool exposes. An agent reading
+   * this list is deciding whether to reach for somebody's mail, and it should
+   * be able to see that that is what it would be doing.
+   */
+  {
+    name: "machine_recall",
+    description:
+      "Ask what the person using this computer was DOING at some point in the past — not what they wrote down, what was on their screen. Lore's Ghost takes periodic screenshots and describes them with a local model. Use for questions like 'what was that error earlier', 'what did that message say', 'what did I work on this morning'. Name a time in the question ('20 minutes ago', 'this morning', 'yesterday') and it will be used. Returns screen observations, which may contain anything that was visible. Off unless the person has switched on both Ghost and agent sharing.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "The question, including any time reference, e.g. 'what was that build error 20 minutes ago'.",
+        },
+      },
+      required: ["query"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "machine_conversations",
+    description:
+      "Search every past AI coding conversation on this machine — Claude Code, Codex, Cursor, Windsurf, and imported ChatGPT/Claude.ai exports. Use when the person refers to something they worked out with an AI before ('that regex I figured out', 'the session where we set up the bucket'). Searches the words that were actually typed, so exact phrases beat descriptions. Off unless the person has switched on both Ledger and agent sharing.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Words you expect to appear in the conversation." },
+        limit: { type: "number", description: "Maximum matches. Defaults to 8." },
+      },
+      required: ["query"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "machine_find",
+    description:
+      "Search this person's own files, mail, calendar, messages, notes and browsing history at once. Use for questions the wiki cannot answer because the answer was never written down — 'when did I first talk to them about this', 'what did that invoice say'. Returns private correspondence and documents. Off unless the person has switched on both Oracle and agent sharing.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "What to look for." },
+        limit: { type: "number", description: "Maximum matches. Defaults to 8." },
+      },
+      required: ["query"],
+      additionalProperties: false,
+    },
+  },
 ];
 
 async function callLore(path, init) {
@@ -483,6 +541,24 @@ async function runTool(name, args = {}) {
         "",
         ...lines,
       ].join("\n");
+    }
+
+    /*
+     * The observers. One shape for all three: post to /api/machine, which owns
+     * the sharing check and returns prose. The refusal and the "nothing indexed
+     * yet" message both come back as ordinary text, so the agent relays them to
+     * the person instead of reporting a tool failure.
+     */
+    case "machine_recall":
+    case "machine_conversations":
+    case "machine_find": {
+      const tool = name.slice("machine_".length);
+      report({ t: "machine", tool, query: args.query ?? "" });
+      return callLore("/api/machine", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ tool, query: args.query ?? "", limit: args.limit }),
+      });
     }
 
     case "wiki_health": {

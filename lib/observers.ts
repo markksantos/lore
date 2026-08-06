@@ -95,6 +95,19 @@ export type ObserversConfig = {
    * clock. Wraps midnight when `from > to`, which is the normal case.
    */
   quietHours: { from: number; to: number } | null;
+  /**
+   * May your agents read what the observers found, over MCP?
+   *
+   * A separate and much larger decision than switching an observer on, which is
+   * why it is its own field with its own default. Enabling Ghost means a model
+   * ON THIS MACHINE describes your screen. Enabling this means the contents of
+   * your screen, your mail and your messages can be handed to whatever agent is
+   * connected — which may be a frontier model on somebody else's hardware.
+   *
+   * Off, and the tools still appear in the agent's list so it can tell you they
+   * exist, and refuse with a sentence saying which switch turns them on.
+   */
+  shareWithAgents: boolean;
 };
 
 const DIR = path.join(os.homedir(), ".lore");
@@ -108,6 +121,7 @@ export const DEFAULT_OBSERVERS: ObserversConfig = {
   ) as Record<ObserverId, ObserverState>,
   pausedUntil: null,
   quietHours: null,
+  shareWithAgents: false,
 };
 
 function normalise(parsed: Partial<ObserversConfig> | null): ObserversConfig {
@@ -129,6 +143,7 @@ function normalise(parsed: Partial<ObserversConfig> | null): ObserversConfig {
       typeof parsed?.pausedUntil === "number" && parsed.pausedUntil > Date.now()
         ? parsed.pausedUntil
         : null,
+    shareWithAgents: parsed?.shareWithAgents === true,
     quietHours:
       quiet &&
       Number.isInteger(quiet.from) &&
@@ -209,6 +224,14 @@ export async function pauseAll(minutes: number): Promise<ObserversConfig> {
   const next = { ...config, pausedUntil: until };
   await writeObservers(next);
   await note({ kind: until ? "paused" : "resumed", minutes });
+  return next;
+}
+
+export async function setShareWithAgents(enabled: boolean): Promise<ObserversConfig> {
+  const config = await readObservers();
+  const next = { ...config, shareWithAgents: enabled };
+  await writeObservers(next);
+  await note({ kind: enabled ? "sharing-enabled" : "sharing-disabled" });
   return next;
 }
 

@@ -8,6 +8,7 @@ import {
   readObservers,
   setObserver,
   setQuietHours,
+  setShareWithAgents,
   whyNot,
   type ObserverId,
 } from "@/lib/observers";
@@ -53,6 +54,7 @@ export async function GET() {
       })),
       pausedUntil: config.pausedUntil,
       quietHours: config.quietHours,
+      shareWithAgents: config.shareWithAgents,
       daemon: { started: status.started, jobs: status.jobs.length },
       capabilities,
       log: await readConsentLog(40),
@@ -88,6 +90,12 @@ export async function POST(request: Request) {
         }
         return Response.json({ config });
       }
+      case "share":
+        /* Deliberately its own action rather than a field on "set": sharing
+           what an observer found with a cloud agent is a different decision
+           from letting a local model look at your screen, and a UI that could
+           flip it as a side effect of something else would be wrong. */
+        return Response.json({ config: await setShareWithAgents(body.enabled === true) });
       case "pause":
         return Response.json({ config: await pauseAll(Math.max(0, Number(body.minutes) || 0)) });
       case "quiet-hours": {
