@@ -41,7 +41,10 @@ export async function GET(request: Request) {
     if (view === "session") {
       const id = url.searchParams.get("id");
       if (!id) return fail(new Error("`id` is required."));
-      const session = readSession(id);
+      const session = readSession(id, {
+        limit: Number(url.searchParams.get("limit")) || 200,
+        offset: Number(url.searchParams.get("offset")) || 0,
+      });
       if (!session) return fail(new Error("No such session."), 404);
       return Response.json(session);
     }

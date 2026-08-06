@@ -569,7 +569,18 @@ async function indexVscodeStore(
   for (const store of stores) {
     const stat = await fs.stat(store).catch(() => null);
     if (!stat?.isFile()) continue;
-    if (unchanged(db, store, stat.size, stat.mtimeMs)) {
+    /*
+     * SQLite in WAL mode writes to the sidecar, not the main file.
+     *
+     * Cursor is usually running, so its `state.vscdb` mtime can sit unchanged
+     * for hours while every conversation of the afternoon accumulates in
+     * `state.vscdb-wal`. Fingerprinting the main file alone meant "nothing has
+     * changed" was true of the file and false of the data.
+     */
+    const walStat = await fs.stat(`${store}-wal`).catch(() => null);
+    const size = stat.size + (walStat?.size ?? 0);
+    const mtime = Math.max(stat.mtimeMs, walStat?.mtimeMs ?? 0);
+    if (unchanged(db, store, size, mtime)) {
       report.skipped++;
       continue;
     }
@@ -644,7 +655,7 @@ async function indexVscodeStore(
         report.sessions++;
         report.turns += turns.length;
       }
-      noteFile(db, store, source, stat.size, stat.mtimeMs);
+      noteFile(db, store, source, size, mtime);
     } finally {
       await opened.dispose();
     }
@@ -977,15 +988,31 @@ export function listSessions(opts?: {
   return { sessions, total };
 }
 
-export function readSession(id: string): { session: Session; turns: (Turn & { seq: number })[] } | null {
+/**
+ * One conversation, paged.
+ *
+ * There is no LIMIT on the natural query and the sessions are not small: the
+ * largest on the development machine is 791 turns, and a session of that size
+ * is serialised to JSON, sent over the wire and rendered as 791 mounted React
+ * subtrees the moment somebody clicks it. `offset` exists so the reader can
+ * page rather than the browser stall.
+ */
+export function readSession(
+  id: string,
+  opts?: { limit?: number; offset?: number },
+): { session: Session; turns: (Turn & { seq: number })[]; total: number } | null {
   const db = ledgerDb();
   const session = db.get<Session>("SELECT * FROM sessions WHERE id = ?", id);
   if (!session) return null;
+  const total =
+    db.get<{ n: number }>("SELECT COUNT(*) AS n FROM turns WHERE sessionId = ?", id)?.n ?? 0;
   const turns = db.all<Turn & { seq: number }>(
-    "SELECT seq, role, text, at FROM turns WHERE sessionId = ? ORDER BY seq ASC",
+    "SELECT seq, role, text, at FROM turns WHERE sessionId = ? ORDER BY seq ASC LIMIT ? OFFSET ?",
     id,
+    Math.min(500, Math.max(1, opts?.limit ?? 200)),
+    Math.max(0, opts?.offset ?? 0),
   );
-  return { session, turns };
+  return { session, turns, total };
 }
 
 export type LedgerStatus = {

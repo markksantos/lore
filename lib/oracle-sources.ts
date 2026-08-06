@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import zlib from "node:zlib";
 import { promisify } from "node:util";
-import { columnsOf, hasTable, openForeignCopy } from "@/lib/signal-store";
+import { columnsOf, foreignFingerprint, hasTable, openForeignCopy } from "@/lib/signal-store";
 
 const gunzip = promisify(zlib.gunzip);
 
@@ -113,6 +113,14 @@ export type Adapter = {
   id: OracleSource;
   probe(): Promise<ProbeResult>;
   collect(ctx: CollectContext): AsyncGenerator<OracleItem>;
+  /**
+   * A cheap value that changes when the source does.
+   *
+   * Optional, and only implemented by the sources backed by a foreign database
+   * — those are the ones where finding out costs a several-hundred-megabyte
+   * copy. A source that walks a directory has nothing cheaper than walking it.
+   */
+  fingerprint?(): Promise<string | null>;
 };
 
 const HOME = os.homedir();
@@ -837,6 +845,7 @@ async function calendarTitle(dir: string): Promise<string> {
  */
 export const messagesAdapter: Adapter = {
   id: "messages",
+  fingerprint: () => foreignFingerprint(path.join(HOME, "Library", "Messages", "chat.db")),
   async probe() {
     const file = path.join(HOME, "Library", "Messages", "chat.db");
     if (!(await exists(file))) return { available: false, reason: "Messages has never been used on this Mac." };
@@ -965,6 +974,7 @@ export function decodeAttributedBody(blob: Uint8Array | null | undefined): strin
 
 export const notesAdapter: Adapter = {
   id: "notes",
+  fingerprint: () => foreignFingerprint(notesStorePath()),
   async probe() {
     const file = notesStorePath();
     if (!(await exists(file))) return { available: false, reason: "Apple Notes has no local store on this Mac." };

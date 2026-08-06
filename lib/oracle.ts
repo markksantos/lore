@@ -159,6 +159,9 @@ const MIGRATIONS = [
   ALTER TABLE progress ADD COLUMN backfill INTEGER NOT NULL DEFAULT 0;
   ALTER TABLE progress ADD COLUMN backfillDone INTEGER NOT NULL DEFAULT 0;
   `,
+  /* Size and mtime of the foreign database, so a caught-up source can decide in
+     a stat call whether it is worth copying several hundred megabytes. */
+  `ALTER TABLE progress ADD COLUMN fingerprint TEXT;`,
 ];
 
 export function oracleDb(): Db {
@@ -225,6 +228,29 @@ async function runSource(
   let seen = 0;
 
   try {
+    /*
+     * Ask whether anything changed before paying to find out.
+     *
+     * A source backed by a foreign database is read by copying that database —
+     * Messages' chat.db is routinely several hundred megabytes and this runs
+     * every five minutes. Once the backfill is finished and the file has not
+     * been touched, the entire pass is a fingerprint comparison.
+     *
+     * Only once caught up: while backfilling there is more to read whether or
+     * not the source has changed.
+     */
+    if (backfillDone && adapter.fingerprint) {
+      const now = await adapter.fingerprint().catch(() => null);
+      const last = db.get<{ fingerprint: string | null }>(
+        "SELECT fingerprint FROM progress WHERE source = ?",
+        source,
+      )?.fingerprint;
+      if (now && last && now === last) {
+        db.run("UPDATE progress SET lastAt = ? WHERE source = ?", Date.now(), source);
+        return { source, added: 0, updated: 0, complete: true, ms: Date.now() - started, error: null };
+      }
+    }
+
     const probe = await adapter.probe();
     if (!probe.available) {
       db.run(
@@ -377,12 +403,14 @@ async function runSource(
     const backfillDoneNow = backfillDone || (backwardRan && added === addedBeforeBackfill);
     const complete = seen + backfilled < config.batch && backfillDoneNow;
 
+    const fingerprint = adapter.fingerprint ? await adapter.fingerprint().catch(() => null) : null;
     db.run(
-      `INSERT INTO progress (source, since, lastAt, items, complete, error, backfill, backfillDone)
-       VALUES (?,?,?,?,?,NULL,?,?)
+      `INSERT INTO progress (source, since, lastAt, items, complete, error, backfill, backfillDone, fingerprint)
+       VALUES (?,?,?,?,?,NULL,?,?,?)
        ON CONFLICT(source) DO UPDATE SET since = excluded.since, lastAt = excluded.lastAt,
          items = progress.items + excluded.items, complete = excluded.complete, error = NULL,
-         backfill = excluded.backfill, backfillDone = excluded.backfillDone`,
+         backfill = excluded.backfill, backfillDone = excluded.backfillDone,
+         fingerprint = excluded.fingerprint`,
       source,
       newest,
       Date.now(),
@@ -390,6 +418,7 @@ async function runSource(
       complete ? 1 : 0,
       oldest,
       backfillDoneNow ? 1 : 0,
+      fingerprint,
     );
     return { source, added, updated, complete, ms: Date.now() - started, error: null };
   } catch (error) {

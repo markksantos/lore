@@ -342,6 +342,25 @@ export function ftsLadder(input: string): string[] {
  * usually means Full Disk Access has not been granted. That is a permission
  * to ask for, not an error to raise.
  */
+export async function foreignFingerprint(source: string): Promise<string | null> {
+  /*
+   * Cheap enough to ask before deciding to copy.
+   *
+   * Messages' chat.db is routinely several hundred megabytes and the indexer
+   * looks at it every five minutes. Copying it in full to discover nothing has
+   * changed is most of the cost of the whole feature. The WAL sidecar is part
+   * of the fingerprint because that is where recent writes live — a database
+   * whose main file has not been touched since the last checkpoint has still
+   * gained messages.
+   */
+  const parts: string[] = [];
+  for (const suffix of ["", "-wal", "-shm"]) {
+    const stat = await fs.stat(source + suffix).catch(() => null);
+    parts.push(stat ? `${Math.round(stat.mtimeMs)}:${stat.size}` : "-");
+  }
+  return parts[0] === "-" ? null : parts.join("|");
+}
+
 export async function openForeignCopy(
   source: string,
 ): Promise<{ db: Db; dispose: () => Promise<void> } | null> {

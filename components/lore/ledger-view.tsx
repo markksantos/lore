@@ -104,7 +104,11 @@ export function LedgerView() {
   const [results, setResults] = useState<{ hits: Hit[]; total: number } | null>(null);
   const [searching, setSearching] = useState(false);
   const [source, setSource] = useState<string | null>(null);
-  const [open, setOpen] = useState<{ session: Session; turns: { seq: number; role: string; text: string }[] } | null>(null);
+  const [open, setOpen] = useState<{
+    session: Session;
+    turns: { seq: number; role: string; text: string }[];
+    total: number;
+  } | null>(null);
   const [answer, setAnswer] = useState<{ answer: string | null; needsModel: boolean } | null>(null);
   const [asking, setAsking] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -151,10 +155,11 @@ export function LedgerView() {
 
   const openSession = async (id: string) => {
     setBusy(`open:${id}`);
-    const data = await getJson<{ session: Session; turns: { seq: number; role: string; text: string }[] }>(
-      `/api/ledger?view=session&id=${encodeURIComponent(id)}`,
-      30_000,
-    );
+    const data = await getJson<{
+      session: Session;
+      turns: { seq: number; role: string; text: string }[];
+      total: number;
+    }>(`/api/ledger?view=session&id=${encodeURIComponent(id)}`, 30_000);
     setBusy(null);
     if (data) setOpen(data);
   };
@@ -532,13 +537,23 @@ function ImportDrop({
   return (
     <div className="mt-2">
       <div className="flex flex-wrap items-center gap-2">
-        <label className="inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--lore-border)] px-2.5 text-[12.5px] font-medium text-[var(--lore-text-secondary)] transition-colors hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)]">
+        {/*
+          * Visually hidden, not `display: none`.
+          *
+          * Tailwind's `hidden` removes the input from the accessibility tree
+          * AND from the focus order, so the only control for this feature could
+          * not be reached by keyboard at all — the label was clickable and
+          * nothing else. `sr-only` keeps it focusable and the peer selector puts
+          * a visible ring on the label when it has focus, so a keyboard user can
+          * see where they are.
+          */}
+        <label className="peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--lore-accent)] inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--lore-border)] px-2.5 text-[12.5px] font-medium text-[var(--lore-text-secondary)] transition-colors hover:bg-[var(--lore-surface-raised)] hover:text-[var(--lore-text-primary)]">
           {busy ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
           Choose an export
           <input
             type="file"
             accept=".json,.md,.txt"
-            className="hidden"
+            className="peer sr-only"
             onChange={async (event) => {
               const file = event.target.files?.[0];
               /* Cleared immediately so choosing the same file twice re-fires
@@ -546,6 +561,22 @@ function ImportDrop({
                  without picking a different file. */
               event.target.value = "";
               if (!file) return;
+              /*
+               * Checked before reading, not after.
+               *
+               * `file.text()` on a multi-hundred-megabyte export materialises
+               * the whole thing as a JavaScript string and then
+               * `JSON.stringify` makes a second copy of it for the request
+               * body. The server refuses anything over 200 MB anyway; refusing
+               * it here means the tab does not freeze on the way to finding
+               * that out.
+               */
+              if (file.size > 150 * 1024 * 1024) {
+                setError(
+                  `That export is ${Math.round(file.size / 1_048_576)} MB, which is too large to send through the browser. Copy it into the imports folder instead.`,
+                );
+                return;
+              }
               setBusy(true);
               setError(null);
               const content = await file.text();
@@ -585,11 +616,11 @@ function SessionReader({
   onBack,
   highlight,
 }: {
-  data: { session: Session; turns: { seq: number; role: string; text: string }[] };
+  data: { session: Session; turns: { seq: number; role: string; text: string }[]; total: number };
   onBack: () => void;
   highlight: string;
 }) {
-  const { session, turns } = data;
+  const { session, turns, total } = data;
   const needles = useMemo(
     () =>
       highlight
@@ -617,6 +648,12 @@ function SessionReader({
         </Button>
       }
     >
+      {total > turns.length ? (
+        <p className="t-meta mb-3 rounded-lg border border-[var(--lore-border)] px-3 py-2 text-[var(--lore-text-tertiary)]">
+          Showing the first {turns.length} of {total} messages. The longest session on this machine
+          runs to 791, and rendering all of them at once is what makes a tab stop responding.
+        </p>
+      ) : null}
       <div className="space-y-3">
         {turns.map((turn) => (
           <article
