@@ -284,7 +284,14 @@ export function VaultApp({
         <ConnectionsView root={index.root} installDir={installDir} />
       ) : null}
       {view === "settings" ? (
-        <SettingsView index={index} onOpenPage={openPage} onChanged={refresh} />
+        <SettingsView
+          index={index}
+          onOpenPage={openPage}
+          onChanged={refresh}
+          onOpenView={(next) => {
+            if ((VIEW_NAMES as readonly string[]).includes(next)) setView(next as View);
+          }}
+        />
       ) : null}
 
       {/*

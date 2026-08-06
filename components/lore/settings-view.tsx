@@ -8,6 +8,7 @@ import { SafetyView, type Safety } from "@/components/lore/safety-view";
 import { PolicyView } from "@/components/lore/policy-view";
 import { RemoteView } from "@/components/lore/remote-view";
 import { paletteVars } from "@/lib/palette";
+import { WatchingPanel } from "@/components/lore/watching-panel";
 import { cn, count, formatCount } from "@/lib/utils";
 
 type Health = {
@@ -28,10 +29,13 @@ type Health = {
  * the document wasn't the whole product.
  */
 export function SettingsView({
+  onOpenView,
   index,
   onOpenPage,
   onChanged,
 }: {
+  /** Jump to an observer's own screen from the "what is watching" list. */
+  onOpenView?: (view: string) => void;
   index: VaultIndex;
   onOpenPage: (pageId: string) => void;
   onChanged: () => void;
@@ -121,6 +125,17 @@ export function SettingsView({
           Unlinking forgets the path. It never touches the folder.
         </p>
       </section>
+
+      {/*
+        * "What is watching" sits directly under the linked folder, and above
+        * everything about the wiki's health.
+        *
+        * The order is the argument. Somebody who opens Settings while worried is
+        * not looking for a broken-link count; they want to know whether anything
+        * is reading their screen and how to stop it. Each observer's own switch
+        * stays on its own screen, where the explanation is.
+        */}
+      <WatchingPanel onOpen={onOpenView} />
 
       {/* Directly under the linked folder: this is about what Lore may do to
           that folder, which is the question anyone reading the path above is
