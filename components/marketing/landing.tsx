@@ -28,6 +28,12 @@ import {
   TerminalCard,
   WatchCard,
 } from "@/components/marketing/feature-cards";
+import {
+  ForYou,
+  OpenSource,
+  SectionNav,
+  UseCases,
+} from "@/components/marketing/landing-sections";
 import { StackWall } from "@/components/marketing/stack-wall";
 import { Reveal } from "@/components/marketing/motion-bits";
 import { ThemedArt } from "@/components/marketing/themed-art";
@@ -101,12 +107,16 @@ export function Landing({
       </div>
 
       <CompatBar logos={logos} />
+      <SectionNav />
       <WhatYouGet />
       <BeforeAfter />
       <MachineSection />
+      <UseCases />
       <Measured />
       <Privacy />
       <Compare />
+      <ForYou />
+      <OpenSource />
       <Steps siteMode={siteMode} cta={cta} ctaLabel={ctaLabel} />
       <Faq />
       <Finale scene={scene} cta={cta} ctaLabel={ctaLabel} />
@@ -385,6 +395,7 @@ const GETS = [
 function WhatYouGet() {
   return (
     <Section
+      id="what"
       eyebrow="What you get"
       title="Four questions your setup cannot answer today."
       lede="Your AI can already read your folder. You cannot — not fourteen hundred files of it. These are the four things that fall out of building the reading half."
@@ -581,7 +592,7 @@ const GUARANTEES = [
 
 function Privacy() {
   return (
-    <section className="border-y border-[var(--lore-border)] bg-[var(--lore-surface)]">
+    <section id="trust" className="border-y border-[var(--lore-border)] bg-[var(--lore-surface)]">
       <div className="mx-auto max-w-5xl px-6 py-20 md:px-8 md:py-28">
         <div className="grid items-center gap-10 lg:grid-cols-[1fr_20rem] lg:gap-14">
           <div className="min-w-0">
@@ -693,6 +704,7 @@ const COMPARE: { row: string; git: string; search: string; ai: string; lore: str
 function Compare() {
   return (
     <Section
+      id="compare"
       eyebrow="Honestly"
       title="Where this beats what you have, and where it does not."
       lede="Keep using git. Keep using your editor's search. Lore is not a replacement for either — it is the thing neither of them was built to be."
@@ -829,6 +841,7 @@ function Steps({
 
   return (
     <Section
+      id="start"
       eyebrow="Get started"
       title="Under two minutes, and there is nothing to sign up for."
       lede="The free build has no account step because it has no server behind it. You point it at a folder and it starts reading."
@@ -928,7 +941,7 @@ function Faq() {
   const [open, setOpen] = useState<number | null>(0);
 
   return (
-    <Section eyebrow="Questions" title="Straight answers, including the unflattering ones.">
+    <Section id="faq" eyebrow="Questions" title="Straight answers, including the unflattering ones.">
       <div className="mt-10 divide-y divide-[var(--lore-border)] border-y border-[var(--lore-border)]">
         {FAQ.map((item, i) => (
           <div key={item.q}>
@@ -1050,18 +1063,21 @@ function Finale({ scene, cta, ctaLabel }: { scene: Scene; cta: string; ctaLabel:
 // ------------------------------------------------------------------ primitives
 
 function Section({
+  id,
   eyebrow,
   title,
   lede,
   children,
 }: {
+  /* Anchors for the jump bar. Optional: not every section is worth a stop. */
+  id?: string;
   eyebrow: string;
   title: string;
   lede?: string;
   children?: React.ReactNode;
 }) {
   return (
-    <section className="mx-auto max-w-6xl px-6 py-20 md:px-8 md:py-28">
+    <section id={id} className="mx-auto max-w-6xl px-6 py-20 md:px-8 md:py-28">
       <p className="t-meta font-medium uppercase tracking-[0.1em] text-[var(--lore-accent)]">
         {eyebrow}
       </p>

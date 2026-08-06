@@ -476,6 +476,7 @@ check("three reach this machine", machineTools.length === 3, String(machineTools
  */
 const SURFACES = [
   "components/marketing/landing.tsx",
+  "components/marketing/landing-sections.tsx",
   "components/marketing/demo-panes.tsx",
   "components/marketing/feature-cards.tsx",
   "components/marketing/hero-simulator.tsx",
