@@ -189,6 +189,15 @@ const MIGRATIONS = [
     model   TEXT
   );
   `,
+  /*
+   * How many times the model has been asked about this frame.
+   *
+   * State 3 (failed) was terminal and nothing anywhere wrote a frame back to
+   * state 0 — so a model that was briefly busy, out of memory, or restarting
+   * permanently lost every frame captured during that minute. They stayed as
+   * pictures with no notes and never got another chance.
+   */
+  `ALTER TABLE frames ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0;`,
 ];
 
 export function ghostDb(): Db {
@@ -637,10 +646,25 @@ export async function describePending(limit = 4): Promise<{ described: number; f
   if (!model) return { described: 0, failed: 0 };
 
   const db = ghostDb();
+  /*
+   * Waiting frames first, then failed ones that have not exhausted their tries.
+   *
+   * A transient failure — the model reloading, the machine swapping — used to
+   * cost that frame permanently. Three attempts, and the ordering keeps a
+   * backlog of failures from starving the frames captured since.
+   */
   const pending = db.all<Frame>(
     "SELECT * FROM frames WHERE state = 0 ORDER BY at ASC LIMIT ?",
     limit,
   );
+  if (pending.length < limit) {
+    pending.push(
+      ...db.all<Frame>(
+        "SELECT * FROM frames WHERE state = 3 AND attempts < 3 ORDER BY at ASC LIMIT ?",
+        limit - pending.length,
+      ),
+    );
+  }
   let described = 0;
   let failed = 0;
 
@@ -654,7 +678,14 @@ export async function describePending(limit = 4): Promise<{ described: number; f
       /* The picture was deleted by retention while it sat in the queue. Marking
          it failed keeps it out of the queue forever, which is correct: there is
          nothing left to describe. */
-      db.run("UPDATE frames SET state = 3, error = ? WHERE id = ?", "Frame file is gone.", frame.id);
+      /* The picture was deleted by retention while it sat in the queue. Three
+         attempts is the ceiling, and this one can never succeed, so it is
+         marked exhausted rather than left to be retried. */
+      db.run(
+        "UPDATE frames SET state = 3, attempts = 3, error = ? WHERE id = ?",
+        "Frame file is gone.",
+        frame.id,
+      );
       failed++;
       continue;
     }
@@ -688,7 +719,7 @@ export async function describePending(limit = 4): Promise<{ described: number; f
       described++;
     } catch (error) {
       db.run(
-        "UPDATE frames SET state = 3, error = ? WHERE id = ?",
+        "UPDATE frames SET state = 3, attempts = attempts + 1, error = ? WHERE id = ?",
         error instanceof Error ? error.message.slice(0, 300) : "Description failed.",
         frame.id,
       );
@@ -942,6 +973,8 @@ export type RecallResult = {
   window: { from: number; to: number } | null;
   answer: string | null;
   needsModel: boolean;
+  /** Set when a model exists and failed — a different problem from having none. */
+  error?: string | null;
   frames: GhostHit[];
   /** Frames matched but not yet read by the vision model. */
   pending: number;
@@ -954,13 +987,13 @@ export async function recall(question: string, now = Date.now()): Promise<Recall
   const pending = frames.filter((f) => !f.summary && !f.body).length;
 
   if (!frames.length) {
-    return { question, window, answer: null, needsModel: false, frames: [], pending: 0 };
+    return { question, window, answer: null, needsModel: false, frames: [], pending: 0, error: null };
   }
 
   const detection = await detectOllama().catch(() => null);
   const model = detection?.running ? recommendModel(detection.models) : null;
   if (!model) {
-    return { question, window, answer: null, needsModel: true, frames, pending };
+    return { question, window, answer: null, needsModel: true, frames, pending, error: null };
   }
 
   const notes = frames

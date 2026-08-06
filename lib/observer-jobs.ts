@@ -65,6 +65,24 @@ export function wireObservers(): void {
     },
   });
 
+  /*
+   * Scratch copies of other applications' databases, swept.
+   *
+   * Ungated for the same reason as Ghost's retention: this deletes things. A
+   * paused observer must not mean somebody's Messages database stays copied in
+   * /tmp for longer.
+   */
+  register({
+    id: "scratch:sweep",
+    observer: null,
+    everyMs: 1_800_000,
+    delayMs: 20_000,
+    run: async () => {
+      const { sweepScratch } = await import("@/lib/signal-store");
+      await sweepScratch();
+    },
+  });
+
   register({
     id: "ghost:forget",
     observer: null,

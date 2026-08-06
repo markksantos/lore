@@ -140,17 +140,36 @@ export function LedgerView() {
     if (!text) {
       setResults(null);
       setAnswer(null);
+      /* Clearing the box while a search was in flight left the spinner and its
+         "searching N items" line on screen forever, because the early return
+         skipped the only place that turns it off. */
+      setSearching(false);
       return;
     }
     setSearching(true);
+    /*
+     * Two responses can be in flight and they can land out of order — the
+     * broader query is slower, so the results for "cloud" routinely arrived
+     * after the results for "cloudflare" and overwrote them. `live` is flipped
+     * by the cleanup, so a superseded request cannot write anything.
+     *
+     * And `null` is kept distinct from an empty result: coercing a timeout to
+     * `{hits: []}` rendered a failed search as "nothing matches", which is a
+     * claim about the user's data rather than about the request.
+     */
+    let live = true;
     const timer = setTimeout(async () => {
       const params = new URLSearchParams({ view: "search", q: text, limit: "40" });
       if (source) params.set("source", source);
       const data = await getJson<{ hits: Hit[]; total: number }>(`/api/ledger?${params}`);
-      setResults(data ?? { hits: [], total: 0 });
+      if (!live) return;
+      setResults(data);
       setSearching(false);
     }, 180);
-    return () => clearTimeout(timer);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
   }, [query, source]);
 
   const openSession = async (id: string) => {
@@ -316,6 +335,11 @@ export function LedgerView() {
             <Loader2 size={12} className="animate-spin" />
             Searching {compact(status.turns)} messages.
           </p>
+        ) : results === null && query.trim() ? (
+          <ErrorNote>
+            The search did not come back. That is the local server, not your data — nothing has been
+            lost.
+          </ErrorNote>
         ) : results ? (
           results.hits.length ? (
             <div className="mt-3">

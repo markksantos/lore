@@ -105,17 +105,27 @@ export function OracleView() {
     if (!text) {
       setResults(null);
       setAnswer(null);
+      /* Clearing the box while a search was in flight left the spinner and its
+         "searching N items" line on screen forever, because the early return
+         skipped the only place that turns it off. */
+      setSearching(false);
       return;
     }
     setSearching(true);
+    /* Ordered, and honest about failure — see the same effect in ledger-view. */
+    let live = true;
     const timer = setTimeout(async () => {
       const data = await getJson<{ hits: Hit[]; total: number }>(
         `/api/oracle?view=search&q=${encodeURIComponent(text)}&limit=40`,
       );
-      setResults(data ?? { hits: [], total: 0 });
+      if (!live) return;
+      setResults(data);
       setSearching(false);
     }, 200);
-    return () => clearTimeout(timer);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
   }, [query]);
 
   const act = async (action: string, extra?: Record<string, unknown>, timeout = 600_000) => {
@@ -246,6 +256,10 @@ export function OracleView() {
             <Loader2 size={12} className="animate-spin" />
             Searching {compact(status.items)} items.
           </p>
+        ) : results === null && query.trim() ? (
+          <ErrorNote>
+            The search did not come back. That is the local server, not your data.
+          </ErrorNote>
         ) : results ? (
           results.hits.length ? (
             <div className="mt-3">

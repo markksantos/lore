@@ -91,6 +91,38 @@ function resolveServerEntry() {
 }
 
 /**
+ * Put the static assets where the standalone server expects them.
+ *
+ * `output: "standalone"` deliberately does NOT copy `.next/static` or `public`
+ * into the standalone directory — Next's own documentation says to do it
+ * yourself, and electron-builder does it for packaged builds via two
+ * extraResources entries. Nothing did it for `npm run electron` against a local
+ * build, so every chunk and every font 404'd, React never hydrated, and the
+ * window showed unstyled server HTML that looked like a broken app rather than
+ * a missing copy step.
+ *
+ * Cheap and idempotent, so it simply runs before every unpackaged launch.
+ */
+function stageStaticAssets() {
+  if (app.isPackaged) return;
+  const root = path.join(__dirname, "..");
+  const standalone = path.join(root, ".next", "standalone");
+  if (!fs.existsSync(standalone)) return;
+  for (const [from, to] of [
+    [path.join(root, ".next", "static"), path.join(standalone, ".next", "static")],
+    [path.join(root, "public"), path.join(standalone, "public")],
+  ]) {
+    if (!fs.existsSync(from)) continue;
+    try {
+      fs.cpSync(from, to, { recursive: true, force: true });
+    } catch {
+      // A failed copy shows up as a missing stylesheet, which is visible; a
+      // thrown exception here would show up as the app refusing to start.
+    }
+  }
+}
+
+/**
  * Bind a port to prove it is free, then hand it straight to the child.
  *
  * There is a gap between closing the probe and the child binding, which is why
@@ -152,6 +184,7 @@ async function waitForServer(port) {
 }
 
 async function startServer() {
+  stageStaticAssets();
   const entry = resolveServerEntry();
   if (!fs.existsSync(entry)) {
     throw new Error(

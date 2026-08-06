@@ -1,4 +1,4 @@
-import { appendFile, mkdir } from "node:fs/promises";
+import { appendFile, mkdir, rm, stat as stat_, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { mayObserve, readObserversSync, type ObserverId } from "@/lib/observers";
@@ -77,13 +77,32 @@ type JobState = {
 const jobs = new Map<string, JobState>();
 let started = false;
 
+/**
+ * The background log, scrubbed and bounded.
+ *
+ * An observer's error message can contain anything it was working on — a path,
+ * a URL with a token in the query, a line of a document. This went to a file in
+ * the home directory unredacted, uncapped, and untouched by any of the "forget
+ * everything" actions, which made it the one place where deleting an index did
+ * not delete what the index had seen.
+ */
 async function log(line: string): Promise<void> {
   try {
     await mkdir(DIR, { recursive: true, mode: 0o700 });
-    await appendFile(LOG, `${new Date().toISOString()} ${line}\n`, "utf8");
+    const { scrub } = await import("@/lib/listen");
+    const stat = await stat_(LOG).catch(() => null);
+    /* Truncated rather than rotated: this is a diagnostic, not a record, and a
+       second file would be a second thing to remember to delete. */
+    if (stat && stat.size > 1_000_000) await writeFile(LOG, "", "utf8");
+    await appendFile(LOG, `${new Date().toISOString()} ${scrub(line)}\n`, "utf8");
   } catch {
     /* A log that cannot be written must not stop the work it describes. */
   }
+}
+
+/** Delete the log. Called from every forget-everything path. */
+export async function forgetDaemonLog(): Promise<void> {
+  await rm(LOG, { force: true }).catch(() => {});
 }
 
 /**

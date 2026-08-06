@@ -261,6 +261,33 @@ export async function dropDb(name: string): Promise<void> {
   );
 }
 
+/**
+ * Delete scratch copies left behind by a process that did not get to dispose.
+ *
+ * `openForeignCopy` removes its own directory, and that covers every ordinary
+ * path — but not a crash, a kill, or a quit mid-index. What is left behind is a
+ * verbatim copy of somebody's Messages database sitting in /tmp indefinitely,
+ * which is exactly the kind of thing this product exists not to do. Called at
+ * daemon start and from every forget action.
+ *
+ * Only directories matching the prefix, and only ones older than an hour, so a
+ * sweep can never delete a copy another pass is reading from right now.
+ */
+export async function sweepScratch(maxAgeMs = 3_600_000): Promise<number> {
+  const tmp = os.tmpdir();
+  const entries = await fs.readdir(tmp, { withFileTypes: true }).catch(() => []);
+  let removed = 0;
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !entry.name.startsWith("lore-")) continue;
+    const full = path.join(tmp, entry.name);
+    const stat = await fs.stat(full).catch(() => null);
+    if (!stat || Date.now() - stat.mtimeMs < maxAgeMs) continue;
+    await fs.rm(full, { recursive: true, force: true }).catch(() => {});
+    removed++;
+  }
+  return removed;
+}
+
 export async function dbSize(name: string): Promise<number> {
   const base = path.join(DIR, `${name}.db`);
   let total = 0;

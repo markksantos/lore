@@ -31,16 +31,27 @@ export const dynamic = "force-dynamic";
 const isObserver = (value: unknown): value is ObserverId =>
   typeof value === "string" && (OBSERVER_IDS as string[]).includes(value);
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    /*
+     * `?view=state` answers without probing the machine.
+     *
+     * The sidebar polls this every thirty seconds for its running dots, and a
+     * full response calls detectCapabilities — which shells out to osascript,
+     * opens chat.db and asks Ollama. Those are cached for twenty seconds, which
+     * is less than the poll, so the probes ran forever on an idle app. The
+     * dots need consent state and nothing else.
+     */
+    const lean = new URL(request.url).searchParams.get("view") === "state";
     /* Idempotent, and here as a safety net: if instrumentation did not run —
        an unusual dev restart, a host that skips it — opening this screen is
        what brings the loop up rather than leaving every observer silently
        dead with its switch on. */
     wireObservers();
 
-    const [config, capabilities] = await Promise.all([readObservers(), detectCapabilities()]);
+    const config = await readObservers();
     const status = daemonStatus();
+    const capabilities = lean ? null : await detectCapabilities();
 
     return Response.json({
       observers: OBSERVER_IDS.map((id) => ({

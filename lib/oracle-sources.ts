@@ -186,10 +186,25 @@ export function tidy(text: string, max = 20_000): string {
   return text.replace(/\r\n?/g, "\n").replace(/\n{3,}/g, "\n\n").trim().slice(0, max);
 }
 
-/** Strip tags, scripts and entities out of an HTML body. */
+/**
+ * Strip tags, scripts and entities out of an HTML body.
+ *
+ * The input is a marketing email, which is the most hostile well-formed text
+ * this program handles: megabytes of nested tables, unclosed tags, and inline
+ * style blocks. `<(script|style|head)[\s\S]*?<\/\1>` is the obvious pattern and
+ * it backtracks quadratically on an UNCLOSED `<script`, because the lazy
+ * `[\s\S]*?` extends one character at a time to the end of the document and
+ * fails at each. One four-megabyte email of that shape blocks the event loop
+ * for minutes — and this runs inside the server that also serves the wiki.
+ *
+ * Two changes. The body is capped first, because no email needs a megabyte of
+ * markup to say what it says. And the pattern is bounded: `[^<]*` cannot cross
+ * a `<`, so the scan is linear and an unclosed tag simply does not match.
+ */
 export function htmlToText(html: string): string {
   return html
-    .replace(/<(script|style|head)[\s\S]*?<\/\1>/gi, " ")
+    .slice(0, 400_000)
+    .replace(/<(script|style|head)\b[^<]*(?:<(?!\/\1\s*>)[^<]*)*<\/\1\s*>/gi, " ")
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<\/(p|div|tr|li|h[1-6])>/gi, "\n")
     .replace(/<[^>]+>/g, " ")

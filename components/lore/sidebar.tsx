@@ -178,7 +178,12 @@ export function Sidebar({
     let alive = true;
     const check = async () => {
       try {
-        const response = await fetch("/api/observers", { signal: AbortSignal.timeout(8_000) });
+        /* The lean view: consent state without probing macOS permissions,
+           Ollama and chat.db. A full response is cached for twenty seconds and
+           this polls every thirty, so asking for one here re-probed forever. */
+        const response = await fetch("/api/observers?view=state", {
+          signal: AbortSignal.timeout(8_000),
+        });
         if (!response.ok) return;
         const body = (await response.json()) as {
           observers?: { id: string; enabled: boolean; blockedBecause: string | null }[];

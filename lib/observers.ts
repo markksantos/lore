@@ -186,10 +186,34 @@ export function readObserversSync(): ObserversConfig {
   }
 }
 
+/**
+ * One writer at a time, and never a half-written file.
+ *
+ * Every mutator here is read-modify-write over the same file, and two of them
+ * can overlap easily: the tray pauses everything while the settings screen
+ * toggles an observer. Interleaved, the second write is computed from a config
+ * read before the first, so a just-set pause deadline disappears — and that is
+ * the one setting in this file where losing a write means something keeps
+ * watching that was told to stop.
+ *
+ * The chain serialises them. The temp-file-and-rename makes each write atomic,
+ * so a crash mid-write cannot leave a truncated consent file — which parses as
+ * "no consent recorded", and would therefore silently disable every observer.
+ */
+let writeQueue: Promise<unknown> = Promise.resolve();
+
+function serialise<T>(work: () => Promise<T>): Promise<T> {
+  const next = writeQueue.then(work, work);
+  /* The chain must not reject, or every subsequent write is skipped. */
+  writeQueue = next.catch(() => {});
+  return next;
+}
+
 async function writeObservers(config: ObserversConfig): Promise<void> {
   await fs.mkdir(DIR, { recursive: true, mode: 0o700 });
-  await fs.writeFile(FILE, JSON.stringify(config, null, 2) + "\n", "utf8", );
-  await fs.chmod(FILE, 0o600).catch(() => {});
+  const temp = `${FILE}.${process.pid}.tmp`;
+  await fs.writeFile(temp, JSON.stringify(config, null, 2) + "\n", { mode: 0o600 });
+  await fs.rename(temp, FILE);
 }
 
 /** Append-only record of every consent change, so the history is not a guess. */
@@ -203,46 +227,54 @@ async function note(event: Record<string, unknown>): Promise<void> {
 }
 
 export async function setObserver(id: ObserverId, enabled: boolean): Promise<ObserversConfig> {
-  const config = await readObservers();
-  const before = config.observers[id].enabled;
-  const next: ObserversConfig = {
-    ...config,
-    observers: {
-      ...config.observers,
-      [id]: { enabled, enabledAt: enabled ? (config.observers[id].enabledAt ?? Date.now()) : null },
-    },
-  };
-  await writeObservers(next);
-  if (before !== enabled) await note({ kind: enabled ? "enabled" : "disabled", observer: id });
-  return next;
+  return serialise(async () => {
+    const config = await readObservers();
+    const before = config.observers[id].enabled;
+    const next: ObserversConfig = {
+      ...config,
+      observers: {
+        ...config.observers,
+        [id]: { enabled, enabledAt: enabled ? (config.observers[id].enabledAt ?? Date.now()) : null },
+      },
+    };
+    await writeObservers(next);
+    if (before !== enabled) await note({ kind: enabled ? "enabled" : "disabled", observer: id });
+    return next;
+  });
 }
 
 /** @param minutes 0 resumes immediately. */
 export async function pauseAll(minutes: number): Promise<ObserversConfig> {
-  const config = await readObservers();
-  const until = minutes > 0 ? Date.now() + minutes * 60_000 : null;
-  const next = { ...config, pausedUntil: until };
-  await writeObservers(next);
-  await note({ kind: until ? "paused" : "resumed", minutes });
-  return next;
+  return serialise(async () => {
+    const config = await readObservers();
+    const until = minutes > 0 ? Date.now() + minutes * 60_000 : null;
+    const next = { ...config, pausedUntil: until };
+    await writeObservers(next);
+    await note({ kind: until ? "paused" : "resumed", minutes });
+    return next;
+  });
 }
 
 export async function setShareWithAgents(enabled: boolean): Promise<ObserversConfig> {
-  const config = await readObservers();
-  const next = { ...config, shareWithAgents: enabled };
-  await writeObservers(next);
-  await note({ kind: enabled ? "sharing-enabled" : "sharing-disabled" });
-  return next;
+  return serialise(async () => {
+    const config = await readObservers();
+    const next = { ...config, shareWithAgents: enabled };
+    await writeObservers(next);
+    await note({ kind: enabled ? "sharing-enabled" : "sharing-disabled" });
+    return next;
+  });
 }
 
 export async function setQuietHours(
   hours: { from: number; to: number } | null,
 ): Promise<ObserversConfig> {
-  const config = await readObservers();
-  const next = normalise({ ...config, quietHours: hours });
-  await writeObservers(next);
-  await note({ kind: "quiet-hours", hours });
-  return next;
+  return serialise(async () => {
+    const config = await readObservers();
+    const next = normalise({ ...config, quietHours: hours });
+    await writeObservers(next);
+    await note({ kind: "quiet-hours", hours });
+    return next;
+  });
 }
 
 /**

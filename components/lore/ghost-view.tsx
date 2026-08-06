@@ -90,6 +90,7 @@ type Recall = {
   frames: (Frame & { file: string; score: number })[];
   pending: number;
   everEnabled: boolean;
+  error?: string | null;
 };
 
 export function GhostView() {
@@ -283,6 +284,11 @@ export function GhostView() {
               <p className="mt-2 whitespace-pre-wrap text-[15px] leading-relaxed text-[var(--lore-text-primary)]">
                 {recall.answer}
               </p>
+            ) : recall.error ? (
+              <ErrorNote>
+                Ghost found the moments but the local model failed on the way to an answer:{" "}
+                {recall.error}
+              </ErrorNote>
             ) : recall.needsModel ? (
               <ErrorNote>
                 Ghost found the moments but has no local model to read them back to you. Install
