@@ -19,3 +19,5 @@ dist/
 
 # Local tool cache; contains absolute paths from this machine.
 .impeccable/
+
+build/
