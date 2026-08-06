@@ -6,6 +6,11 @@ import { scrub } from "@/lib/listen";
 import { detectOllama, generate, recommendModel } from "@/lib/ollama";
 import { getActiveVault } from "@/lib/config";
 import { getIndex } from "@/lib/wiki";
+import {
+  DEFAULT_UNDERSTUDY,
+  type UnderstudyConfig,
+  type UnderstudySource,
+} from "@/lib/understudy-shared";
 import { htmlToText, parseEmlx, tidy } from "@/lib/oracle-sources";
 import {
   compareVoice,
@@ -48,29 +53,10 @@ export type { VoiceProfile, VoiceStats } from "@/lib/voice-core";
  * cannot go anywhere.
  */
 
-export type UnderstudySource = "wiki" | "sent-mail" | "messages" | "folders";
-
-export const UNDERSTUDY_LABEL: Record<UnderstudySource, string> = {
-  wiki: "Your wiki",
-  "sent-mail": "Mail you sent",
-  messages: "Messages you sent",
-  folders: "Folders you choose",
-};
-
-export type UnderstudyConfig = {
-  sources: Record<UnderstudySource, boolean>;
-  folders: string[];
-  /** Samples shorter than this are noise ("ok", "thanks"). */
-  minWords: number;
-  redact: boolean;
-};
-
-export const DEFAULT_UNDERSTUDY: UnderstudyConfig = {
-  sources: { wiki: false, "sent-mail": false, messages: false, folders: false },
-  folders: [],
-  minWords: 25,
-  redact: true,
-};
+/* The shape and the defaults live in a module the browser build can import
+   too, so both halves of the feature agree on what a writing sample is. */
+export { DEFAULT_UNDERSTUDY, UNDERSTUDY_LABEL } from "@/lib/understudy-shared";
+export type { UnderstudyConfig, UnderstudySource } from "@/lib/understudy-shared";
 
 const DIR = path.join(os.homedir(), ".lore", "understudy");
 const CONFIG_FILE = path.join(DIR, "config.json");

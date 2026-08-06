@@ -15,6 +15,9 @@ import {
 } from "@/lib/policy-defaults";
 import { renderHealth } from "@/lib/health-core";
 import { measureVoice, voiceBrief } from "@/lib/voice-core";
+/* Type-only plus one constant: the value must not drift between the two
+   builds, and importing it is how that is guaranteed rather than promised. */
+import { DEFAULT_UNDERSTUDY } from "@/lib/understudy-shared";
 import { buildBudget } from "@/lib/tokens";
 import type { PageMeta, VaultIndex } from "@/lib/types";
 
@@ -487,7 +490,17 @@ async function handle(url: URL, init?: RequestInit): Promise<Response | null> {
    */
   if (p === "/api/understudy") {
     if (method === "GET") {
-      const texts = s.index.pages.map((page) => page.plain).filter((text) => text.trim().length > 120);
+      /*
+       * The same floor the desktop build uses, expressed the same way.
+       *
+       * This was a character count while lib/understudy.ts used a word count,
+       * so the two halves of one feature disagreed about what counts as a
+       * writing sample — and a profile that includes different pages depending
+       * on where it was computed is not the same profile.
+       */
+      const texts = s.index.pages
+        .map((page) => page.plain)
+        .filter((text) => (text.match(/[\p{L}\p{N}'’-]+/gu) ?? []).length >= DEFAULT_UNDERSTUDY.minWords);
       const overall = measureVoice(texts);
       const profile = { at: Date.now(), overall, byAudience: [] };
       return json({
@@ -495,7 +508,7 @@ async function handle(url: URL, init?: RequestInit): Promise<Response | null> {
         config: {
           sources: { wiki: true, "sent-mail": false, messages: false, folders: false },
           folders: [],
-          minWords: 25,
+          minWords: DEFAULT_UNDERSTUDY.minWords,
           redact: true,
         },
         status: {
