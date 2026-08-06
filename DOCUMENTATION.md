@@ -1027,11 +1027,26 @@ server is also the user's wiki.
 Three loops that never block each other: capture (cheap, does no thinking),
 describe (expensive, a queue rather than a step), forget (hourly).
 
-**Capture.** `screencapture -x -o -t jpg`, then `sips -Z 1440` to shrink it.
-The order matters and is the privacy design: the frontmost application is
+**Capture.** `screencapture -x -o -t jpg -D n`, then `sips -Z 1440` to shrink
+it. The order matters and is the privacy design: the frontmost application is
 checked FIRST, and if it is on the never-capture list the function returns
 without ever invoking the shutter. There is no moment at which a 1Password
 window exists as a file on disk. The default list is eleven password managers.
+
+Not knowing which application is in front is a reason NOT to capture. macOS
+answers that question through Automation permission, which is separate from
+screen recording and routinely absent while it is granted — and a first version
+read `if (app && excluded.includes(app))`, so on exactly that machine the
+never-capture list did nothing at all. Three reviewers found it independently.
+Failing closed costs Ghost entirely on a Mac without Automation permission, so
+it is a setting (`captureWhenAppUnknown`) rather than a rule, and the default is
+the safe one.
+
+`-D n` is not optional either. Given one output path and three screens,
+`screencapture` writes three files and only the first was recorded — the other
+two being screenshots that no retention pass and no "forget everything" could
+ever reach. Capturing every display means one invocation per display, each
+recorded as its own frame.
 
 **Deduplication.** A 64-bit average hash via a 16×16 BMP that `sips` renders —
 a decoder Lore does not have to ship and a format simple enough to read in
@@ -1056,6 +1071,12 @@ plausible one. The window is a *filter*, not a ranking signal: if the asker said
 "twenty minutes ago" then a perfect text match from Tuesday is the wrong answer.
 When the words match nothing but the moment was named, frames are sampled evenly
 across the window rather than taking the first N.
+
+Frames are served `no-store`. They were `immutable, max-age=86400` on the
+reasoning that a frame id never points at different pixels — but SQLite reuses
+rowids after a delete, so forgetting a frame and capturing another re-serves the
+deleted screenshot for the rest of the day. "Forget this frame" has to mean it,
+including in the cache of the tab that showed it.
 
 Measured on the development machine: capture 1.2 s, description 7 s, recall
 11.5 s end to end.
@@ -1109,9 +1130,31 @@ names. Apple Notes stores each note as a gzipped protobuf, handled the same way.
 
 Passes are **bounded** — a few thousand items per source — so a first index of a
 decade of mail completes over several passes rather than in one twenty-minute
-stall, and can be interrupted without losing what it already did. A pass that
-returns less than a full batch has caught up, which is how "still indexing" ends
-with a real answer instead of a progress bar that never resolves.
+stall, and can be interrupted without losing what it already did.
+
+**Two cursors, not one.** A single forward cursor is wrong for every source that
+yields newest-first, which is most of them: the first pass takes the newest N
+and advances the cursor past them, and the second correctly finds nothing newer
+and reports the source COMPLETE with a decade unread. Reproduced against real
+browser history: 150 rows, then "complete" forever. So each source keeps `since`
+(walk forward for new things) and `backfill` (walk backward through history),
+and claims completion only when a backward walk has RUN and found nothing NEW.
+
+"Nothing new" rather than "nothing at all", because rows whose timestamp is
+unusable — a history entry with `last_visit_time` of zero — are re-yielded by
+the `< bound` query on every pass forever, and testing for an empty yield meant
+the source never once finished. After the fix, the same history walks
+150 → 296 → 341 rows across five months and settles on the fourth pass.
+
+Only timestamps in the PAST advance the forward cursor. The calendar stores
+recurrences expanded years ahead — a real one on the development machine runs to
+2031 — and one of those setting `since` means nothing is ever "new" again.
+
+**Direction lives in `meta`, not in `who`.** Messages writes the counterparty
+into `who` for both directions and Mail writes "sender → recipient", so nothing
+downstream can tell who spoke last from that string. Prophet's awaiting-reply
+card was unreachable for precisely this reason until the adapters started
+recording `meta.fromMe` — mail deriving it from the Sent mailbox path.
 
 ### 17.8 Understudy (`lib/understudy.ts`, `lib/voice-core.ts`)
 
