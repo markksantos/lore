@@ -365,7 +365,16 @@ export async function runChorus(
   }
 
   // ---- Round 3: synthesis --------------------------------------------------
-  const synthesisRound = config.skipCritique ? 2 : 3;
+  /*
+   * The number reflects what actually happened, not what was configured.
+   *
+   * The critique round is also skipped when only one panelist answered — a
+   * panel of three where two keys have expired. Reporting that run as "round 3
+   * of 3" claims a round that never took place, which is the sort of small lie
+   * that makes the rest of the transcript untrustworthy.
+   */
+  const ranCritique = critiques.some((record) => !record.error && record.text.trim());
+  const synthesisRound = ranCritique ? 3 : 2;
   emit({ type: "round", round: synthesisRound, name: "Synthesis" });
 
   /*

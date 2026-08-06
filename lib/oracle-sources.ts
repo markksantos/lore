@@ -267,7 +267,16 @@ export const filesAdapter: Adapter = {
 
         const stat = await fs.stat(full).catch(() => null);
         if (!stat) continue;
-        if (stat.mtimeMs <= ctx.since) continue;
+        /*
+         * Rounded on BOTH sides of the comparison.
+         *
+         * `at` is stored as `Math.round(mtimeMs)` and the cursor is the largest
+         * `at` written, so comparing a raw float mtime against it re-reads
+         * every file whose fraction rounded down — about half of them, on every
+         * pass, forever. Harmless in the index (the unique key updates rather
+         * than duplicates) and expensive in a mail archive.
+         */
+        if (Math.round(stat.mtimeMs) <= ctx.since) continue;
         if (stat.size > ctx.maxFileBytes) continue;
 
         let body = "";
@@ -439,7 +448,8 @@ export const mailAdapter: Adapter = {
         }
         if (!entry.name.endsWith(".emlx")) continue;
         const stat = await fs.stat(full).catch(() => null);
-        if (!stat || stat.mtimeMs <= ctx.since) continue;
+        /* Rounded on both sides — see the files adapter. */
+        if (!stat || Math.round(stat.mtimeMs) <= ctx.since) continue;
         /* A 40MB .emlx is an attachment with a sentence attached. */
         if (stat.size > 4_000_000) continue;
 
@@ -613,7 +623,7 @@ export const calendarAdapter: Adapter = {
         if (!name.endsWith(".ics")) continue;
         const full = path.join(eventsDir, name);
         const stat = await fs.stat(full).catch(() => null);
-        if (!stat || stat.mtimeMs <= ctx.since) continue;
+        if (!stat || Math.round(stat.mtimeMs) <= ctx.since) continue;
         const raw = await fs.readFile(full, "utf8").catch(() => "");
         if (!raw) continue;
 

@@ -45,9 +45,25 @@ export const PROVIDER_LABEL: Record<ProviderId, string> = {
  * the user can act on and a generic failure is not.
  */
 export const DEFAULT_MODEL: Record<ProviderId, string> = {
+  /*
+   * Google's is unverified, and deliberately labelled as such.
+   *
+   * Checked against a live key on the development machine: `gemini-3-pro` does
+   * not exist; `gemini-2.5-pro` is returned by the models endpoint and then
+   * answers "no longer available to new users"; every current model answers
+   * `streamGenerateContent` with a 404 saying "use the Interactions API". So
+   * this key cannot reach generateContent at all, and no name could be
+   * confirmed from here — being listed is not the same as being callable, which
+   * is itself the useful finding.
+   *
+   * The name below is the most broadly available one. If it fails, Google's own
+   * message says what to use instead and the UI shows that message verbatim,
+   * which is why none of this is fatal: one dead panelist does not stop a
+   * debate, and the model is one field in the panel editor.
+   */
   anthropic: "claude-sonnet-5",
   openai: "gpt-5",
-  google: "gemini-3-pro",
+  google: "gemini-2.5-flash",
   openrouter: "openai/gpt-5",
   ollama: "",
 };

@@ -376,7 +376,7 @@ function LiveDebate({
   running: boolean;
 }) {
   const dissents = extractDissents(live.synthesis);
-  const rounds = live.round || (live.finished ? 3 : 1);
+  const rounds = live.round || 1;
 
   return (
     <>
@@ -385,7 +385,7 @@ function LiveDebate({
         hint={
           live.finished
             ? `${live.costUsd > 0.0005 ? `About $${live.costUsd.toFixed(3)}. ` : ""}Rough estimate — providers price differently and change often.`
-            : `Round ${rounds} of ${live.round === 2 ? 3 : 3}`
+            : `Round ${rounds}`
         }
         right={running ? <Loader2 size={14} className="animate-spin text-[var(--lore-text-tertiary)]" /> : null}
       >
@@ -394,7 +394,7 @@ function LiveDebate({
           style={{ gridTemplateColumns: `repeat(${Math.min(panel.length, 3)}, minmax(0, 1fr))` }}
         >
           {panel.map((panelist) => {
-            const rounds = live.text.get(panelist.id);
+            const said = live.text.get(panelist.id);
             const error = live.errors.get(panelist.id);
             return (
               <div
@@ -413,8 +413,8 @@ function LiveDebate({
                   <ErrorNote>{error}</ErrorNote>
                 ) : (
                   <>
-                    <RoundBlock label="Answer" text={rounds?.get(1) ?? ""} />
-                    {rounds?.get(2) ? <RoundBlock label="Critique" text={rounds.get(2)!} /> : null}
+                    <RoundBlock label="Answer" text={said?.get(1) ?? ""} />
+                    {said?.get(2) ? <RoundBlock label="Critique" text={said.get(2)!} /> : null}
                   </>
                 )}
               </div>
