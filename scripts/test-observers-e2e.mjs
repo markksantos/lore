@@ -11,6 +11,7 @@ import os from "node:os";
 import path from "node:path";
 
 const oracle = await import("@/lib/oracle.ts");
+const { ADAPTERS } = await import("@/lib/oracle-sources.ts");
 const understudy = await import("@/lib/understudy.ts");
 const prophet = await import("@/lib/prophet.ts");
 const observers = await import("@/lib/observers.ts");
@@ -78,6 +79,20 @@ try {
 
   const filtered = oracle.searchOracle("grading", { sources: ["mail"] });
   check("a source filter excludes non-matching sources", filtered.hits.length === 0);
+
+  /*
+   * The two-cursor walk, on the one source that has no timeline.
+   *
+   * `files` walks a directory rather than a history, so a backward pass must
+   * yield nothing and the source must still report itself complete. A version
+   * that treated "no backfill" as "not finished" would leave every file source
+   * permanently mid-index.
+   */
+  const noBackfill = [];
+  for await (const item of ADAPTERS.files.collect({ since: 0, before: Date.now(), limit: 10, roots: [docs], maxFileBytes: 4e6 })) {
+    noBackfill.push(item);
+  }
+  check("a directory source yields nothing on a backward pass", noBackfill.length === 0);
 
   const second = await oracle.reindexOracle(["files"]);
   const secondPass = second.passes.find((p) => p.source === "files");

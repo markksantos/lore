@@ -93,6 +93,14 @@ export type ProbeResult = { available: boolean; reason: string };
 export type CollectContext = {
   /** Only items newer than this, where the source can tell. */
   since: number;
+  /**
+   * Only items OLDER than this — the backward walk through history.
+   *
+   * Zero means "not backfilling, use `since`". A source with no timeline to
+   * walk (files, which walks a directory) ignores it and yields nothing, which
+   * is how the indexer learns there is no history left to fetch.
+   */
+  before: number;
   /** Stop after this many items, so one pass is bounded. */
   limit: number;
   /** For `files`, the folders the user chose. */
@@ -142,6 +150,27 @@ export function appleTime(value: number | null | undefined): number | null {
 export function chromeTime(value: number | null | undefined): number | null {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return null;
   return Math.round(value / 1000 - CHROME_EPOCH_OFFSET * 1000);
+}
+
+/**
+ * The WHERE fragment and bound value for one direction of a timeline walk.
+ *
+ * Every SQL-backed source needs the same three lines: forward from `since`,
+ * or backward from `before`, in that source's own epoch. Writing it five times
+ * is how one of them ends up with the comparison the wrong way round, which
+ * looks exactly like "that source has no old data".
+ *
+ * @param toNative converts a millisecond timestamp into the column's own units.
+ */
+function walkWindow(
+  ctx: CollectContext,
+  column: string,
+  toNative: (ms: number) => number,
+): { clause: string; bound: number; descending: boolean } {
+  if (ctx.before) {
+    return { clause: `${column} < ?`, bound: toNative(ctx.before), descending: true };
+  }
+  return { clause: `${column} > ?`, bound: ctx.since ? toNative(ctx.since) : 0, descending: true };
 }
 
 /** Collapse whitespace and cap length, so one item cannot dominate the index. */
@@ -247,6 +276,11 @@ export const filesAdapter: Adapter = {
     return { available: true, reason: "" };
   },
   async *collect(ctx) {
+    /* A directory is not a timeline. There is no "older than" to walk, so a
+       backfill pass yields nothing and the indexer marks the backward
+       direction exhausted — which is correct: one forward walk sees every
+       file there is. */
+    if (ctx.before) return;
     let yielded = 0;
     const walk = async function* (dir: string, depth: number): AsyncGenerator<OracleItem> {
       if (depth < 0 || yielded >= ctx.limit) return;
@@ -367,26 +401,27 @@ export function parseEmlx(raw: string): {
     if (!headers.has(name)) headers.set(name, line.slice(colon + 1).trim());
   }
 
-  const encoding = (headers.get("content-transfer-encoding") ?? "").toLowerCase();
-  if (encoding.includes("base64")) {
-    try {
-      body = Buffer.from(body.replace(/\s+/g, ""), "base64").toString("utf8");
-    } catch {
-      /* Leave it as it was; unreadable is better than absent. */
-    }
-  } else if (encoding.includes("quoted-printable")) {
-    body = body
-      .replace(/=\r?\n/g, "")
-      .replace(/=([0-9A-Fa-f]{2})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
-  }
+  body = decodeBody(body, headers.get("content-transfer-encoding") ?? "");
 
   const type = (headers.get("content-type") ?? "").toLowerCase();
   if (type.includes("multipart")) {
     /* Take the text/plain part when there is one and fall back to the HTML.
        Boundary parsing in full is a mail client's job; this needs the words. */
-    const plain = body.match(/Content-Type:\s*text\/plain[\s\S]*?\r?\n\r?\n([\s\S]*?)(?=\r?\n--|\s*$)/i);
-    if (plain) body = plain[1];
-    else body = htmlToText(body);
+    const plain = body.match(
+      /Content-Type:\s*text\/plain([\s\S]*?)\r?\n\r?\n([\s\S]*?)(?=\r?\n--|\s*$)/i,
+    );
+    if (plain) {
+      /*
+       * A part carries its own Content-Transfer-Encoding, and it is usually not
+       * the one on the outer message — a multipart wrapper is `7bit` while the
+       * text part inside is base64. Decoding only the outer header left every
+       * such message indexed as a wall of base64, which matches nothing and
+       * reads as "Mail has no results".
+       */
+      body = decodeBody(plain[2], plain[1]);
+    } else {
+      body = htmlToText(body);
+    }
   } else if (type.includes("html")) {
     body = htmlToText(body);
   }
@@ -399,6 +434,33 @@ export function parseEmlx(raw: string): {
     date: Number.isFinite(parsedDate) ? parsedDate : null,
     body: tidy(body, 24_000),
   };
+}
+
+/**
+ * Undo a Content-Transfer-Encoding.
+ *
+ * `headerBlob` is anything that might contain the encoding declaration — a
+ * header value, or the raw header block of a MIME part. Taking the blob rather
+ * than a parsed value is what lets the multipart path reuse this for a part
+ * whose encoding differs from its parent's, which is the common case and was
+ * the bug.
+ */
+export function decodeBody(body: string, headerBlob: string): string {
+  const encoding = headerBlob.toLowerCase();
+  if (/base64/.test(encoding)) {
+    try {
+      return Buffer.from(body.replace(/\s+/g, ""), "base64").toString("utf8");
+    } catch {
+      /* Leave it as it was; unreadable is better than absent. */
+      return body;
+    }
+  }
+  if (/quoted-printable/.test(encoding)) {
+    return body
+      .replace(/=\r?\n/g, "")
+      .replace(/=([0-9A-Fa-f]{2})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
+  }
+  return body;
 }
 
 /** `=?UTF-8?B?…?=` encoded-words, which is how non-ASCII subjects arrive. */
@@ -448,8 +510,13 @@ export const mailAdapter: Adapter = {
         }
         if (!entry.name.endsWith(".emlx")) continue;
         const stat = await fs.stat(full).catch(() => null);
+        if (!stat) continue;
         /* Rounded on both sides — see the files adapter. */
-        if (!stat || Math.round(stat.mtimeMs) <= ctx.since) continue;
+        if (ctx.before) {
+          if (Math.round(stat.mtimeMs) >= ctx.before) continue;
+        } else if (Math.round(stat.mtimeMs) <= ctx.since) {
+          continue;
+        }
         /* A 40MB .emlx is an attachment with a sentence attached. */
         if (stat.size > 4_000_000) continue;
 
@@ -623,7 +690,12 @@ export const calendarAdapter: Adapter = {
         if (!name.endsWith(".ics")) continue;
         const full = path.join(eventsDir, name);
         const stat = await fs.stat(full).catch(() => null);
-        if (!stat || Math.round(stat.mtimeMs) <= ctx.since) continue;
+        if (!stat) continue;
+        if (ctx.before) {
+          if (Math.round(stat.mtimeMs) >= ctx.before) continue;
+        } else if (Math.round(stat.mtimeMs) <= ctx.since) {
+          continue;
+        }
         const raw = await fs.readFile(full, "utf8").catch(() => "");
         if (!raw) continue;
 
@@ -666,6 +738,7 @@ async function* collectCalendarDb(ctx: CollectContext): AsyncGenerator<OracleIte
     const hasParticipants = hasTable(db, "Participant");
     const hasLocation = hasTable(db, "Location");
     const hasCalendar = hasTable(db, "Calendar");
+    const calendarWindow = walkWindow(ctx, "ci.start_date", (ms) => ms / 1000 - APPLE_EPOCH_OFFSET);
 
     const rows = db.all<{
       id: number;
@@ -694,10 +767,10 @@ async function* collectCalendarDb(ctx: CollectContext): AsyncGenerator<OracleIte
          FROM CalendarItem ci
          ${hasCalendar ? "LEFT JOIN Calendar c ON c.ROWID = ci.calendar_id" : ""}
          ${hasLocation ? "LEFT JOIN Location l ON l.ROWID = ci.location_id" : ""}
-        WHERE ci.start_date > ?
+        WHERE ${calendarWindow.clause}
         ORDER BY ci.start_date DESC
         LIMIT ?`,
-      ctx.since ? ctx.since / 1000 - APPLE_EPOCH_OFFSET : 0,
+      calendarWindow.bound,
       ctx.limit,
     );
 
@@ -769,7 +842,15 @@ export const messagesAdapter: Adapter = {
       if (!hasTable(db, "message")) return;
       const columns = columnsOf(db, "message");
       const hasAttributed = columns.has("attributedBody");
-      const sinceApple = ctx.since ? (ctx.since / 1000 - APPLE_EPOCH_OFFSET) * 1e9 : 0;
+      /*
+       * `date` is nanoseconds since 2001 on a modern Mac and whole seconds on
+       * rows written before 10.13, in the SAME column. So the comparison
+       * normalises the column to nanoseconds and the bound is expressed in
+       * nanoseconds — a bound in the wrong unit silently selects everything or
+       * nothing, and both look like a working query.
+       */
+      const NORMALISED = "(CASE WHEN ABS(m.date) > 100000000000 THEN m.date ELSE m.date * 1000000000.0 END)";
+      const window = walkWindow(ctx, NORMALISED, (ms) => (ms / 1000 - APPLE_EPOCH_OFFSET) * 1e9);
 
       /*
        * The epoch conversion happens in SQL, not in JavaScript.
@@ -806,10 +887,10 @@ export const messagesAdapter: Adapter = {
            LEFT JOIN handle h ON h.ROWID = m.handle_id
            LEFT JOIN chat_message_join cmj ON cmj.message_id = m.ROWID
            LEFT JOIN chat c ON c.ROWID = cmj.chat_id
-          WHERE m.date > ?
+          WHERE ${window.clause}
           ORDER BY m.date DESC
           LIMIT ?`,
-        sinceApple,
+        window.bound,
         ctx.limit,
       );
 
@@ -890,6 +971,7 @@ export const notesAdapter: Adapter = {
       const columns = columnsOf(db, "ZICCLOUDSYNCINGOBJECT");
       if (!columns.has("ZTITLE1") || !columns.has("ZNOTEDATA")) return;
       const hasFolder = columns.has("ZFOLDER");
+      const notesWindow = walkWindow(ctx, "COALESCE(o.ZMODIFICATIONDATE1, 0)", (ms) => ms / 1000 - APPLE_EPOCH_OFFSET);
 
       const rows = db.all<{
         id: number;
@@ -909,10 +991,10 @@ export const notesAdapter: Adapter = {
            JOIN ZICNOTEDATA d ON d.Z_PK = o.ZNOTEDATA
            ${hasFolder ? "LEFT JOIN ZICCLOUDSYNCINGOBJECT f ON f.Z_PK = o.ZFOLDER" : ""}
           WHERE o.ZTITLE1 IS NOT NULL
-            AND COALESCE(o.ZMODIFICATIONDATE1, 0) > ?
+            AND COALESCE(o.ZMODIFICATIONDATE1, 0) ${notesWindow.clause}
           ORDER BY o.ZMODIFICATIONDATE1 DESC
           LIMIT ?`,
-        ctx.since ? ctx.since / 1000 - APPLE_EPOCH_OFFSET : 0,
+        notesWindow.bound,
         ctx.limit,
       );
 
@@ -1040,6 +1122,7 @@ export const browserAdapter: Adapter = {
         const { db } = opened;
         if (profile.kind === "chromium") {
           if (!hasTable(db, "urls")) continue;
+          const chromeWindow = walkWindow(ctx, "last_visit_time", (ms) => (ms / 1000 + CHROME_EPOCH_OFFSET) * 1e6);
           /* Converted in SQL for the same reason as Messages: Chromium counts
              microseconds from 1601, which is ~1.34 × 10^16 — past the exact
              integer range, and node:sqlite throws rather than rounding. */
@@ -1047,8 +1130,8 @@ export const browserAdapter: Adapter = {
             `SELECT id, url, title,
                     CAST(last_visit_time / 1000.0 - ${CHROME_EPOCH_OFFSET * 1000} AS INTEGER) AS atMs,
                     visit_count AS count
-               FROM urls WHERE last_visit_time > ? ORDER BY last_visit_time DESC LIMIT ?`,
-            ctx.since ? (ctx.since / 1000 + CHROME_EPOCH_OFFSET) * 1e6 : 0,
+               FROM urls WHERE ${chromeWindow.clause} ORDER BY last_visit_time DESC LIMIT ?`,
+            chromeWindow.bound,
             perProfile,
           );
           for (const row of rows) {
@@ -1067,12 +1150,13 @@ export const browserAdapter: Adapter = {
           }
         } else {
           if (!hasTable(db, "history_items") || !hasTable(db, "history_visits")) continue;
+          const safariWindow = walkWindow(ctx, "v.visit_time", (ms) => ms / 1000 - APPLE_EPOCH_OFFSET);
           const rows = db.all<{ id: number; url: string; title: string | null; visit: number }>(
             `SELECT i.id AS id, i.url AS url, v.title AS title, MAX(v.visit_time) AS visit
                FROM history_items i JOIN history_visits v ON v.history_item = i.id
-              WHERE v.visit_time > ?
+              WHERE ${safariWindow.clause}
               GROUP BY i.id ORDER BY visit DESC LIMIT ?`,
-            ctx.since ? ctx.since / 1000 - APPLE_EPOCH_OFFSET : 0,
+            safariWindow.bound,
             perProfile,
           );
           for (const row of rows) {
@@ -1132,6 +1216,7 @@ export const photosAdapter: Adapter = {
       const latColumn = pick("ZLATITUDE");
       const lonColumn = pick("ZLONGITUDE");
       if (!dateColumn || !nameColumn) return;
+      const photosWindow = walkWindow(ctx, `a.${dateColumn}`, (ms) => ms / 1000 - APPLE_EPOCH_OFFSET);
 
       const hasExtra = hasTable(db, "ZADDITIONALASSETATTRIBUTES");
       const extra = hasExtra ? columnsOf(db, "ZADDITIONALASSETATTRIBUTES") : new Set<string>();
@@ -1162,10 +1247,10 @@ export const photosAdapter: Adapter = {
                 ${lonColumn ? `a.${lonColumn}` : "NULL"} AS lon
            FROM ZASSET a
            ${hasExtra ? "LEFT JOIN ZADDITIONALASSETATTRIBUTES x ON x.ZASSET = a.Z_PK" : ""}
-          WHERE a.${dateColumn} > ?
+          WHERE ${photosWindow.clause}
           ORDER BY a.${dateColumn} DESC
           LIMIT ?`,
-        ctx.since ? ctx.since / 1000 - APPLE_EPOCH_OFFSET : 0,
+        photosWindow.bound,
         ctx.limit,
       );
 

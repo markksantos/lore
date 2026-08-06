@@ -222,13 +222,20 @@ async function upcomingEvents(horizonMs: number): Promise<
   const now = Date.now();
   const out: { id: string; title: string; at: number; who: string | null; body: string; location: string | null }[] = [];
   /*
-   * The adapter yields newest-first with no upper bound, so this reads a
-   * generous slice and filters. `since` is set an hour back rather than to now
-   * because a meeting that started five minutes ago is still the one you are
-   * about to walk into.
+   * `since` means "newer than", not "from", and the adapter yields newest-first.
+   *
+   * A first version passed `now - 1h` here reasoning about it as the start of a
+   * window, which is the same expression and a different meaning: it excluded
+   * everything older than an hour ago, which for a calendar is every event that
+   * has not yet been rescheduled — and the imminent meeting whose start_date is
+   * in ten minutes is newer than that bound only by luck. Zero asks for
+   * everything the adapter has, newest first, and the filter below picks the
+   * window. 400 rows is generous for a calendar that stores recurrences
+   * expanded years ahead.
    */
   for await (const item of ADAPTERS.calendar.collect({
-    since: now - 3_600_000,
+    since: 0,
+    before: 0,
     limit: 400,
     roots: [],
     maxFileBytes: 0,

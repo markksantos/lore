@@ -65,6 +65,13 @@ export type GhostConfig = {
   excludedApps: string[];
   /** Run extracted text through the secret scrubber before storing it. */
   redact: boolean;
+  /**
+   * Capture even when macOS will not say which app is in front.
+   *
+   * Off by default. On, the never-capture list cannot be honoured, which is
+   * said in those words at the switch rather than implied.
+   */
+  captureWhenAppUnknown: boolean;
   /** Stop capturing when the frame store passes this size. */
   maxDiskMb: number;
 };
@@ -99,6 +106,7 @@ export const DEFAULT_GHOST: GhostConfig = {
   allDisplays: false,
   excludedApps: DEFAULT_EXCLUDED,
   redact: true,
+  captureWhenAppUnknown: false,
   maxDiskMb: 8_192,
 };
 
@@ -124,6 +132,8 @@ export async function readGhostConfig(): Promise<GhostConfig> {
         ? parsed.excludedApps.filter((a): a is string => typeof a === "string")
         : DEFAULT_EXCLUDED,
       redact: parsed.redact !== false,
+      /* `=== true`, so a corrupt or partial config cannot turn the guard off. */
+      captureWhenAppUnknown: parsed.captureWhenAppUnknown === true,
       maxDiskMb: clamp(parsed.maxDiskMb, 256, 200_000, DEFAULT_GHOST.maxDiskMb),
     };
   } catch {
@@ -374,7 +384,32 @@ export async function captureFrame(config?: GhostConfig): Promise<CaptureOutcome
   }
 
   const { app, title } = await frontmostApp();
-  if (app && settings.excludedApps.some((name) => name.toLowerCase() === app.toLowerCase())) {
+
+  /*
+   * Not knowing which app is in front is a reason NOT to photograph it.
+   *
+   * `frontmostApp` returns null when macOS has not granted Automation
+   * permission — which is a different permission from screen recording, and is
+   * routinely absent while screen recording is granted. The first version of
+   * this check read `if (app && excluded.includes(app))`, so on exactly that
+   * machine the never-capture list did nothing at all and 1Password's vault
+   * window was written to disk. A guard that fails open is not a guard.
+   *
+   * Three reviewers found this independently, which is what a privacy-critical
+   * branch with an implicit null case looks like from the outside.
+   *
+   * Failing closed costs Ghost entirely on a Mac without Automation permission,
+   * so it is a setting rather than a rule — and the default is the safe one.
+   */
+  if (!app) {
+    if (settings.excludedApps.length && !settings.captureWhenAppUnknown) {
+      return {
+        kind: "skipped",
+        reason:
+          "macOS will not say which app is in front, so Ghost cannot honour the never-capture list. Grant Automation permission, or allow capture anyway in Ghost's settings.",
+      };
+    }
+  } else if (settings.excludedApps.some((name) => name.toLowerCase() === app.toLowerCase())) {
     return { kind: "skipped", reason: `${app} is on the never-capture list.` };
   }
 

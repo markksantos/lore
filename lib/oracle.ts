@@ -10,6 +10,7 @@ import {
   ORACLE_SOURCES,
   ORACLE_WHERE,
   NEEDS_FULL_DISK,
+  type OracleItem,
   type OracleSource,
 } from "@/lib/oracle-sources";
 
@@ -140,6 +141,24 @@ const MIGRATIONS = [
     error    TEXT
   );
   `,
+  /*
+   * Two cursors, not one.
+   *
+   * `since` alone was wrong for every source that yields newest-first — Messages,
+   * browser history, Notes, Photos, the calendar database. The first pass took
+   * the newest N items and set `since` to the newest of them; the second pass
+   * then asked for "anything newer than that" and correctly found nothing, so it
+   * reported itself COMPLETE with a decade of history unread. The index looked
+   * finished and was one batch deep.
+   *
+   * `backfill` is the other end: the oldest item stored so far. A pass walks
+   * forward from `since` for anything new, and backwards from `backfill` for
+   * history, and only claims completion when the backward walk runs dry.
+   */
+  `
+  ALTER TABLE progress ADD COLUMN backfill INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE progress ADD COLUMN backfillDone INTEGER NOT NULL DEFAULT 0;
+  `,
 ];
 
 export function oracleDb(): Db {
@@ -172,12 +191,17 @@ export type OraclePass = {
 };
 
 /**
- * Read one source until its batch is full.
+ * Read one source until its batch is full, from both ends of its history.
  *
- * `since` advances only to the newest item this pass actually stored, not to
- * "now". A source whose adapter yields in descending date order (Messages,
- * browser history) would otherwise skip everything older than the first pass on
- * the second — which looks like a complete index and is a tenth of one.
+ * Forward from `since` for anything new, then backward from `backfill` for
+ * anything old, because a single forward cursor is wrong for every source that
+ * yields newest-first: the first pass takes the newest N and moves the cursor
+ * past them, and the second correctly finds nothing newer and calls itself
+ * complete with a decade unread.
+ *
+ * `since` advances only to the newest item stored AND only to a time in the
+ * past — the calendar yields events years ahead, and one of those setting the
+ * forward cursor would mean nothing is ever "new" again.
  */
 async function runSource(
   db: Db,
@@ -186,12 +210,18 @@ async function runSource(
 ): Promise<OraclePass> {
   const started = Date.now();
   const adapter = ADAPTERS[source];
-  const progress = db.get<{ since: number }>("SELECT since FROM progress WHERE source = ?", source);
+  const progress = db.get<{ since: number; backfill: number; backfillDone: number }>(
+    "SELECT since, backfill, backfillDone FROM progress WHERE source = ?",
+    source,
+  );
   const since = progress?.since ?? 0;
+  const backfill = progress?.backfill ?? 0;
+  const backfillDone = progress?.backfillDone === 1;
 
   let added = 0;
   let updated = 0;
   let newest = since;
+  let oldest = backfill;
   let seen = 0;
 
   try {
@@ -208,18 +238,21 @@ async function runSource(
       return { source, added: 0, updated: 0, complete: false, ms: Date.now() - started, error: probe.reason };
     }
 
-    const iterator = adapter.collect({
-      since,
-      limit: config.batch,
-      roots: config.roots,
-      maxFileBytes: config.maxFileMb * 1_048_576,
-    });
-
-    for await (const item of iterator) {
-      seen++;
+    /*
+     * Forward first, then backward.
+     *
+     * New things matter more than old things: a message that arrived this
+     * morning should be searchable before a message from 2019. So a pass asks
+     * for anything newer than `since`, and spends whatever batch is left
+     * walking backwards from `backfill` until the source runs out of history.
+     */
+    const store = (item: OracleItem) => {
       const title = item.title ? (config.redact ? scrub(item.title) : item.title) : null;
       const body = config.redact ? scrub(item.body) : item.body;
       const who = item.who ? (config.redact ? scrub(item.who) : item.who) : null;
+      /* The URI is stored and shown, and a URL routinely carries a token in a
+         query parameter. It goes through the scrubber like everything else. */
+      const uri = item.uri && config.redact ? scrub(item.uri) : (item.uri ?? null);
 
       db.tx(() => {
         const existing = db.get<{ id: number }>(
@@ -234,7 +267,7 @@ async function runSource(
             body,
             who,
             item.at,
-            item.uri,
+            uri,
             item.meta ? JSON.stringify(item.meta) : null,
             Date.now(),
             existing.id,
@@ -256,7 +289,7 @@ async function runSource(
             body,
             who,
             item.at,
-            item.uri,
+            uri,
             item.meta ? JSON.stringify(item.meta) : null,
             Date.now(),
           );
@@ -271,25 +304,92 @@ async function runSource(
         }
       });
 
-      if (item.at && item.at > newest) newest = item.at;
+      /*
+       * Only timestamps in the PAST move the forward cursor.
+       *
+       * The calendar yields events scheduled years ahead — a real one on the
+       * development machine runs to 2031 — and letting one of those set `since`
+       * poisons the cursor with a date in the future, after which nothing is
+       * ever indexed again because nothing is ever "newer".
+       */
+      if (item.at && item.at > newest && item.at <= Date.now()) newest = item.at;
+      if (item.at && (oldest === 0 || item.at < oldest)) oldest = item.at;
+    };
+
+    for await (const item of adapter.collect({
+      since,
+      before: 0,
+      limit: config.batch,
+      roots: config.roots,
+      maxFileBytes: config.maxFileMb * 1_048_576,
+    })) {
+      seen++;
+      store(item);
+    }
+
+    const remaining = Math.max(0, config.batch - seen);
+    /*
+     * The backward walk needs somewhere to walk back FROM, which the first pass
+     * does not have — `backfill` is only set once something has been stored.
+     * So pass one is forward-only by construction.
+     */
+    const backwardRan = !backfillDone && remaining > 0 && backfill > 0;
+    let backfilled = 0;
+    const addedBeforeBackfill = added;
+    if (backwardRan) {
+      for await (const item of adapter.collect({
+        since: 0,
+        before: backfill,
+        limit: remaining,
+        roots: config.roots,
+        maxFileBytes: config.maxFileMb * 1_048_576,
+      })) {
+        backfilled++;
+        store(item);
+      }
     }
 
     /*
-     * A pass that came back with less than a full batch has caught up. This is
-     * how "still indexing" ends: the UI can say "24,000 items, up to date"
-     * rather than showing a progress bar that never resolves because there is
-     * no total to divide by.
+     * History is exhausted only once a backward walk has RUN and come back
+     * empty.
+     *
+     * The first version treated "there is no backward cursor yet" as "there is
+     * nothing behind us", so pass one — which cannot have a cursor — marked the
+     * backfill finished and pass two called the source complete with one batch
+     * indexed. Reproduced against real browser history: 150 rows on pass one,
+     * then "complete" forever, with three months present and everything before
+     * it unreachable.
+     *
+     * A source with no timeline (`files` walks a directory) yields nothing on
+     * its first backward pass and is marked done then — one extra cheap pass,
+     * and no special case anywhere.
      */
-    const complete = seen < config.batch;
+    /*
+     * Dry means "found nothing NEW", not "yielded nothing".
+     *
+     * Some rows have no usable timestamp — a browser history entry with
+     * `last_visit_time` of zero, a note whose modification date is a sentinel.
+     * They are stored (they are still searchable) but they cannot advance the
+     * backward cursor, and the SQL `< bound` returns them on every pass
+     * forever. Measured: pass four onwards yielded the same 77 already-stored
+     * rows and the source never once reported itself complete.
+     */
+    const backfillDoneNow = backfillDone || (backwardRan && added === addedBeforeBackfill);
+    const complete = seen + backfilled < config.batch && backfillDoneNow;
+
     db.run(
-      `INSERT INTO progress (source, since, lastAt, items, complete, error) VALUES (?,?,?,?,?,NULL)
+      `INSERT INTO progress (source, since, lastAt, items, complete, error, backfill, backfillDone)
+       VALUES (?,?,?,?,?,NULL,?,?)
        ON CONFLICT(source) DO UPDATE SET since = excluded.since, lastAt = excluded.lastAt,
-         items = progress.items + excluded.items, complete = excluded.complete, error = NULL`,
+         items = progress.items + excluded.items, complete = excluded.complete, error = NULL,
+         backfill = excluded.backfill, backfillDone = excluded.backfillDone`,
       source,
       newest,
       Date.now(),
       added + updated,
       complete ? 1 : 0,
+      oldest,
+      backfillDoneNow ? 1 : 0,
     );
     return { source, added, updated, complete, ms: Date.now() - started, error: null };
   } catch (error) {

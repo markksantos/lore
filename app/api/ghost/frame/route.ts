@@ -37,9 +37,17 @@ export async function GET(request: Request) {
       headers: {
         "content-type": "image/jpeg",
         "content-length": String(image.length),
-        /* Immutable because a frame id never points at different pixels, and
-           private because these pixels are the inside of someone's screen. */
-        "cache-control": "private, max-age=86400, immutable",
+        /*
+         * Not cached at all, and the reason matters.
+         *
+         * This was `private, max-age=86400, immutable` on the reasoning that a
+         * frame id never points at different pixels. SQLite reuses rowids after
+         * a delete, so it does: forget a frame, capture another, and the new
+         * one inherits the id — and a browser holding an immutable copy shows
+         * the deleted screenshot for the rest of the day. "Forget this frame"
+         * has to mean it, including in the cache of the tab that showed it.
+         */
+        "cache-control": "no-store",
         "content-disposition": "inline",
         "x-content-type-options": "nosniff",
       },

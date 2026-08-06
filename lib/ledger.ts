@@ -204,6 +204,13 @@ function saveSession(
   redact: boolean,
 ): void {
   const words = turns.reduce((sum, turn) => sum + turn.text.split(/\s+/).length, 0);
+  /*
+   * The title is stored text like any other, and it is derived from the first
+   * thing the user typed — which in a Claude Code session is regularly a
+   * command carrying a key. Only the turns went through the scrubber, so the
+   * one string shown in every list was the one string never redacted.
+   */
+  const title = meta.title && redact ? scrub(meta.title) : meta.title;
   db.tx(() => {
     db.run(
       "DELETE FROM turns_fts WHERE rowid IN (SELECT id FROM turns WHERE sessionId = ?)",
@@ -221,7 +228,7 @@ function saveSession(
       meta.id,
       meta.source,
       meta.nativeId,
-      meta.title,
+      title,
       meta.project,
       meta.file,
       meta.startedAt,
