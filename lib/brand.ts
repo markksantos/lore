@@ -9,10 +9,17 @@ export const DESCRIPTION =
 export const APP_PORT = 4646;
 export const GITHUB_URL = "https://github.com/markksantos/lore";
 
+/**
+ * Where the public site lives. Only used to make share-card and sitemap URLs
+ * absolute, which every scraper requires. Override with NEXT_PUBLIC_SITE_URL
+ * once Lore has a domain of its own.
+ */
+export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://lore-delta-seven.vercel.app";
+
 export const VERSION = "0.1.0";
 
 export const ORG = "NoSleepLab";
-export const ORG_URL = "https://nosleeplab.vercel.app";
+export const ORG_URL = "https://nosleeplab.com";
 
 /**
  * Where prebuilt installers live.

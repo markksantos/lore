@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import type { ReactNode } from "react";
 import { ThemeProvider } from "@/components/lore/theme-provider";
-import { DESCRIPTION, META_TITLE } from "@/lib/brand";
+import { DESCRIPTION, META_TITLE, SITE_URL } from "@/lib/brand";
 import "./globals.css";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -11,6 +11,22 @@ const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"]
 export const metadata: Metadata = {
   title: { default: META_TITLE, template: "%s | Lore" },
   description: DESCRIPTION,
+  // Without these, every link pasted into Slack, X or a group chat unfurled as
+  // a bare URL. metadataBase makes the generated card (app/opengraph-image.tsx)
+  // an absolute URL, which every scraper requires.
+  metadataBase: new URL(SITE_URL),
+  openGraph: {
+    type: "website",
+    siteName: "Lore",
+    title: META_TITLE,
+    description: DESCRIPTION,
+    url: "/",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: META_TITLE,
+    description: DESCRIPTION,
+  },
   // Next injects the manifest link itself; the Apple icon has no manifest
   // equivalent, and iOS screenshots the page instead when the link is missing.
   //
