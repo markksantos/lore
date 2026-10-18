@@ -111,6 +111,14 @@ export default function PrivacyPage() {
           model download works exactly the same, which is the shortest proof available.
         </p>
       </Clause>
+
+      <Clause title="Who runs Lore">
+        <p>
+          Lore is published by Mark Studios, LLC, a Florida limited liability company.
+          Questions about this policy or your data:{" "}
+          <a href="mailto:contact@markstudios.com">contact@markstudios.com</a>.
+        </p>
+      </Clause>
     </ProsePage>
   );
 }
