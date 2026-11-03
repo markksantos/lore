@@ -13,7 +13,7 @@ export default function PrivacyPage() {
       eyebrow="Privacy"
       title="Nothing leaves your machine."
       lede="Lore comes in two shapes, and they have completely different answers. This page keeps them apart rather than averaging them into something vague."
-      updated="27 July 2026"
+      updated="29 October 2026"
     >
       <Clause title="The version you download">
         <p>
@@ -29,18 +29,13 @@ export default function PrivacyPage() {
         </p>
       </Clause>
 
-      <Clause title="Hosted plans, and what changes">
+      <Clause title="The hosted plan">
         <p>
-          A <a href="/pricing">hosted plan</a> exists for people who want their wiki on more
-          than one machine, backed up somewhere the machine is not, and reachable by an agent
-          when that machine is asleep. Those are the only things it adds, and none of them
-          are possible without a copy of your wiki living on a server.
+          Terms and privacy details for the hosted plan will be published before it launches.
         </p>
         <p>
-          So: if you turn sync on, your wiki leaves your machine. It is encrypted in transit
-          and at rest, but it leaves. That is the whole trade, stated plainly, and it is
-          off until you deliberately switch it on. Nothing about the free build changes when
-          hosted plans exist — it has no sync code in it at all.
+          Nothing about the free build changes when hosted plans exist — it has no sync code
+          in it at all.
         </p>
       </Clause>
 

@@ -13,7 +13,7 @@ export default function TermsPage() {
       eyebrow="Terms"
       title="The software is yours. The hosting is optional."
       lede="Two separate things, with separate terms. The program is MIT-licensed and free forever. A hosted plan is a service you may choose to buy on top of it, and can stop buying without losing anything you wrote."
-      updated="27 July 2026"
+      updated="29 October 2026"
     >
       <Clause title="The licence">
         <p>
@@ -56,16 +56,11 @@ export default function TermsPage() {
 
       <Clause title="Hosted plans">
         <p>
-          A hosted plan is billed monthly, yearly, or once for lifetime access, and covers
-          sync, backups, managed auth and storage, and the hosted MCP endpoint. It buys you a
-          service. It does not buy you the software, which you already have for free, and it
-          places no restriction on the self-hosted build.
+          Terms and privacy details for the hosted plan will be published before it launches.
         </p>
         <p>
-          Cancel whenever you like. Your wiki is plain markdown in a folder on your own disk
-          and stays exactly where it is — cancelling ends the syncing, not your notes. The
-          self-hosted build has no licence check and no expiry, so it keeps running whatever
-          happens to your subscription, or to us.
+          Your wiki is plain markdown in a folder on your own disk. The self-hosted build has
+          no licence check and no expiry.
         </p>
       </Clause>
 
