@@ -4,16 +4,16 @@ import { Clause, ProsePage } from "@/components/marketing/prose-page";
 export const metadata: Metadata = {
   title: "Terms",
   description:
-    "Lore is MIT-licensed software you can run yourself for free. Hosted plans are a separate, optional service on top of it.",
+    "Lore is MIT-licensed software you can run yourself for free. A hosted plan is not open yet.",
 };
 
 export default function TermsPage() {
   return (
     <ProsePage
       eyebrow="Terms"
-      title="The software is yours. The hosting is optional."
-      lede="Two separate things, with separate terms. The program is MIT-licensed and free forever. A hosted plan is a service you may choose to buy on top of it, and can stop buying without losing anything you wrote."
-      updated="29 October 2026"
+      title="The software is yours."
+      lede="The program is MIT-licensed and free to run yourself. A hosted plan is not open yet; its terms will be published before it launches."
+      updated="3 November 2026"
     >
       <Clause title="The licence">
         <p>
@@ -54,7 +54,7 @@ export default function TermsPage() {
         </p>
       </Clause>
 
-      <Clause title="Hosted plans">
+      <Clause title="Hosted plan">
         <p>
           Terms and privacy details for the hosted plan will be published before it launches.
         </p>
@@ -76,8 +76,7 @@ export default function TermsPage() {
         <p>
           These terms may change as the project does. A change here cannot reach backwards
           into software you already have: the copy you are running keeps the licence it
-          shipped with, permanently. If hosted terms change in a way that matters, plan
-          holders are told before it takes effect.
+          shipped with, permanently.
         </p>
       </Clause>
     </ProsePage>
