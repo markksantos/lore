@@ -4,7 +4,7 @@ import { Clause, ProsePage } from "@/components/marketing/prose-page";
 export const metadata: Metadata = {
   title: "Privacy",
   description:
-    "The Lore you run has no account and no telemetry, and cannot upload your wiki. Hosted plans are opt-in and this page draws the line between them.",
+    "The Lore you run has no account and no telemetry, and cannot upload your wiki. A hosted plan is not open yet.",
 };
 
 export default function PrivacyPage() {
@@ -12,8 +12,8 @@ export default function PrivacyPage() {
     <ProsePage
       eyebrow="Privacy"
       title="Nothing leaves your machine."
-      lede="Lore comes in two shapes, and they have completely different answers. This page keeps them apart rather than averaging them into something vague."
-      updated="29 October 2026"
+      lede="Lore runs on your own computer, and this page describes that version. A hosted plan is not open yet."
+      updated="3 November 2026"
     >
       <Clause title="The version you download">
         <p>
@@ -34,8 +34,7 @@ export default function PrivacyPage() {
           Terms and privacy details for the hosted plan will be published before it launches.
         </p>
         <p>
-          Nothing about the free build changes when hosted plans exist — it has no sync code
-          in it at all.
+          The free build has no sync code in it at all.
         </p>
       </Clause>
 
